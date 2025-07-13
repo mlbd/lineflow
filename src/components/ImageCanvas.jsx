@@ -15,7 +15,7 @@ export default function ImageCanvas({
   const canvasRef = useRef(null)
 
   const [containerStyle, setContainerStyle] = useState({})
-  const [isImageLarger, setIsImageLarger] = useState(true)
+  const [isAlignCenter, setAlignCenter] = useState(true)
   const [imageStyle, setImageStyle] = useState({})
 
   const isDragging = useRef(false)
@@ -41,33 +41,34 @@ export default function ImageCanvas({
       const imageWidth = img.naturalWidth
       const imageHeight = img.naturalHeight
 
-      // Check if image is larger than canvas in either dimension
-      if (imageWidth > canvasWidth || imageHeight > canvasHeight) {
-        // Image is larger - make it full width with auto height
-        setIsImageLarger(true)
+      if (imageWidth < canvasWidth && imageHeight < canvasHeight) {
+        setAlignCenter(true);
+
         setContainerStyle({
-          width: '100%',
-          height: 'auto',
+          width: `${imageWidth}px`,
+          height: `${imageHeight}px`,
         })
         setImageStyle({
-          width: '100%',
-          height: 'auto',
+          width: `${imageWidth}px`,
+          height: `${imageHeight}px`,
         })
+
       } else {
-        // Image is smaller - use exact image size
-        setIsImageLarger(false)
+        setAlignCenter(false);
+
         setContainerStyle({
-          width: `${imageWidth}px`,
-          height: `${imageHeight}px`,
+          width: '100%',
+          height: 'auto',
         })
         setImageStyle({
-          width: `${imageWidth}px`,
-          height: `${imageHeight}px`,
+          width: '100%',
+          height: 'auto',
         })
       }
+
     }
     img.src = imageUrl
-    console.log("isImageLarger", isImageLarger);
+    console.log("isAlignCenter", isAlignCenter);
   }, [imageUrl])
 
   // Create new box on mousedown
@@ -174,8 +175,17 @@ export default function ImageCanvas({
     }
   }, [selectedMapping])
 
+  useEffect(() => {
+    console.log("Updated isAlignCenter:", isAlignCenter);
+  }, [isAlignCenter]);
+
   return (
-    <div id="placementCanvas" ref={canvasRef} className="flex items-center justify-center min-h-[400px]" style={isImageLarger == false ? { height: 'calc(100vh - 117px)' } : {}}>
+    <div
+      id="placementCanvas"
+      ref={canvasRef}
+      className={`flex justify-center min-h-[400px] ${isAlignCenter !== true ? 'items-start' : 'items-center'}`}
+      style={isAlignCenter === true ? { height: 'calc(100vh - 117px)' } : {}}
+    >
       <div 
         id="placementCanvasContainer" 
         className="relative border overflow-hidden cursor-crosshair"

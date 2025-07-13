@@ -11,6 +11,9 @@ import MappingList from '@/components/MappingList'
 import OutputPanel from '@/components/OutputPanel'
 import EditMappingModal from '@/components/EditMappingModal'
 import EditImagePanel from '@/components/EditImagePanel'
+import EditLogoPanel from '@/components/EditLogoPanel'
+
+
 
 function ToolButton({ icon: Icon, label, onClick, className = "" }) {
   return (
@@ -32,6 +35,8 @@ export default function HomePage() {
   const [selectedMapping, setSelectedMapping] = useState(null)
   const [editOpen, setEditOpen] = useState(false)
   const [showEditPanel, setShowEditPanel] = useState(false)
+  const [showLogoPanel, setShowLogoPanel] = useState(false)
+  const [logoId, setLogoId] = useState('file_vchdkq')
 
   const handleDelete = (id) => {
     setMappings((prev) => prev.filter((m) => m.id !== id))
@@ -65,8 +70,8 @@ export default function HomePage() {
     <main className="w-full flex justify-center bg-muted min-h-screen">
       <div className="w-full max-w-[1920px] flex h-screen overflow-hidden">
         {/* Sidebar */}
-        <div className="w-[300px] bg-white border-r overflow-y-auto p-4 space-y-6">
-          <h1 className="text-2xl font-bold">Placement Editor</h1>
+        <div className="w-[300px] bg-white border-r overflow-y-auto space-y-6">
+          <h1 className="text-md bg-primary text-white font-bold border-b border-b-[#e6e8ea] h-[55px] flex items-center justify-center">Placement Editor</h1>
 
           <MappingList
             mappings={mappings}
@@ -82,7 +87,8 @@ export default function HomePage() {
           <OutputPanel
             imageUrl={imageUrl}
             mappings={mappings}
-            logoId="file_vchdkq"
+            logoId={logoId}
+            setLogoId={setLogoId}
           />
         </div>
 
@@ -98,7 +104,7 @@ export default function HomePage() {
             <ToolButton 
               icon={Plus} 
               label="Add Logo" 
-              onClick={() => alert('Coming soon...')} 
+              onClick={() => setShowLogoPanel(true)} 
             />
             <ToolButton 
               icon={Trash2} 
@@ -144,6 +150,15 @@ export default function HomePage() {
         open={showEditPanel}
         onClose={() => setShowEditPanel(false)}
         onSelect={(url) => setImageUrl(url)}
+      />
+
+      <EditLogoPanel
+        open={showLogoPanel}
+        onClose={() => setShowLogoPanel(false)}
+        onSelect={(publicId) => {
+          setLogoId(publicId)  // Make sure this is called
+          setShowLogoPanel(false)  // Close the panel
+        }}
       />
     </main>
   )

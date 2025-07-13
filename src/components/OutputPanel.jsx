@@ -5,8 +5,8 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 
-export default function OutputPanel({ imageUrl, mappings, logoId: defaultLogoId }) {
-  const [logoId, setLogoId] = useState(defaultLogoId)
+export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
+  // const [logoId, setLogoId] = useState(defaultLogoId)
   const [generatedUrl, setGeneratedUrl] = useState('')
 
   const generateUrl = async () => {
@@ -96,7 +96,7 @@ export default function OutputPanel({ imageUrl, mappings, logoId: defaultLogoId 
   }
 
   return (
-    <div>
+    <div className='p-4'>
       <h2 className="text-lg font-semibold mb-4">Generated Cloudinary URL</h2>
       
       <div className="space-y-4">

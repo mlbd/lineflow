@@ -3,11 +3,11 @@
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { Trash2, Pencil } from 'lucide-react'
+import { Trash2, SquarePen } from 'lucide-react'
 
 export default function MappingList({ mappings, selectedId, onSelect, onDelete, onEdit }) {
   return (
-    <div>
+    <div className='p-4'>
       <h2 className="text-lg font-semibold mb-4">Placement Areas</h2>
       
       <div>
@@ -16,13 +16,13 @@ export default function MappingList({ mappings, selectedId, onSelect, onDelete, 
             No placement areas yet.<br />Click and drag on image to create one.
           </div>
         ) : (
-          <ScrollArea className="h-[250px] pr-2">
+          <ScrollArea className="h-[250px] pr-2 p-4">
             <div className="space-y-2">
               {mappings.map((m) => (
                 <div
                   key={m.id}
                   className={cn(
-                    'p-3 rounded border flex items-center justify-between cursor-pointer hover:bg-muted group',
+                    'px-3 py-1 rounded border flex items-center justify-between cursor-pointer hover:bg-muted group',
                     m.id === selectedId
                       ? 'bg-blue-100 border-blue-500'
                       : 'border-border'
@@ -36,9 +36,9 @@ export default function MappingList({ mappings, selectedId, onSelect, onDelete, 
                     </div>
                   </div>
                   <div className="flex gap-2 opacity-0 group-hover:opacity-100">
-                    <Pencil
+                    <SquarePen
                       size={16}
-                      className="text-muted hover:text-blue-600"
+                      className="text-primary hover:text-blue-600"
                       onClick={(e) => {
                         e.stopPropagation()
                         onEdit(m.id)
