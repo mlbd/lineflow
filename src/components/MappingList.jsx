@@ -1,0 +1,64 @@
+'use client'
+
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+import { Trash2, Pencil } from 'lucide-react'
+
+export default function MappingList({ mappings, selectedId, onSelect, onDelete, onEdit }) {
+  return (
+    <div>
+      <h2 className="text-lg font-semibold mb-4">Placement Areas</h2>
+      
+      <div>
+        {mappings.length === 0 ? (
+          <div className="text-muted-foreground text-sm py-6 text-center">
+            No placement areas yet.<br />Click and drag on image to create one.
+          </div>
+        ) : (
+          <ScrollArea className="h-[250px] pr-2">
+            <div className="space-y-2">
+              {mappings.map((m) => (
+                <div
+                  key={m.id}
+                  className={cn(
+                    'p-3 rounded border flex items-center justify-between cursor-pointer hover:bg-muted group',
+                    m.id === selectedId
+                      ? 'bg-blue-100 border-blue-500'
+                      : 'border-border'
+                  )}
+                  onClick={() => onSelect(m.id)}
+                >
+                  <div>
+                    <div className="font-medium">{m.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      x: {m.x}, y: {m.y}, w: {m.w}, h: {m.h}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 opacity-0 group-hover:opacity-100">
+                    <Pencil
+                      size={16}
+                      className="text-muted hover:text-blue-600"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onEdit(m.id)
+                      }}
+                    />
+                    <Trash2
+                      size={16}
+                      className="text-red-500 hover:text-red-700"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onDelete(m.id)
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+      </div>
+    </div>
+  )
+}
