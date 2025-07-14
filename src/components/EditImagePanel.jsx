@@ -189,7 +189,7 @@ export default function EditImagePanel({ open, onClose, onSelect }) {
           <button
             onClick={handleRefresh}
             disabled={refreshing || loading}
-            className="p-1 hover:bg-gray-100 rounded transition-colors disabled:opacity-50"
+            className="p-1 hover:bg-gray-100 rounded transition-colors disabled:opacity-50 cursor-pointer"
             title="Refresh images"
           >
             <RefreshCw 
@@ -197,7 +197,7 @@ export default function EditImagePanel({ open, onClose, onSelect }) {
               className={`${refreshing ? 'animate-spin' : ''}`}
             />
           </button>
-          <button onClick={onClose}>
+          <button onClick={onClose} className='cursor-pointer'>
             <X size={20} />
           </button>
         </div>

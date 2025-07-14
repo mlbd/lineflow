@@ -99,12 +99,18 @@ export default function HomePage() {
             <ToolButton 
               icon={Image} 
               label="Edit Image" 
-              onClick={() => setShowEditPanel(true)} 
+              onClick={() => {
+                setShowLogoPanel(false)
+                setShowEditPanel(!showEditPanel)
+              }} 
             />
             <ToolButton 
               icon={Plus} 
               label="Add Logo" 
-              onClick={() => setShowLogoPanel(true)} 
+              onClick={() => {
+                setShowEditPanel(false)
+                setShowLogoPanel(!showLogoPanel)
+              }}
             />
             <ToolButton 
               icon={Trash2} 

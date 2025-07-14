@@ -26,21 +26,35 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
       return
     }
 
-    const displayW = img.clientWidth
-    const displayH = img.clientHeight
+    // Use natural dimensions for Cloudinary transformations
     const naturalW = img.naturalWidth
     const naturalH = img.naturalHeight
-
-    const scaleX = naturalW / displayW
-    const scaleY = naturalH / displayH
 
     try {
       // Generate overlay-only transformations (just the placement boxes)
       const overlayTransformations = mappings.map((m) => {
-        const x = Math.round(m.x * scaleX)
-        const y = Math.round(m.y * scaleY)
-        const w = Math.round(m.w * scaleX)
-        const h = Math.round(m.h * scaleY)
+        // Use percentage coordinates if available, otherwise fall back to pixel coordinates
+        let x, y, w, h
+        
+        if (m.xPercent !== undefined && m.yPercent !== undefined && 
+            m.wPercent !== undefined && m.hPercent !== undefined) {
+          // Convert percentage to natural pixel coordinates
+          x = Math.round(m.xPercent * naturalW)
+          y = Math.round(m.yPercent * naturalH)
+          w = Math.round(m.wPercent * naturalW)
+          h = Math.round(m.hPercent * naturalH)
+        } else {
+          // Fallback to old method for backward compatibility
+          const displayW = img.clientWidth
+          const displayH = img.clientHeight
+          const scaleX = naturalW / displayW
+          const scaleY = naturalH / displayH
+          
+          x = Math.round(m.x * scaleX)
+          y = Math.round(m.y * scaleY)
+          w = Math.round(m.w * scaleX)
+          h = Math.round(m.h * scaleY)
+        }
 
         return [
           `l_one_pixel_tn2oaa,w_${w},h_${h}`,
@@ -58,10 +72,28 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
         )
 
         const logoTransformations = mappings.map((m) => {
-          const x = Math.round(m.x * scaleX)
-          const y = Math.round(m.y * scaleY)
-          const w = Math.round(m.w * scaleX)
-          const h = Math.round(m.h * scaleY)
+          // Use percentage coordinates if available, otherwise fall back to pixel coordinates
+          let x, y, w, h
+          
+          if (m.xPercent !== undefined && m.yPercent !== undefined && 
+              m.wPercent !== undefined && m.hPercent !== undefined) {
+            // Convert percentage to natural pixel coordinates
+            x = Math.round(m.xPercent * naturalW)
+            y = Math.round(m.yPercent * naturalH)
+            w = Math.round(m.wPercent * naturalW)
+            h = Math.round(m.hPercent * naturalH)
+          } else {
+            // Fallback to old method for backward compatibility
+            const displayW = img.clientWidth
+            const displayH = img.clientHeight
+            const scaleX = naturalW / displayW
+            const scaleY = naturalH / displayH
+            
+            x = Math.round(m.x * scaleX)
+            y = Math.round(m.y * scaleY)
+            w = Math.round(m.w * scaleX)
+            h = Math.round(m.h * scaleY)
+          }
 
           // Fit the logo
           const logoAspect = logoSize.width / logoSize.height;
@@ -94,11 +126,11 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
           const logoY = y + Math.round((h - logoH) / 2);
 
           return [
-          `l_one_pixel_tn2oaa,w_${w},h_${h}`,
-          `co_rgb:000000,e_colorize,fl_layer_apply,x_${x},y_${y},g_north_west`,
-          `l_${logoId},w_${logoW},h_${logoH}`,
-          `fl_layer_apply,x_${logoX},y_${logoY},g_north_west`,
-        ].join('/')
+            `l_one_pixel_tn2oaa,w_${w},h_${h}`,
+            `co_rgb:000000,e_colorize,fl_layer_apply,x_${x},y_${y},g_north_west`,
+            `l_${logoId},w_${logoW},h_${logoH}`,
+            `fl_layer_apply,x_${logoX},y_${logoY},g_north_west`,
+          ].join('/')
         })
 
         const finalLogoUrl = `${base}/${logoTransformations.join('/')}/${imageName}`

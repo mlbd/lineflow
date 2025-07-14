@@ -31,6 +31,27 @@ export default function EditMappingModal({ mapping, open, onClose, onSave }) {
     onClose()
   }
 
+  // Convert percentage to display value for input
+  const formatPercentage = (value) => {
+    if (typeof value === 'number') {
+      return (value * 100).toFixed(1)
+    }
+    return '0'
+  }
+
+  // Convert display value to percentage
+  const parsePercentage = (value) => {
+    const num = parseFloat(value)
+    return isNaN(num) ? 0 : num / 100
+  }
+
+  const formatCoordinate = (value) => {
+    if (typeof value === 'number') {
+      return Math.round(value)
+    }
+    return value || 0
+  }
+
   // Don't render modal if mapping is not yet defined
   if (!mapping || !form) return null
 
@@ -49,40 +70,87 @@ export default function EditMappingModal({ mapping, open, onClose, onSave }) {
               onChange={(e) => update('name', e.target.value)}
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>X</Label>
-              <Input
-                type="number"
-                value={form.x}
-                onChange={(e) => update('x', parseInt(e.target.value) || 0)}
-              />
-            </div>
-            <div>
-              <Label>Y</Label>
-              <Input
-                type="number"
-                value={form.y}
-                onChange={(e) => update('y', parseInt(e.target.value) || 0)}
-              />
-            </div>
-            <div>
-              <Label>Width</Label>
-              <Input
-                type="number"
-                value={form.w}
-                onChange={(e) => update('w', parseInt(e.target.value) || 10)}
-              />
-            </div>
-            <div>
-              <Label>Height</Label>
-              <Input
-                type="number"
-                value={form.h}
-                onChange={(e) => update('h', parseInt(e.target.value) || 10)}
-              />
-            </div>
-          </div>
+          
+          {/* Show percentage inputs if available, otherwise show pixel inputs */}
+          {form.xPercent !== undefined ? (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>X (%)</Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={formatPercentage(form.xPercent)}
+                    onChange={(e) => update('xPercent', parsePercentage(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <Label>Y (%)</Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={formatPercentage(form.yPercent)}
+                    onChange={(e) => update('yPercent', parsePercentage(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <Label>Width (%)</Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={formatPercentage(form.wPercent)}
+                    onChange={(e) => update('wPercent', parsePercentage(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <Label>Height (%)</Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={formatPercentage(form.hPercent)}
+                    onChange={(e) => update('hPercent', parsePercentage(e.target.value))}
+                  />
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>X (px)</Label>
+                  <Input
+                    type="number"
+                    value={formatCoordinate(form.x)}
+                    onChange={(e) => update('x', parseInt(e.target.value) || 0)}
+                  />
+                </div>
+                <div>
+                  <Label>Y (px)</Label>
+                  <Input
+                    type="number"
+                    value={formatCoordinate(form.y)}
+                    onChange={(e) => update('y', parseInt(e.target.value) || 0)}
+                  />
+                </div>
+                <div>
+                  <Label>Width (px)</Label>
+                  <Input
+                    type="number"
+                    value={formatCoordinate(form.w)}
+                    onChange={(e) => update('w', parseInt(e.target.value) || 10)}
+                  />
+                </div>
+                <div>
+                  <Label>Height (px)</Label>
+                  <Input
+                    type="number"
+                    value={formatCoordinate(form.h)}
+                    onChange={(e) => update('h', parseInt(e.target.value) || 10)}
+                  />
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         <DialogFooter>
