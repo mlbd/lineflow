@@ -20,8 +20,8 @@ export default function MappingList({ mappings, selectedId, onSelect, onDelete, 
   }
 
   return (
-    <div className='p-4'>
-      <h2 className="text-lg font-semibold mb-4">Placement Areas</h2>
+    <div className='mb-10'>
+      <h2 className="text-lg font-semibold mb-4 px-4">Placement Areas</h2>
       
       <div>
         {mappings.length === 0 ? (
@@ -48,13 +48,11 @@ export default function MappingList({ mappings, selectedId, onSelect, onDelete, 
                       {/* Show percentage coordinates if available, otherwise show pixel coordinates */}
                       {m.xPercent !== undefined ? (
                         <>
-                          x: {formatPercentage(m.xPercent)}, y: {formatPercentage(m.yPercent)}<br />
-                          w: {formatPercentage(m.wPercent)}, h: {formatPercentage(m.hPercent)}
+                          x: {formatPercentage(m.xPercent)}, y: {formatPercentage(m.yPercent)} w: {formatPercentage(m.wPercent)}, h: {formatPercentage(m.hPercent)}
                         </>
                       ) : (
                         <>
-                          x: {formatCoordinate(m.x)}, y: {formatCoordinate(m.y)}<br />
-                          w: {formatCoordinate(m.w)}, h: {formatCoordinate(m.h)}
+                          x: {formatCoordinate(m.x)}, y: {formatCoordinate(m.y)} w: {formatCoordinate(m.w)}, h: {formatCoordinate(m.h)}
                         </>
                       )}
                     </div>

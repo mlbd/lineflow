@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Image, Plus, Trash2, ArrowsUpFromLine } from 'lucide-react'
+import { Image, Plus, Trash2, ArrowsUpFromLine, Upload } from 'lucide-react'
 
 import ImageCanvas from '@/components/ImageCanvas'
 import MappingList from '@/components/MappingList'
@@ -9,8 +9,7 @@ import OutputPanel from '@/components/OutputPanel'
 import EditMappingModal from '@/components/EditMappingModal'
 import EditImagePanel from '@/components/EditImagePanel'
 import EditLogoPanel from '@/components/EditLogoPanel'
-
-
+import UploadImageModal from '@/components/UploadImageModal'
 
 function ToolButton({ icon: Icon, label, onClick, className = "" }) {
   return (
@@ -33,6 +32,7 @@ export default function HomePage() {
   const [editOpen, setEditOpen] = useState(false)
   const [showEditPanel, setShowEditPanel] = useState(false)
   const [showLogoPanel, setShowLogoPanel] = useState(false)
+  const [showUploadModal, setShowUploadModal] = useState(false)
   const [logoId, setLogoId] = useState('file_vchdkq')
   const [hasFuturePlan, setHasFuturePlan] = useState(false)
 
@@ -63,6 +63,14 @@ export default function HomePage() {
 
   const handleUpdateMeta = () => {
     alert("Coming Soon..")
+  }
+
+  const handleUploadSelect = (value, type) => {
+    if (type === 'background') {
+      setImageUrl(value)
+    } else if (type === 'logo') {
+      setLogoId(value)
+    }
   }
 
   useEffect(() => {
@@ -110,6 +118,7 @@ export default function HomePage() {
               label={hasFuturePlan ? "Product List" : "Edit Image"} 
               onClick={() => {
                 setShowLogoPanel(false)
+                setShowUploadModal(false)
                 setShowEditPanel(!showEditPanel)
               }} 
             />
@@ -118,7 +127,17 @@ export default function HomePage() {
               label={hasFuturePlan ? "Landing Pages" : "Add Logo"} 
               onClick={() => {
                 setShowEditPanel(false)
+                setShowUploadModal(false)
                 setShowLogoPanel(!showLogoPanel)
+              }}
+            />
+            <ToolButton 
+              icon={Upload} 
+              label="Upload Image" 
+              onClick={() => {
+                setShowEditPanel(false)
+                setShowLogoPanel(false)
+                setShowUploadModal(true)
               }}
             />
             {hasFuturePlan && (
@@ -178,9 +197,15 @@ export default function HomePage() {
         open={showLogoPanel}
         onClose={() => setShowLogoPanel(false)}
         onSelect={(publicId) => {
-          setLogoId(publicId)  // Make sure this is called
-          setShowLogoPanel(false)  // Close the panel
+          setLogoId(publicId)
+          setShowLogoPanel(false)
         }}
+      />
+
+      <UploadImageModal
+        open={showUploadModal}
+        onClose={() => setShowUploadModal(false)}
+        onSelect={handleUploadSelect}
       />
     </main>
   )
