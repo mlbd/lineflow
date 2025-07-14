@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Image, Plus, Trash2 } from 'lucide-react'
+import { Image, Plus, Trash2, ArrowsUpFromLine } from 'lucide-react'
 
 import ImageCanvas from '@/components/ImageCanvas'
 import MappingList from '@/components/MappingList'
@@ -37,6 +37,14 @@ export default function HomePage() {
   const [showEditPanel, setShowEditPanel] = useState(false)
   const [showLogoPanel, setShowLogoPanel] = useState(false)
   const [logoId, setLogoId] = useState('file_vchdkq')
+  const [hasFuturePlan, setHasFuturePlan] = useState(false)
+
+  // Check for URL parameters
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    const futurePlan = urlParams.get('future_plan')
+    setHasFuturePlan(futurePlan === 'true')
+  }, [])
 
   const handleDelete = (id) => {
     setMappings((prev) => prev.filter((m) => m.id !== id))
@@ -54,6 +62,10 @@ export default function HomePage() {
   const handleClearAll = () => {
     setMappings([])
     setSelectedMapping(null)
+  }
+
+  const handleUpdateMeta = () => {
+    alert("Coming Soon..")
   }
 
   useEffect(() => {
@@ -98,7 +110,7 @@ export default function HomePage() {
           <div id="toolbarHeader" className="h-[55px] bg-white border-b flex items-center px-6 gap-4 text-sm">
             <ToolButton 
               icon={Image} 
-              label="Edit Image" 
+              label={hasFuturePlan ? "Product List" : "Edit Image"} 
               onClick={() => {
                 setShowLogoPanel(false)
                 setShowEditPanel(!showEditPanel)
@@ -106,12 +118,19 @@ export default function HomePage() {
             />
             <ToolButton 
               icon={Plus} 
-              label="Add Logo" 
+              label={hasFuturePlan ? "Landing Pages" : "Add Logo"} 
               onClick={() => {
                 setShowEditPanel(false)
                 setShowLogoPanel(!showLogoPanel)
               }}
             />
+            {hasFuturePlan && (
+              <ToolButton 
+                icon={ArrowsUpFromLine} 
+                label="Update meta" 
+                onClick={handleUpdateMeta}
+              />
+            )}
             <ToolButton 
               icon={Trash2} 
               label="Clear All" 
