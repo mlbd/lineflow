@@ -120,3 +120,22 @@
     @apply bg-background text-foreground;
   }
 }
+
+
+@keyframes spinMove {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate(30px, 10px) rotate(90deg);
+  }
+  50% {
+    transform: translate(0, 30px) rotate(180deg);
+  }
+  75% {
+    transform: translate(-20px, 10px) rotate(270deg);
+  }
+  100% {
+    transform: translate(0, 0) rotate(360deg);
+  }
+}
