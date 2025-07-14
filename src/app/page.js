@@ -1,9 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
+import { useState, useEffect } from 'react'
 import { Image, Plus, Trash2, ArrowsUpFromLine } from 'lucide-react'
 
 import ImageCanvas from '@/components/ImageCanvas'
