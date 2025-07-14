@@ -1,17 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 
 export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
-  // const [logoId, setLogoId] = useState(defaultLogoId)
-  const [generatedUrl, setGeneratedUrl] = useState('')
+  const [overlayUrl, setOverlayUrl] = useState('')
+  const [logoUrl, setLogoUrl] = useState('')
 
-  const generateUrl = async () => {
-    if (!logoId || mappings.length === 0) {
-      alert('Add a logo ID and at least one placement area.')
+  const generateUrls = async () => {
+    if (mappings.length === 0) {
+      setOverlayUrl('')
+      setLogoUrl('')
       return
     }
 
@@ -21,7 +22,7 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
 
     const img = document.querySelector('img')
     if (!img?.complete) {
-      alert('Image not fully loaded yet.')
+      console.warn('Image not fully loaded yet.')
       return
     }
 
@@ -33,56 +34,83 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
     const scaleX = naturalW / displayW
     const scaleY = naturalH / displayH
 
-    const logoSize = await getImageSize(
-      `https://res.cloudinary.com/${folder}/image/upload/${logoId}.png`
-    )
-
-    const transformations = mappings.map((m) => {
+    try {
+      // Generate overlay-only transformations (just the placement boxes)
+      const overlayTransformations = mappings.map((m) => {
         const x = Math.round(m.x * scaleX)
         const y = Math.round(m.y * scaleY)
         const w = Math.round(m.w * scaleX)
         const h = Math.round(m.h * scaleY)
 
-        // Fit the logo
-        const logoAspect = logoSize.width / logoSize.height;
-        const boxAspect = w / h;
-
-        let logoW, logoH;
-
-        if (logoAspect > boxAspect) {
-            logoW = w;
-            logoH = Math.round(w / logoAspect);
-        } else {
-            logoH = h;
-            logoW = Math.round(h * logoAspect);
-        }
-
-        // Rule: if logo is too small in width or height compared to box, scale up
-        const widthRatio = logoW / w;
-        const heightRatio = logoH / h;
-
-        const scaleThreshold = 0.6;
-        const upscaleFactor = 1.3;
-
-        if (widthRatio < scaleThreshold || heightRatio < scaleThreshold) {
-            logoW = Math.round(logoW * upscaleFactor);
-            logoH = Math.round(logoH * upscaleFactor);
-        }
-
-        // Center logo (even if overflow)
-        const logoX = x + Math.round((w - logoW) / 2);
-        const logoY = y + Math.round((h - logoH) / 2);
-
         return [
-        `l_one_pixel_tn2oaa,w_${w},h_${h}`,
-        `co_rgb:000000,e_colorize,fl_layer_apply,x_${x},y_${y},g_north_west`,
-        `l_${logoId},w_${logoW},h_${logoH}`,
-        `fl_layer_apply,x_${logoX},y_${logoY},g_north_west`,
-      ].join('/')
-    })
+          `l_one_pixel_tn2oaa,w_${w},h_${h}`,
+          `co_rgb:000000,e_colorize,fl_layer_apply,x_${x},y_${y},g_north_west`
+        ].join('/')
+      })
 
-    const finalUrl = `${base}/${transformations.join('/')}/${imageName}`
-    setGeneratedUrl(finalUrl)
+      const overlayOnlyUrl = `${base}/${overlayTransformations.join('/')}/${imageName}`
+      setOverlayUrl(overlayOnlyUrl)
+
+      // Generate logo URL only if logoId is provided
+      if (logoId) {
+        const logoSize = await getImageSize(
+          `https://res.cloudinary.com/${folder}/image/upload/${logoId}.png`
+        )
+
+        const logoTransformations = mappings.map((m) => {
+          const x = Math.round(m.x * scaleX)
+          const y = Math.round(m.y * scaleY)
+          const w = Math.round(m.w * scaleX)
+          const h = Math.round(m.h * scaleY)
+
+          // Fit the logo
+          const logoAspect = logoSize.width / logoSize.height;
+          const boxAspect = w / h;
+
+          let logoW, logoH;
+
+          if (logoAspect > boxAspect) {
+              logoW = w;
+              logoH = Math.round(w / logoAspect);
+          } else {
+              logoH = h;
+              logoW = Math.round(h * logoAspect);
+          }
+
+          // Rule: if logo is too small in width or height compared to box, scale up
+          const widthRatio = logoW / w;
+          const heightRatio = logoH / h;
+
+          const scaleThreshold = 0.6;
+          const upscaleFactor = 1.3;
+
+          if (widthRatio < scaleThreshold || heightRatio < scaleThreshold) {
+              logoW = Math.round(logoW * upscaleFactor);
+              logoH = Math.round(logoH * upscaleFactor);
+          }
+
+          // Center logo (even if overflow)
+          const logoX = x + Math.round((w - logoW) / 2);
+          const logoY = y + Math.round((h - logoH) / 2);
+
+          return [
+          `l_one_pixel_tn2oaa,w_${w},h_${h}`,
+          `co_rgb:000000,e_colorize,fl_layer_apply,x_${x},y_${y},g_north_west`,
+          `l_${logoId},w_${logoW},h_${logoH}`,
+          `fl_layer_apply,x_${logoX},y_${logoY},g_north_west`,
+        ].join('/')
+        })
+
+        const finalLogoUrl = `${base}/${logoTransformations.join('/')}/${imageName}`
+        setLogoUrl(finalLogoUrl)
+      } else {
+        setLogoUrl('')
+      }
+    } catch (error) {
+      console.error('Error generating URLs:', error)
+      setOverlayUrl('')
+      setLogoUrl('')
+    }
   }
 
   const getImageSize = (url) => {
@@ -95,6 +123,14 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
     })
   }
 
+  // Auto-generate URLs when mappings, logoId, or imageUrl changes
+  useEffect(() => {
+    generateUrls()
+  }, [mappings, logoId, imageUrl])
+
+  const hasOverlayUrl = overlayUrl && mappings.length > 0
+  const hasLogoUrl = logoUrl && mappings.length > 0 && logoId
+
   return (
     <div className='p-4'>
       <h2 className="text-lg font-semibold mb-4">Generated Cloudinary URL</h2>
@@ -106,20 +142,25 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
             value={logoId}
             onChange={(e) => setLogoId(e.target.value)}
           />
-          <Button className={'cursor-pointer'} onClick={generateUrl}>Generate</Button>
           <Button
             className={'cursor-pointer'}
-            variant="secondary"
-            onClick={() => window.open(generatedUrl, '_blank')}
-            disabled={!generatedUrl}
+            onClick={() => window.open(overlayUrl, '_blank')}
+            disabled={!hasOverlayUrl}
           >
-            Open in New Tab
+            View Overlay Map
+          </Button>
+          <Button
+            className={'cursor-pointer'}
+            onClick={() => window.open(logoUrl, '_blank')}
+            disabled={!hasLogoUrl}
+          >
+            Open with Logo in Browser
           </Button>
         </div>
 
         <Textarea
           className="text-xs font-mono h-40"
-          value={generatedUrl}
+          value={`Overlay URL: ${overlayUrl}\n\nLogo URL: ${logoUrl}`}
           readOnly
         />
       </div>
