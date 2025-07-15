@@ -1,98 +1,106 @@
-'use client'
+'use client';
 
-import { useState, useEffect } from 'react'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
+import { useState, useEffect } from 'react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 
 export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
-  const [overlayUrl, setOverlayUrl] = useState('')
-  const [logoUrl, setLogoUrl] = useState('')
+  const [overlayUrl, setOverlayUrl] = useState('');
+  const [logoUrl, setLogoUrl] = useState('');
 
   const generateUrls = async () => {
     if (mappings.length === 0) {
-      setOverlayUrl('')
-      setLogoUrl('')
-      return
+      setOverlayUrl('');
+      setLogoUrl('');
+      return;
     }
 
-    const imageName = imageUrl.split('/').pop()
-    const folder = 'dfuecvdyc' // static for now
-    const base = `https://res.cloudinary.com/${folder}/image/upload`
+    const imageName = imageUrl.split('/').pop();
+    const folder = 'dfuecvdyc'; // static for now
+    const base = `https://res.cloudinary.com/${folder}/image/upload`;
 
-    const img = document.querySelector('img')
+    const img = document.querySelector('img');
     if (!img?.complete) {
-      console.warn('Image not fully loaded yet.')
-      return
+      console.warn('Image not fully loaded yet.');
+      return;
     }
 
     // Use natural dimensions for Cloudinary transformations
-    const naturalW = img.naturalWidth
-    const naturalH = img.naturalHeight
+    const naturalW = img.naturalWidth;
+    const naturalH = img.naturalHeight;
 
     try {
       // Generate overlay-only transformations (just the placement boxes)
-      const overlayTransformations = mappings.map((m) => {
+      const overlayTransformations = mappings.map(m => {
         // Use percentage coordinates if available, otherwise fall back to pixel coordinates
-        let x, y, w, h
-        
-        if (m.xPercent !== undefined && m.yPercent !== undefined && 
-            m.wPercent !== undefined && m.hPercent !== undefined) {
+        let x, y, w, h;
+
+        if (
+          m.xPercent !== undefined &&
+          m.yPercent !== undefined &&
+          m.wPercent !== undefined &&
+          m.hPercent !== undefined
+        ) {
           // Convert percentage to natural pixel coordinates
-          x = Math.round(m.xPercent * naturalW)
-          y = Math.round(m.yPercent * naturalH)
-          w = Math.round(m.wPercent * naturalW)
-          h = Math.round(m.hPercent * naturalH)
+          x = Math.round(m.xPercent * naturalW);
+          y = Math.round(m.yPercent * naturalH);
+          w = Math.round(m.wPercent * naturalW);
+          h = Math.round(m.hPercent * naturalH);
         } else {
           // Fallback to old method for backward compatibility
-          const displayW = img.clientWidth
-          const displayH = img.clientHeight
-          const scaleX = naturalW / displayW
-          const scaleY = naturalH / displayH
-          
-          x = Math.round(m.x * scaleX)
-          y = Math.round(m.y * scaleY)
-          w = Math.round(m.w * scaleX)
-          h = Math.round(m.h * scaleY)
+          const displayW = img.clientWidth;
+          const displayH = img.clientHeight;
+          const scaleX = naturalW / displayW;
+          const scaleY = naturalH / displayH;
+
+          x = Math.round(m.x * scaleX);
+          y = Math.round(m.y * scaleY);
+          w = Math.round(m.w * scaleX);
+          h = Math.round(m.h * scaleY);
         }
 
         return [
           `l_one_pixel_tn2oaa,w_${w},h_${h}`,
-          `co_rgb:000000,e_colorize,fl_layer_apply,x_${x},y_${y},g_north_west`
-        ].join('/')
-      })
+          `co_rgb:000000,e_colorize,fl_layer_apply,x_${x},y_${y},g_north_west`,
+        ].join('/');
+      });
 
-      const overlayOnlyUrl = `${base}/${overlayTransformations.join('/')}/${imageName}`
-      setOverlayUrl(overlayOnlyUrl)
+      const overlayOnlyUrl = `${base}/${overlayTransformations.join('/')}/${imageName}`;
+      setOverlayUrl(overlayOnlyUrl);
 
       // Generate logo URL only if logoId is provided
       if (logoId) {
         const logoSize = await getImageSize(
           `https://res.cloudinary.com/${folder}/image/upload/${logoId}.png`
-        )
+        );
 
-        const logoTransformations = mappings.map((m) => {
+        const logoTransformations = mappings.map(m => {
           // Use percentage coordinates if available, otherwise fall back to pixel coordinates
-          let x, y, w, h
-          
-          if (m.xPercent !== undefined && m.yPercent !== undefined && 
-              m.wPercent !== undefined && m.hPercent !== undefined) {
+          let x, y, w, h;
+
+          if (
+            m.xPercent !== undefined &&
+            m.yPercent !== undefined &&
+            m.wPercent !== undefined &&
+            m.hPercent !== undefined
+          ) {
             // Convert percentage to natural pixel coordinates
-            x = Math.round(m.xPercent * naturalW)
-            y = Math.round(m.yPercent * naturalH)
-            w = Math.round(m.wPercent * naturalW)
-            h = Math.round(m.hPercent * naturalH)
+            x = Math.round(m.xPercent * naturalW);
+            y = Math.round(m.yPercent * naturalH);
+            w = Math.round(m.wPercent * naturalW);
+            h = Math.round(m.hPercent * naturalH);
           } else {
             // Fallback to old method for backward compatibility
-            const displayW = img.clientWidth
-            const displayH = img.clientHeight
-            const scaleX = naturalW / displayW
-            const scaleY = naturalH / displayH
-            
-            x = Math.round(m.x * scaleX)
-            y = Math.round(m.y * scaleY)
-            w = Math.round(m.w * scaleX)
-            h = Math.round(m.h * scaleY)
+            const displayW = img.clientWidth;
+            const displayH = img.clientHeight;
+            const scaleX = naturalW / displayW;
+            const scaleY = naturalH / displayH;
+
+            x = Math.round(m.x * scaleX);
+            y = Math.round(m.y * scaleY);
+            w = Math.round(m.w * scaleX);
+            h = Math.round(m.h * scaleY);
           }
 
           // Fit the logo
@@ -102,11 +110,11 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
           let logoW, logoH;
 
           if (logoAspect > boxAspect) {
-              logoW = w;
-              logoH = Math.round(w / logoAspect);
+            logoW = w;
+            logoH = Math.round(w / logoAspect);
           } else {
-              logoH = h;
-              logoW = Math.round(h * logoAspect);
+            logoH = h;
+            logoW = Math.round(h * logoAspect);
           }
 
           // Rule: if logo is too small in width or height compared to box, scale up
@@ -117,8 +125,8 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
           const upscaleFactor = 1.3;
 
           if (widthRatio < scaleThreshold || heightRatio < scaleThreshold) {
-              logoW = Math.round(logoW * upscaleFactor);
-              logoH = Math.round(logoH * upscaleFactor);
+            logoW = Math.round(logoW * upscaleFactor);
+            logoH = Math.round(logoH * upscaleFactor);
           }
 
           // Center logo (even if overflow)
@@ -130,51 +138,51 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
             `co_rgb:000000,e_colorize,fl_layer_apply,x_${x},y_${y},g_north_west`,
             `l_${logoId},w_${logoW},h_${logoH}`,
             `fl_layer_apply,x_${logoX},y_${logoY},g_north_west`,
-          ].join('/')
-        })
+          ].join('/');
+        });
 
-        const finalLogoUrl = `${base}/${logoTransformations.join('/')}/${imageName}`
-        setLogoUrl(finalLogoUrl)
+        const finalLogoUrl = `${base}/${logoTransformations.join('/')}/${imageName}`;
+        setLogoUrl(finalLogoUrl);
       } else {
-        setLogoUrl('')
+        setLogoUrl('');
       }
     } catch (error) {
-      console.error('Error generating URLs:', error)
-      setOverlayUrl('')
-      setLogoUrl('')
+      console.error('Error generating URLs:', error);
+      setOverlayUrl('');
+      setLogoUrl('');
     }
-  }
+  };
 
-  const getImageSize = (url) => {
+  const getImageSize = url => {
     return new Promise((resolve, reject) => {
-      const img = new Image()
-      img.onload = () =>
-        resolve({ width: img.naturalWidth, height: img.naturalHeight })
-      img.onerror = reject
-      img.src = url
-    })
-  }
+      const img = new Image();
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = reject;
+      img.src = url;
+    });
+  };
 
   // Auto-generate URLs when mappings, logoId, or imageUrl changes
   useEffect(() => {
-    generateUrls()
-  }, [mappings, logoId, imageUrl])
+    generateUrls();
+  }, [mappings, logoId, imageUrl]);
 
-  const hasOverlayUrl = overlayUrl && mappings.length > 0
-  const hasLogoUrl = logoUrl && mappings.length > 0 && logoId
+  const hasOverlayUrl = overlayUrl && mappings.length > 0;
+  const hasLogoUrl = logoUrl && mappings.length > 0 && logoId;
 
   return (
-    <div className='p-4'>
+    <div className="p-4">
       <h2 className="text-lg font-semibold mb-4">Generated Cloudinary URL</h2>
-      
+
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-column gap-2">
           <Input
             placeholder="Logo public ID"
             value={logoId}
-            onChange={(e) => setLogoId(e.target.value)}
+            onChange={e => setLogoId(e.target.value)}
           />
           <Button
+            variant={'primary'}
             className={'cursor-pointer'}
             onClick={() => window.open(overlayUrl, '_blank')}
             disabled={!hasOverlayUrl}
@@ -182,6 +190,7 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
             View Overlay Map
           </Button>
           <Button
+            variant={'primary'}
             className={'cursor-pointer'}
             onClick={() => window.open(logoUrl, '_blank')}
             disabled={!hasLogoUrl}
@@ -197,5 +206,5 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
         />
       </div>
     </div>
-  )
+  );
 }

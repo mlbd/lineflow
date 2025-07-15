@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 import {
   Dialog,
@@ -6,54 +6,54 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { useState, useEffect } from 'react'
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { useState, useEffect } from 'react';
 
 export default function EditMappingModal({ mapping, open, onClose, onSave }) {
-  const [form, setForm] = useState(null)
+  const [form, setForm] = useState(null);
 
   // Only update form if mapping is available
   useEffect(() => {
     if (mapping) {
-      setForm(mapping)
+      setForm(mapping);
     }
-  }, [mapping])
+  }, [mapping]);
 
   const update = (key, value) => {
-    setForm((prev) => ({ ...prev, [key]: value }))
-  }
+    setForm(prev => ({ ...prev, [key]: value }));
+  };
 
   const handleSave = () => {
-    onSave(form)
-    onClose()
-  }
+    onSave(form);
+    onClose();
+  };
 
   // Convert percentage to display value for input
-  const formatPercentage = (value) => {
+  const formatPercentage = value => {
     if (typeof value === 'number') {
-      return (value * 100).toFixed(1)
+      return (value * 100).toFixed(1);
     }
-    return '0'
-  }
+    return '0';
+  };
 
   // Convert display value to percentage
-  const parsePercentage = (value) => {
-    const num = parseFloat(value)
-    return isNaN(num) ? 0 : num / 100
-  }
+  const parsePercentage = value => {
+    const num = parseFloat(value);
+    return isNaN(num) ? 0 : num / 100;
+  };
 
-  const formatCoordinate = (value) => {
+  const formatCoordinate = value => {
     if (typeof value === 'number') {
-      return Math.round(value)
+      return Math.round(value);
     }
-    return value || 0
-  }
+    return value || 0;
+  };
 
   // Don't render modal if mapping is not yet defined
-  if (!mapping || !form) return null
+  if (!mapping || !form) return null;
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -65,12 +65,9 @@ export default function EditMappingModal({ mapping, open, onClose, onSave }) {
         <div className="grid gap-4 py-2">
           <div>
             <Label>Name</Label>
-            <Input
-              value={form.name}
-              onChange={(e) => update('name', e.target.value)}
-            />
+            <Input value={form.name} onChange={e => update('name', e.target.value)} />
           </div>
-          
+
           {/* Show percentage inputs if available, otherwise show pixel inputs */}
           {form.xPercent !== undefined ? (
             <>
@@ -81,7 +78,7 @@ export default function EditMappingModal({ mapping, open, onClose, onSave }) {
                     type="number"
                     step="0.1"
                     value={formatPercentage(form.xPercent)}
-                    onChange={(e) => update('xPercent', parsePercentage(e.target.value))}
+                    onChange={e => update('xPercent', parsePercentage(e.target.value))}
                   />
                 </div>
                 <div>
@@ -90,7 +87,7 @@ export default function EditMappingModal({ mapping, open, onClose, onSave }) {
                     type="number"
                     step="0.1"
                     value={formatPercentage(form.yPercent)}
-                    onChange={(e) => update('yPercent', parsePercentage(e.target.value))}
+                    onChange={e => update('yPercent', parsePercentage(e.target.value))}
                   />
                 </div>
                 <div>
@@ -99,7 +96,7 @@ export default function EditMappingModal({ mapping, open, onClose, onSave }) {
                     type="number"
                     step="0.1"
                     value={formatPercentage(form.wPercent)}
-                    onChange={(e) => update('wPercent', parsePercentage(e.target.value))}
+                    onChange={e => update('wPercent', parsePercentage(e.target.value))}
                   />
                 </div>
                 <div>
@@ -108,7 +105,7 @@ export default function EditMappingModal({ mapping, open, onClose, onSave }) {
                     type="number"
                     step="0.1"
                     value={formatPercentage(form.hPercent)}
-                    onChange={(e) => update('hPercent', parsePercentage(e.target.value))}
+                    onChange={e => update('hPercent', parsePercentage(e.target.value))}
                   />
                 </div>
               </div>
@@ -121,7 +118,7 @@ export default function EditMappingModal({ mapping, open, onClose, onSave }) {
                   <Input
                     type="number"
                     value={formatCoordinate(form.x)}
-                    onChange={(e) => update('x', parseInt(e.target.value) || 0)}
+                    onChange={e => update('x', parseInt(e.target.value) || 0)}
                   />
                 </div>
                 <div>
@@ -129,7 +126,7 @@ export default function EditMappingModal({ mapping, open, onClose, onSave }) {
                   <Input
                     type="number"
                     value={formatCoordinate(form.y)}
-                    onChange={(e) => update('y', parseInt(e.target.value) || 0)}
+                    onChange={e => update('y', parseInt(e.target.value) || 0)}
                   />
                 </div>
                 <div>
@@ -137,7 +134,7 @@ export default function EditMappingModal({ mapping, open, onClose, onSave }) {
                   <Input
                     type="number"
                     value={formatCoordinate(form.w)}
-                    onChange={(e) => update('w', parseInt(e.target.value) || 10)}
+                    onChange={e => update('w', parseInt(e.target.value) || 10)}
                   />
                 </div>
                 <div>
@@ -145,7 +142,7 @@ export default function EditMappingModal({ mapping, open, onClose, onSave }) {
                   <Input
                     type="number"
                     value={formatCoordinate(form.h)}
-                    onChange={(e) => update('h', parseInt(e.target.value) || 10)}
+                    onChange={e => update('h', parseInt(e.target.value) || 10)}
                   />
                 </div>
               </div>
@@ -161,5 +158,5 @@ export default function EditMappingModal({ mapping, open, onClose, onSave }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
