@@ -8,6 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import PopoverPicker from '@/components/PopoverPicker';
 import { Button } from '@/components/ui/button';
 import LazyLoadImage from '@/components/LazyLoadImage';
+import ImageModal from '@/components/ImageModal';
 
 // Toggle this variable to enable/disable Cloudinary fetching
 const ENABLE_CLOUDINARY = true;
@@ -23,10 +24,30 @@ export default function LogosPage() {
   const [stats, setStats] = useState(null);
   const [regeneratingImages, setRegeneratingImages] = useState(false);
 
+  // Modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalImage, setModalImage] = useState({ src: '', alt: '', title: '' });
+
   const [viewWithOverlay, setViewWithOverlay] = useState(false);
   const [color, setColor] = useState({ r: 0, g: 0, b: 0, a: 0.5 });
   const [tempColor, setTempColor] = useState(color);
   const [showPicker, setShowPicker] = useState(false);
+
+  // Function to handle image click
+  const handleImageClick = (logo) => {
+    setModalImage({
+      src: logo.thumbnailUrl,
+      alt: logo.title,
+      title: logo.title
+    });
+    setModalOpen(true);
+  };
+
+  // Function to close modal
+  const handleCloseModal = () => {
+    setModalOpen(false);
+    setModalImage({ src: '', alt: '', title: '' });
+  };
 
   const handleTogglePicker = () => {
     if (showPicker) {
@@ -493,12 +514,12 @@ export default function LogosPage() {
         <div className="max-w-[1000px] mx-auto px-6 pt-8 pb-[60px] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {logos.map(logo => (
             <div key={logo.public_id} className="bg-white rounded shadow">
-              <div className="bg-gray-100 m-0">
+              <div className="bg-gray-100 m-0 cursor-pointer" onClick={() => handleImageClick(logo)}>
                 <LazyLoadImage 
                   key={logo.imageKey} // This forces React to recreate the component
                   src={logo.thumbnailUrl} 
                   alt={logo.title} 
-                  className="w-full h-auto block" 
+                  className="w-full h-auto block hover:opacity-90 transition-opacity" 
                   aspectRatio="auto"
                 />
               </div>
@@ -516,6 +537,15 @@ export default function LogosPage() {
             </div>
           ))}
         </div>
+
+        {/* Image Modal */}
+        <ImageModal 
+          isOpen={modalOpen}
+          onClose={handleCloseModal}
+          src={modalImage.src}
+          alt={modalImage.alt}
+          title={modalImage.title}
+        />
       </div>
     </>
   );
