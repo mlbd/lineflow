@@ -182,7 +182,6 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
             onChange={e => setLogoId(e.target.value)}
           />
           <Button
-            variant={'primary'}
             className={'cursor-pointer'}
             onClick={() => window.open(overlayUrl, '_blank')}
             disabled={!hasOverlayUrl}
@@ -190,7 +189,6 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
             View Overlay Map
           </Button>
           <Button
-            variant={'primary'}
             className={'cursor-pointer'}
             onClick={() => window.open(logoUrl, '_blank')}
             disabled={!hasLogoUrl}
