@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import LazyLoadImage from '@/components/LazyLoadImage';
 
 // Toggle this variable to enable/disable Cloudinary fetching
-const ENABLE_CLOUDINARY = false;
+const ENABLE_CLOUDINARY = true;
 
 export default function LogosPage() {
   const [pageData, setPageData] = useState(null);
