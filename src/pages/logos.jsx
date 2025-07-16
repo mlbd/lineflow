@@ -3,10 +3,11 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { ArrowLeft, ShoppingCart } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, RefreshCw, Database, Cloud } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import PopoverPicker from '@/components/PopoverPicker';
 import { Button } from '@/components/ui/button';
+import LazyLoadImage from '@/components/LazyLoadImage';
 
 // Toggle this variable to enable/disable Cloudinary fetching
 const ENABLE_CLOUDINARY = false;
@@ -17,6 +18,10 @@ export default function LogosPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [overayColor, setOverayColor] = useState('#000000');
+  const [refreshing, setRefreshing] = useState(false);
+  const [dataSource, setDataSource] = useState('');
+  const [stats, setStats] = useState(null);
+  const [regeneratingImages, setRegeneratingImages] = useState(false);
 
   const [viewWithOverlay, setViewWithOverlay] = useState(false);
   const [color, setColor] = useState({ r: 0, g: 0, b: 0, a: 0.5 });
@@ -25,24 +30,109 @@ export default function LogosPage() {
 
   const handleTogglePicker = () => {
     if (showPicker) {
-      // If picker is open, close it
       setShowPicker(false);
     } else {
-      // If picker is closed, open it
       setTempColor(color);
       setShowPicker(true);
     }
   };
 
-  const handleSaveColor = () => {
+  const handleSaveColor = async () => {
     setColor(tempColor);
     localStorage.setItem('overlay_color', JSON.stringify(tempColor));
     setShowPicker(false);
-    window.location.reload();
+    
+    // Regenerate images without reloading the page
+    await regenerateImages(viewWithOverlay, tempColor);
   };
 
   const handleCancelColor = () => {
     setShowPicker(false);
+  };
+
+  const handleOverlayToggle = async (checked) => {
+    setViewWithOverlay(checked);
+    localStorage.setItem('view_with_overlay', checked);
+    
+    // Regenerate images without reloading the page
+    await regenerateImages(checked, color);
+  };
+
+  const regenerateImages = async (overlayEnabled, colorValue) => {
+    if (!pageData || !logos.length) return;
+    
+    setRegeneratingImages(true);
+    
+    try {
+      // Generate new thumbnail URLs for all logos
+      const updatedLogos = await Promise.all(
+        logos.map(async (logo) => {
+          const thumbnailUrl = await generateThumbnailUrl(pageData, logo.public_id, overlayEnabled, colorValue);
+          return {
+            ...logo,
+            thumbnailUrl,
+            // Add a cache-busting parameter to force image reload
+            imageKey: Date.now() + Math.random()
+          };
+        })
+      );
+      
+      setLogos(updatedLogos);
+    } catch (err) {
+      console.error('Error regenerating images:', err);
+      setError('Failed to regenerate images');
+    } finally {
+      setRegeneratingImages(false);
+    }
+  };
+
+  const handleRefreshCache = async () => {
+    setRefreshing(true);
+    try {
+      // Clear cache first
+      const deleteResponse = await fetch('/api/cloudinary/logos', {
+        method: 'DELETE',
+      });
+      
+      if (!deleteResponse.ok) {
+        throw new Error('Failed to clear cache');
+      }
+      
+      // Fetch fresh data from Cloudinary
+      const response = await fetch('/api/cloudinary/logos?refresh=true');
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to refresh cache');
+      }
+      
+      // Update logos with fresh data
+      if (pageData) {
+        const logosWithThumbnails = await Promise.all(
+          result.logos.map(async (logo, i) => {
+            const thumbnailUrl = await generateThumbnailUrl(pageData, logo.public_id, viewWithOverlay, color);
+            return {
+              ...logo,
+              thumbnailUrl,
+              title: `Item ${i + 1}`,
+              price: generateRandomPrice(),
+              imageKey: Date.now() + Math.random()
+            };
+          })
+        );
+        
+        setLogos(logosWithThumbnails);
+        setDataSource(result.source);
+        setStats(result.stats);
+      }
+      
+      alert('Cache refreshed successfully!');
+    } catch (err) {
+      console.error('Error refreshing cache:', err);
+      alert('Failed to refresh cache: ' + err.message);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   useEffect(() => {
@@ -77,7 +167,6 @@ export default function LogosPage() {
       const parsed = JSON.parse(storedColor);
 
       if (typeof parsed === 'string' && /^#([0-9A-F]{3}){1,2}$/i.test(parsed)) {
-        // Convert HEX to RGBA
         const hex = parsed.replace('#', '');
         const bigint = parseInt(hex, 16);
         const r = (bigint >> 16) & 255;
@@ -86,7 +175,6 @@ export default function LogosPage() {
         return { r, g, b, a: 1 };
       }
 
-      // Validate it's RGBA
       if (parsed && typeof parsed === 'object' && 'r' in parsed && 'g' in parsed && 'b' in parsed) {
         return {
           r: parsed.r,
@@ -96,22 +184,21 @@ export default function LogosPage() {
         };
       }
 
-      // Default fallback
       return { r: 0, g: 0, b: 0, a: 0.5 };
     } catch (err) {
       return { r: 0, g: 0, b: 0, a: 0.5 };
     }
   };
 
-  // Mock data for development when Cloudinary is disabled
   const generateMockLogos = data => {
     const mockLogos = [];
     for (let i = 0; i < 6; i++) {
       mockLogos.push({
         public_id: `mock_logo_${i}`,
-        thumbnailUrl: data.imageUrl, // Use original image URL
+        thumbnailUrl: data.imageUrl,
         title: `Mock Item ${i + 1}`,
         price: generateRandomPrice(),
+        imageKey: Date.now() + Math.random()
       });
     }
     return mockLogos;
@@ -131,10 +218,10 @@ export default function LogosPage() {
       setLoading(true);
 
       if (!ENABLE_CLOUDINARY) {
-        // Use mock data when Cloudinary is disabled
         console.log('Cloudinary disabled - using mock data');
         const mockLogos = generateMockLogos(data);
         setLogos(mockLogos);
+        setDataSource('mock');
         setLoading(false);
         return;
       }
@@ -144,6 +231,9 @@ export default function LogosPage() {
 
       if (!res.ok) throw new Error(result.error || 'Failed to fetch logos');
 
+      setDataSource(result.source);
+      setStats(result.stats);
+
       const logosWithThumbnails = await Promise.all(
         result.logos.map(async (logo, i) => {
           const thumbnailUrl = await generateThumbnailUrl(data, logo.public_id, overlay, color);
@@ -152,6 +242,7 @@ export default function LogosPage() {
             thumbnailUrl,
             title: `Item ${i + 1}`,
             price: generateRandomPrice(),
+            imageKey: Date.now() + Math.random()
           };
         })
       );
@@ -167,7 +258,6 @@ export default function LogosPage() {
 
   const generateThumbnailUrl = async (data, logoId, overlayEnabled, color) => {
     if (!ENABLE_CLOUDINARY) {
-      // Return original image URL when Cloudinary is disabled
       return data.imageUrl;
     }
 
@@ -233,17 +323,11 @@ export default function LogosPage() {
   };
 
   function getContrastTextColor(hexColor) {
-    // Remove "#" if present
     const color = hexColor.replace('#', '');
-
     const r = parseInt(color.substring(0, 2), 16);
     const g = parseInt(color.substring(2, 4), 16);
     const b = parseInt(color.substring(4, 6), 16);
-
-    // Calculate luminance
     const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-
-    // Return black for light backgrounds, white for dark backgrounds
     return luminance > 0.5 ? '#000000' : '#ffffff';
   }
 
@@ -256,7 +340,14 @@ export default function LogosPage() {
   };
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading logos...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p>Loading logos...</p>
+        </div>
+      </div>
+    );
   }
 
   if (error) {
@@ -265,9 +356,7 @@ export default function LogosPage() {
     );
   }
 
-  console.log('overayColor:', overayColor);
   const textColor = getContrastTextColor(overayColor);
-  console.log('textColor:', textColor);
 
   return (
     <>
@@ -281,76 +370,137 @@ export default function LogosPage() {
 
       <div className="min-h-screen bg-gray-100">
         <div className="bg-white border-b sticky top-0 z-10">
-          <div className="max-w-[1000px] mx-auto px-6 py-4 flex justify-between items-center">
-            <Link
-              href="/"
-              className="text-sm text-gray-600 hover:text-black flex items-center gap-2"
-            >
-              <ArrowLeft size={18} /> Back to Editor
-            </Link>
-            <div className="flex items-center gap-4 relative">
-              {/* Show Cloudinary status */}
-              <div className="text-xs text-gray-500">
-                Cloudinary: {ENABLE_CLOUDINARY ? 'ON' : 'OFF'}
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm">View with Overlay</span>
-                <Switch
-                  checked={viewWithOverlay}
-                  onCheckedChange={checked => {
-                    setViewWithOverlay(checked);
-                    localStorage.setItem('view_with_overlay', checked);
-                    window.location.reload();
-                  }}
-                />
-              </div>
-              {viewWithOverlay && (
-                <>
-                  <button
-                    onClick={handleTogglePicker}
-                    style={{
-                      backgroundColor: overayColor.startsWith('#')
-                        ? overayColor
-                        : `#${overayColor}`,
-                      color: textColor.startsWith('#') ? textColor : `#${textColor}`,
-                      border: `1px solid ${textColor.startsWith('#') ? textColor : `#${textColor}`}`,
-                      paddingTop: '8px',
-                      paddingBottom: '8px',
-                      paddingLeft: '16px',
-                      paddingRight: '16px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      borderRadius: '8px',
-                      height: '36px',
-                      lineHeight: '20px',
-                      cursor: 'pointer',
-                    }}
+          <div className="max-w-[1000px] mx-auto px-6 py-4">
+            <div className="flex justify-between items-center">
+              <Link
+                href="/"
+                className="text-sm text-gray-600 hover:text-black flex items-center gap-2"
+              >
+                <ArrowLeft size={18} /> Back to Editor
+              </Link>
+              
+              <div className="flex items-center gap-4 relative">
+                {/* Data Source Indicator */}
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  {dataSource === 'database' && <Database size={14} />}
+                  {dataSource === 'cloudinary' && <Cloud size={14} />}
+                  {dataSource === 'mock' && <span>📝</span>}
+                  <span>
+                    {dataSource === 'database' ? 'From Cache' : 
+                     dataSource === 'cloudinary' ? 'From Cloudinary' : 
+                     dataSource === 'mock' ? 'Mock Data' : 'Unknown'}
+                  </span>
+                </div>
+
+                {/* Cache Refresh Button */}
+                {ENABLE_CLOUDINARY && (
+                  <Button
+                    onClick={handleRefreshCache}
+                    disabled={refreshing}
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-2"
                   >
-                    Pick Color
-                  </button>
-                  {showPicker && (
-                    <PopoverPicker
-                      color={tempColor}
-                      onChange={setTempColor}
-                      onSave={handleSaveColor}
-                      onCancel={handleCancelColor}
-                    />
-                  )}
-                </>
-              )}
+                    <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+                    {refreshing ? 'Refreshing...' : 'Refresh Cache'}
+                  </Button>
+                )}
+
+                {/* Cloudinary Status */}
+                <div className="text-xs text-gray-500">
+                  Cloudinary: {ENABLE_CLOUDINARY ? 'ON' : 'OFF'}
+                </div>
+
+                {/* Overlay Toggle */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">View with Overlay</span>
+                  <Switch
+                    checked={viewWithOverlay}
+                    onCheckedChange={handleOverlayToggle}
+                    disabled={regeneratingImages}
+                  />
+                </div>
+
+                {/* Color Picker */}
+                {viewWithOverlay && (
+                  <>
+                    <button
+                      onClick={handleTogglePicker}
+                      disabled={regeneratingImages}
+                      style={{
+                        backgroundColor: overayColor.startsWith('#')
+                          ? overayColor
+                          : `#${overayColor}`,
+                        color: textColor.startsWith('#') ? textColor : `#${textColor}`,
+                        border: `1px solid ${textColor.startsWith('#') ? textColor : `#${textColor}`}`,
+                        paddingTop: '8px',
+                        paddingBottom: '8px',
+                        paddingLeft: '16px',
+                        paddingRight: '16px',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        borderRadius: '8px',
+                        height: '36px',
+                        lineHeight: '20px',
+                        cursor: regeneratingImages ? 'not-allowed' : 'pointer',
+                        opacity: regeneratingImages ? 0.5 : 1,
+                      }}
+                    >
+                      {regeneratingImages ? 'Updating...' : 'Pick Color'}
+                    </button>
+                    {showPicker && (
+                      <PopoverPicker
+                        color={tempColor}
+                        onChange={setTempColor}
+                        onSave={handleSaveColor}
+                        onCancel={handleCancelColor}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
             </div>
+            
+            {/* Database Stats */}
+            {stats && (
+              <div className="mt-2 text-xs text-gray-500">
+                Database: {stats.total_logos} logos cached
+                {stats.latest_update && (
+                  <span className="ml-2">
+                    • Last updated: {new Date(stats.latest_update).toLocaleString()}
+                  </span>
+                )}
+              </div>
+            )}
+            
+            {/* Regenerating Images Indicator */}
+            {regeneratingImages && (
+              <div className="mt-2 text-xs text-blue-600 flex items-center gap-2">
+                <RefreshCw size={12} className="animate-spin" />
+                Regenerating images...
+              </div>
+            )}
           </div>
         </div>
 
         <div className="pt-[60px] pb-[50px] block text-center">
-            <h2 className='text-3xl font-bold'>Logo Gallery - MiniSite Demo Example</h2>
+          <h2 className='text-3xl font-bold'>Logo Gallery - MiniSite Demo Example</h2>
+          <p className="text-gray-600 mt-2">
+            Showing {logos.length} logos from {dataSource === 'database' ? 'cached data' : 'live data'}
+          </p>
         </div>
 
         <div className="max-w-[1000px] mx-auto px-6 pt-8 pb-[60px] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {logos.map(logo => (
             <div key={logo.public_id} className="bg-white rounded shadow">
-              <div className=" bg-gray-100 m-0">
-                <img src={logo.thumbnailUrl} alt={logo.title} className="w-full h-auto block" />
+              <div className="bg-gray-100 m-0">
+                <LazyLoadImage 
+                  key={logo.imageKey} // This forces React to recreate the component
+                  src={logo.thumbnailUrl} 
+                  alt={logo.title} 
+                  className="w-full h-auto block" 
+                  aspectRatio="auto"
+                />
               </div>
               <div className="py-8 px-4 text-center">
                 <h3 className="font-semibold mb-1">{logo.title}</h3>

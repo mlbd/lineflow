@@ -1,5 +1,7 @@
+// app/api/cloudinary/logos/route.js
 import { NextResponse } from 'next/server';
 import { v2 as cloudinary } from 'cloudinary';
+import { LogosService } from '@/lib/services/logosService';
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -7,40 +9,51 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-export async function GET() {
+export async function GET(request) {
   try {
-    // Fetch all images inside the "Experiment" folder (up to 100)
-    const result = await cloudinary.search
-      .expression('resource_type:image AND folder="Experiment"')
-      .sort_by('created_at', 'desc')
-      .max_results(100)
-      .execute();
-
-    const resources = result.resources || [];
-
-    console.log(
-      '[Fetched from Cloudinary]',
-      resources.map(r => r.public_id)
-    ); // ✅ confirm in terminal
-
+    // Check if force refresh is requested
+    const { searchParams } = new URL(request.url);
+    const forceRefresh = searchParams.get('refresh') === 'true';
+    
+    // Get logos with caching logic
+    const logos = await LogosService.getLogos(forceRefresh);
+    
+    // Get database stats for debugging
+    const stats = await LogosService.getStats();
+    
     return NextResponse.json({
-      logos: resources.map(r => ({
-        public_id: r.public_id,
-        name: r.public_id.split('/').pop(),
-        url: r.secure_url,
-        width: r.width,
-        height: r.height,
-        format: r.format,
-        bytes: r.bytes,
-        folder: r.folder || '',
-        created_at: r.created_at,
-      })),
+      logos,
+      stats,
+      source: forceRefresh ? 'cloudinary' : (logos.length > 0 ? 'database' : 'cloudinary'),
+      timestamp: new Date().toISOString()
     });
   } catch (err) {
-    console.error('[Cloudinary Logos Error]', err);
+    console.error('[Logos API Error]', err);
     return NextResponse.json(
       {
         error: 'Failed to fetch logos',
+        details: err.message,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// New endpoint to clear cache
+export async function DELETE() {
+  try {
+    const clearedCount = await LogosService.clearLogosFromDB();
+    
+    return NextResponse.json({
+      success: true,
+      message: `Cache cleared successfully. Removed ${clearedCount} logos.`,
+      clearedCount
+    });
+  } catch (err) {
+    console.error('[Clear Cache Error]', err);
+    return NextResponse.json(
+      {
+        error: 'Failed to clear cache',
         details: err.message,
       },
       { status: 500 }
