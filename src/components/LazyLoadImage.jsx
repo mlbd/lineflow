@@ -117,7 +117,7 @@ const LazyLoadImage = ({
     >
       {/* Skeleton loader */}
       {showSkeleton && (
-        <div class="skeleton-loader"></div>
+        <div className="skeleton-loader"></div>
       )}
 
       {/* Actual image */}

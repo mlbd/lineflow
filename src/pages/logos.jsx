@@ -26,7 +26,7 @@ export default function LogosPage() {
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalImage, setModalImage] = useState({ src: '', alt: '', title: '' });
+  const [modalImageIndex, setModalImageIndex] = useState(null);
 
   const [viewWithOverlay, setViewWithOverlay] = useState(false);
   const [color, setColor] = useState({ r: 0, g: 0, b: 0, a: 0.5 });
@@ -35,11 +35,8 @@ export default function LogosPage() {
 
   // Function to handle image click
   const handleImageClick = (logo) => {
-    setModalImage({
-      src: logo.thumbnailUrl,
-      alt: logo.title,
-      title: logo.title
-    });
+    const idx = logos.findIndex(l => l.public_id === logo.public_id);
+    setModalImageIndex(idx);
     setModalOpen(true);
   };
 
@@ -83,12 +80,13 @@ export default function LogosPage() {
     if (!pageData || !logos.length) return;
     
     setRegeneratingImages(true);
+
     
     try {
       // Generate new thumbnail URLs for all logos
       const updatedLogos = await Promise.all(
         logos.map(async (logo) => {
-          const thumbnailUrl = await generateThumbnailUrl(pageData, logo.public_id, overlayEnabled, colorValue);
+          const thumbnailUrl = await generateThumbnailUrl(pageData, logo, overlayEnabled, colorValue);
           return {
             ...logo,
             thumbnailUrl,
@@ -131,7 +129,7 @@ export default function LogosPage() {
       if (pageData) {
         const logosWithThumbnails = await Promise.all(
           result.logos.map(async (logo, i) => {
-            const thumbnailUrl = await generateThumbnailUrl(pageData, logo.public_id, viewWithOverlay, color);
+            const thumbnailUrl = await generateThumbnailUrl(pageData, logo, viewWithOverlay, color);
             return {
               ...logo,
               thumbnailUrl,
@@ -257,7 +255,8 @@ export default function LogosPage() {
 
       const logosWithThumbnails = await Promise.all(
         result.logos.map(async (logo, i) => {
-          const thumbnailUrl = await generateThumbnailUrl(data, logo.public_id, overlay, color);
+          const thumbnailUrl = await generateThumbnailUrl(data, logo, overlay, color);
+          console.log('logo', logo);
           return {
             ...logo,
             thumbnailUrl,
@@ -277,71 +276,99 @@ export default function LogosPage() {
     }
   };
 
-  const generateThumbnailUrl = async (data, logoId, overlayEnabled, color) => {
-    if (!ENABLE_CLOUDINARY) {
-      return data.imageUrl;
-    }
+  const ASPECT_DIFF_THRESHOLD = 0.3;
+const SCALE_UP_FACTOR = 1.3;
 
-    const { imageUrl, mappings } = data;
-    const folder = 'dfuecvdyc';
-    const base = `https://res.cloudinary.com/${folder}/image/upload`;
-    const imageName = imageUrl.split('/').pop();
+// Determine orientation: 'horizontal', 'vertical', 'square'
+function getOrientation(w, h) {
+  const aspect = w / h;
+  if (aspect >= 1.2) return 'horizontal';
+  if (aspect <= 0.8) return 'vertical';
+  return 'square';
+}
 
-    try {
-      const baseSize = await getImageSize(imageUrl);
-      const logoSize = await getImageSize(`${base}/${logoId}.png`);
-      const naturalW = baseSize.width;
-      const naturalH = baseSize.height;
+const generateThumbnailUrl = async (data, logo, overlayEnabled, color) => {
+  if (!ENABLE_CLOUDINARY) return data.imageUrl;
 
-      const transformations = mappings.map(m => {
-        const x = Math.round(m.xPercent * naturalW);
-        const y = Math.round(m.yPercent * naturalH);
-        const w = Math.round(m.wPercent * naturalW);
-        const h = Math.round(m.hPercent * naturalH);
+  const { imageUrl, mappings } = data;
+  const folder = 'dfuecvdyc';
+  const base = `https://res.cloudinary.com/${folder}/image/upload`;
+  const imageName = imageUrl.split('/').pop();
 
-        const logoAspect = logoSize.width / logoSize.height;
-        const boxAspect = w / h;
-        let logoW, logoH;
+  const { public_id, width: logoWidth, height: logoHeight } = logo;
 
-        if (logoAspect > boxAspect) {
-          logoW = w;
-          logoH = Math.round(w / logoAspect);
-        } else {
-          logoH = h;
-          logoW = Math.round(h * logoAspect);
-        }
+  try {
+    const baseSize = await getImageSize(imageUrl);
+    const naturalW = baseSize.width;
+    const naturalH = baseSize.height;
 
-        const logoX = x + Math.round((w - logoW) / 2);
-        const logoY = y + Math.round((h - logoH) / 2);
+    const transformations = mappings.map(m => {
+      // Box (placement) absolute px
+      const x = Math.round(m.xPercent * naturalW);
+      const y = Math.round(m.yPercent * naturalH);
+      const w = Math.round(m.wPercent * naturalW);
+      const h = Math.round(m.hPercent * naturalH);
 
-        if (overlayEnabled) {
-          const r = color.r.toString(16).padStart(2, '0');
-          const g = color.g.toString(16).padStart(2, '0');
-          const b = color.b.toString(16).padStart(2, '0');
-          const hexColor = `${r}${g}${b}`;
-          const opacity = Math.round((color.a ?? 1) * 100);
-          setOverayColor(hexColor);
+      // Orientations
+      const logoOrientation = getOrientation(logoWidth, logoHeight);
+      const boxOrientation = getOrientation(w, h);
 
-          return [
-            `l_one_pixel_tn2oaa,w_${w},h_${h}`,
-            `co_rgb:${hexColor},e_colorize:100,o_${opacity},fl_layer_apply,x_${x},y_${y},g_north_west`,
-            `l_${logoId},w_${logoW},h_${logoH}`,
-            `fl_layer_apply,x_${logoX},y_${logoY},g_north_west`,
-          ].join('/');
-        } else {
-          return [
-            `l_${logoId},w_${logoW},h_${logoH}`,
-            `fl_layer_apply,x_${logoX},y_${logoY},g_north_west`,
-          ].join('/');
-        }
-      });
+      // Aspect ratios
+      const logoAspect = logoWidth / logoHeight;
+      const boxAspect = w / h;
 
-      return `${base}/${transformations.join('/')}/${imageName}`;
-    } catch (err) {
-      console.error('Thumbnail generation failed:', err);
-      return imageUrl;
-    }
-  };
+      // Fit logo within box
+      let fitW, fitH;
+      if (logoAspect >= boxAspect) {
+        fitW = w;
+        fitH = Math.round(w / logoAspect);
+      } else {
+        fitH = h;
+        fitW = Math.round(h * logoAspect);
+      }
+
+      // Scale-up logic: only if orientation mismatched
+      let doScaleUp = logoOrientation !== boxOrientation;
+      const aspectDiff = Math.abs(logoAspect - boxAspect) / Math.max(logoAspect, boxAspect);
+      if (doScaleUp && aspectDiff > ASPECT_DIFF_THRESHOLD) {
+        fitW = Math.round(fitW * SCALE_UP_FACTOR);
+        fitH = Math.round(fitH * SCALE_UP_FACTOR);
+      }
+
+      // Center the logo
+      const logoX = x + Math.round((w - fitW) / 2);
+      const logoY = y + Math.round((h - fitH) / 2);
+
+      // Overlay (unchanged)
+      if (overlayEnabled) {
+        const r = color.r.toString(16).padStart(2, '0');
+        const g = color.g.toString(16).padStart(2, '0');
+        const b = color.b.toString(16).padStart(2, '0');
+        const hexColor = `${r}${g}${b}`;
+        const opacity = Math.round((color.a ?? 1) * 100);
+        setOverayColor(hexColor);
+
+        return [
+          `l_one_pixel_tn2oaa,w_${w},h_${h}`,
+          `co_rgb:${hexColor},e_colorize:100,o_${opacity},fl_layer_apply,x_${x},y_${y},g_north_west`,
+          `l_${public_id},c_pad,w_${fitW},h_${fitH},g_center,b_auto`,
+          `fl_layer_apply,x_${logoX},y_${logoY},g_north_west`,
+        ].join('/');
+      } else {
+        return [
+          `l_${public_id},c_pad,w_${fitW},h_${fitH},g_center,b_auto`,
+          `fl_layer_apply,x_${logoX},y_${logoY},g_north_west`,
+        ].join('/');
+      }
+    });
+
+    return `${base}/${transformations.join('/')}/${imageName}`;
+  } catch (err) {
+    console.error('Thumbnail generation failed:', err);
+    return imageUrl;
+  }
+};
+
 
   function getContrastTextColor(hexColor) {
     const color = hexColor.replace('#', '');
@@ -539,12 +566,13 @@ export default function LogosPage() {
         </div>
 
         {/* Image Modal */}
-        <ImageModal 
+        <ImageModal
           isOpen={modalOpen}
-          onClose={handleCloseModal}
-          src={modalImage.src}
-          alt={modalImage.alt}
-          title={modalImage.title}
+          onClose={() => setModalOpen(false)}
+          logos={logos}
+          currentIndex={modalImageIndex ?? 0}
+          onPrev={() => setModalImageIndex(i => (i > 0 ? i - 1 : i))}
+          onNext={() => setModalImageIndex(i => (i < logos.length - 1 ? i + 1 : i))}
         />
       </div>
     </>
