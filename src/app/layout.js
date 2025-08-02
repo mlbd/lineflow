@@ -1,15 +1,7 @@
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Heebo } from 'next/font/google';
 import './globals.css';
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
-  subsets: ['latin'],
-});
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
-});
+const heebo = Heebo({ subsets: ["latin"], weight: ["400", "500", "700"] });
 
 export const metadata = {
   title: 'Placement Editor | Mockup Generator for AllAround',
@@ -18,9 +10,12 @@ export const metadata = {
 };
 
 export default function RootLayout({ children }) {
+  // Dynamically choose direction; hardcoded RTL for demo:
+  const isRTL = true; // Replace with language/company logic as needed
+
   return (
-    <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>{children}</body>
+    <html lang="en" dir={isRTL ? "rtl" : "ltr"}>
+      <body className={`${heebo.className} antialiased`}>{children}</body>
     </html>
   );
 }

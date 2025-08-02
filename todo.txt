@@ -1,0 +1,14 @@
+Need to create a page where user can search with his nieche 
+then get related compnay info, name, logo, email, phone
+
+in the search form add a country dropdown so user can select target country
+nieche dropdown with ability to add new option
+input field to make target more specific
+tag field if possible
+
+-- First study with chatGPT get better plan
+-------- ui plan
+-------- search functionlity plan
+-------- testing plan
+-------- api choosing plan
+-------- get idea from ai first

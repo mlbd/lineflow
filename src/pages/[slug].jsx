@@ -1,8 +1,14 @@
 import { useState, useEffect } from 'react';
+import Head from 'next/head';
 import CustomLoading from '@/components/CustomLoading';
 import CircleReveal from '@/components/CircleReveal';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+
+import TopBar from '@/components/page/TopBar';
+import HeroSection from '@/components/page/HeroSection';
+import InfoBoxSection from '@/components/page/InfoBoxSection';
+import ProductListSection from '@/components/page/ProductListSection';
+
+const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
 
 export async function getStaticPaths() {
   return { paths: [], fallback: 'blocking' };
@@ -13,23 +19,59 @@ export async function getStaticProps({ params }) {
 }
 
 export default function LandingPage({ slug }) {
-  const [title, setTitle] = useState(null);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [animationDone, setAnimationDone] = useState(false);
   const [error, setError] = useState(false);
 
+  // Main data
+  const [company, setCompany] = useState({});
+  const [products, setProducts] = useState([]);
+  const [pageId, setPageId] = useState(null);
+
+  const [bumpPrice, setBumpPrice] = useState(null);
+
+  // SEO data - Initialize with static loading data
+  const [seoData, setSeoData] = useState({
+    title: "The mini site is loading...",
+    description: "Please wait while we load your personalized mini site experience.",
+    image: null
+  });
+
   useEffect(() => {
     async function fetchData() {
       try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_WP_SITE_URL}/wp-json/wp/v2/pages?slug=${slug}`
-        );
-        if (!res.ok) throw new Error();
+        const res = await fetch(`${WP_URL}/wp-json/mini-sites/v1/company-page?slug=${slug}`);
+        if (!res.ok) throw new Error('Network response was not ok');
         const data = await res.json();
-        if (!data?.length) throw new Error();
-        setTitle(data[0].title.rendered);
-      } catch {
+        if (!data || !data.meta) throw new Error('No meta in data');
+
+        const companyData = {
+          name: data.meta.header_title || data.title || '',
+          description: data.meta.header_content || '',
+          logo: data.acf?.logo_darker?.url || null,
+        };
+
+        setCompany(companyData);
+        setProducts(data.acf?.selected_products || []);
+        setPageId(data?.id || null);
+        setBumpPrice(data.acf?.bump_price || null);
+
+        // Set SEO data
+        setSeoData({
+          title: data.meta.seo_title || companyData.name || `${slug} - Company Page`,
+          description: data.meta.seo_description || companyData.description || `Discover ${companyData.name} and explore our products.`,
+          image: data.meta.seo_image?.url || companyData.logo || null
+        });
+
+        setError(false);
+      } catch (err) {
         setError(true);
+        // Set fallback SEO data for error case
+        setSeoData({
+          title: `${slug} - Page Not Found`,
+          description: 'The requested page could not be found.',
+          image: null
+        });
       } finally {
         setDataLoaded(true);
       }
@@ -37,31 +79,68 @@ export default function LandingPage({ slug }) {
     fetchData();
   }, [slug]);
 
-  // 1. Show loading while fetching
-  if (!dataLoaded) return <CustomLoading />;
-
-  // 2. Show circle reveal after data load, until animation is done
-  if (!animationDone) return <CircleReveal onFinish={() => setAnimationDone(true)} />;
-
-  // 3. After both loading + animation are done, show page
-  if (error)
+  if (!dataLoaded) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-red-600 text-xl">Page not found or failed to load.</p>
-      </div>
+      <>
+        <Head>
+          <title>{seoData.title}</title>
+          <meta name="description" content={seoData.description} />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+        </Head>
+        <CustomLoading />
+      </>
     );
+  }
+
+  if (!animationDone) return <CircleReveal onFinish={() => setAnimationDone(true)} />;
+  
+  if (error) {
+    return (
+      <>
+        <Head>
+          <title>{seoData.title}</title>
+          <meta name="description" content={seoData.description} />
+          <meta name="robots" content="noindex, nofollow" />
+        </Head>
+        <div className="min-h-screen flex items-center justify-center">
+          <p className="text-red-600 text-xl">Page not found or failed to load.</p>
+        </div>
+      </>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white flex flex-col items-center justify-center px-4 py-12">
-      <Card className="max-w-xl w-full shadow-2xl border border-gray-200 rounded-2xl p-6 text-center">
-        <CardContent>
-          <h1 className="text-4xl font-bold mb-4 text-gray-900">{title}</h1>
-          <p className="text-gray-600 text-lg mb-6">
-            This is a demo landing page powered by WordPress and Next.js using ShadCN UI.
-          </p>
-          <Button className="text-white bg-black hover:bg-gray-900 px-6 py-2">Get Started</Button>
-        </CardContent>
-      </Card>
-    </div>
+    <>
+      <Head>
+        <title>{seoData.title}</title>
+        <meta name="description" content={seoData.description} />
+        
+        {/* Open Graph / Facebook */}
+        <meta property="og:type" content="website" />
+        <meta property="og:title" content={seoData.title} />
+        <meta property="og:description" content={seoData.description} />
+        {seoData.image && <meta property="og:image" content={seoData.image} />}
+        
+        {/* Twitter */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={seoData.title} />
+        <meta name="twitter:description" content={seoData.description} />
+        {seoData.image && <meta name="twitter:image" content={seoData.image} />}
+        
+        {/* Additional SEO */}
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link rel="canonical" href={`${process.env.NEXT_PUBLIC_SITE_URL || ''}/${slug}`} />
+      </Head>
+      
+      <div className="min-h-screen bg-gradient-to-b from-[#f7f7f7] to-[#fff] flex flex-col px-0 py-0">
+        <TopBar wpUrl={WP_URL} />
+        <main className="alrndr-hero">
+          <HeroSection company={company} />
+          <InfoBoxSection />
+          <ProductListSection wpUrl={WP_URL} pageId={pageId} bumpPrice={bumpPrice} />
+          {/* TODO: Cart, etc */}
+        </main>
+      </div>
+    </>
   );
 }
