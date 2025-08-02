@@ -2,7 +2,7 @@
 
 import Head from 'next/head';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { ArrowLeft, ShoppingCart, RefreshCw, Database, Cloud } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import PopoverPicker from '@/components/PopoverPicker';
@@ -59,7 +59,7 @@ export default function LogosPage() {
     setColor(tempColor);
     localStorage.setItem('overlay_color', JSON.stringify(tempColor));
     setShowPicker(false);
-    
+
     // Regenerate images without reloading the page
     await regenerateImages(viewWithOverlay, tempColor);
   };
@@ -71,17 +71,16 @@ export default function LogosPage() {
   const handleOverlayToggle = async (checked) => {
     setViewWithOverlay(checked);
     localStorage.setItem('view_with_overlay', checked);
-    
+
     // Regenerate images without reloading the page
     await regenerateImages(checked, color);
   };
 
   const regenerateImages = async (overlayEnabled, colorValue) => {
     if (!pageData || !logos.length) return;
-    
+
     setRegeneratingImages(true);
 
-    
     try {
       // Generate new thumbnail URLs for all logos
       const updatedLogos = await Promise.all(
@@ -95,7 +94,7 @@ export default function LogosPage() {
           };
         })
       );
-      
+
       setLogos(updatedLogos);
     } catch (err) {
       console.error('Error regenerating images:', err);
@@ -112,19 +111,19 @@ export default function LogosPage() {
       const deleteResponse = await fetch('/api/cloudinary/logos', {
         method: 'DELETE',
       });
-      
+
       if (!deleteResponse.ok) {
         throw new Error('Failed to clear cache');
       }
-      
+
       // Fetch fresh data from Cloudinary
       const response = await fetch('/api/cloudinary/logos?refresh=true');
       const result = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(result.error || 'Failed to refresh cache');
       }
-      
+
       // Update logos with fresh data
       if (pageData) {
         const logosWithThumbnails = await Promise.all(
@@ -139,12 +138,12 @@ export default function LogosPage() {
             };
           })
         );
-        
+
         setLogos(logosWithThumbnails);
         setDataSource(result.source);
         setStats(result.stats);
       }
-      
+
       alert('Cache refreshed successfully!');
     } catch (err) {
       console.error('Error refreshing cache:', err);
@@ -153,31 +152,6 @@ export default function LogosPage() {
       setRefreshing(false);
     }
   };
-
-  useEffect(() => {
-    try {
-      const storedData = localStorage.getItem('logo_page_data');
-      const storedOverlay = localStorage.getItem('view_with_overlay') === 'true';
-      const storedColor = localStorage.getItem('overlay_color');
-
-      if (storedData) {
-        const parsedData = JSON.parse(storedData);
-        const colorValue = parseColor(storedColor);
-
-        setPageData(parsedData);
-        setViewWithOverlay(storedOverlay);
-        setColor(colorValue);
-        fetchLogos(parsedData, storedOverlay, colorValue);
-      } else {
-        setError('No data found. Please go back and configure your image and placements.');
-        setLoading(false);
-      }
-    } catch (err) {
-      console.warn('Error loading from localStorage:', err);
-      setError('Corrupted data in storage.');
-      setLoading(false);
-    }
-  }, []);
 
   const parseColor = storedColor => {
     try {
@@ -225,14 +199,15 @@ export default function LogosPage() {
 
   const getImageSize = url => {
     return new Promise((resolve, reject) => {
-      const img = new Image();
+      const img = new window.Image();
       img.src = url;
       img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
       img.onerror = reject;
     });
   };
 
-  const fetchLogos = async (data, overlay, color) => {
+  // ✅ FIX: Wrap fetchLogos in useCallback, add as effect dep!
+  const fetchLogos = useCallback(async (data, overlay, color) => {
     try {
       setLoading(true);
 
@@ -256,7 +231,6 @@ export default function LogosPage() {
       const logosWithThumbnails = await Promise.all(
         result.logos.map(async (logo, i) => {
           const thumbnailUrl = await generateThumbnailUrl(data, logo, overlay, color);
-          console.log('logo', logo);
           return {
             ...logo,
             thumbnailUrl,
@@ -274,101 +248,92 @@ export default function LogosPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const ASPECT_DIFF_THRESHOLD = 0.3;
-const SCALE_UP_FACTOR = 1.3;
+  const SCALE_UP_FACTOR = 1.3;
 
-// Determine orientation: 'horizontal', 'vertical', 'square'
-function getOrientation(w, h) {
-  const aspect = w / h;
-  if (aspect >= 1.2) return 'horizontal';
-  if (aspect <= 0.8) return 'vertical';
-  return 'square';
-}
-
-const generateThumbnailUrl = async (data, logo, overlayEnabled, color) => {
-  if (!ENABLE_CLOUDINARY) return data.imageUrl;
-
-  const { imageUrl, mappings } = data;
-  const folder = 'dfuecvdyc';
-  const base = `https://res.cloudinary.com/${folder}/image/upload`;
-  const imageName = imageUrl.split('/').pop();
-
-  const { public_id, width: logoWidth, height: logoHeight } = logo;
-
-  try {
-    const baseSize = await getImageSize(imageUrl);
-    const naturalW = baseSize.width;
-    const naturalH = baseSize.height;
-
-    const transformations = mappings.map(m => {
-      // Box (placement) absolute px
-      const x = Math.round(m.xPercent * naturalW);
-      const y = Math.round(m.yPercent * naturalH);
-      const w = Math.round(m.wPercent * naturalW);
-      const h = Math.round(m.hPercent * naturalH);
-
-      // Orientations
-      const logoOrientation = getOrientation(logoWidth, logoHeight);
-      const boxOrientation = getOrientation(w, h);
-
-      // Aspect ratios
-      const logoAspect = logoWidth / logoHeight;
-      const boxAspect = w / h;
-
-      // Fit logo within box
-      let fitW, fitH;
-      if (logoAspect >= boxAspect) {
-        fitW = w;
-        fitH = Math.round(w / logoAspect);
-      } else {
-        fitH = h;
-        fitW = Math.round(h * logoAspect);
-      }
-
-      // Scale-up logic: only if orientation mismatched
-      let doScaleUp = logoOrientation !== boxOrientation;
-      const aspectDiff = Math.abs(logoAspect - boxAspect) / Math.max(logoAspect, boxAspect);
-      if (doScaleUp && aspectDiff > ASPECT_DIFF_THRESHOLD) {
-        fitW = Math.round(fitW * SCALE_UP_FACTOR);
-        fitH = Math.round(fitH * SCALE_UP_FACTOR);
-      }
-
-      // Center the logo
-      const logoX = x + Math.round((w - fitW) / 2);
-      const logoY = y + Math.round((h - fitH) / 2);
-
-      // Overlay (unchanged)
-      if (overlayEnabled) {
-        const r = color.r.toString(16).padStart(2, '0');
-        const g = color.g.toString(16).padStart(2, '0');
-        const b = color.b.toString(16).padStart(2, '0');
-        const hexColor = `${r}${g}${b}`;
-        const opacity = Math.round((color.a ?? 1) * 100);
-        setOverayColor(hexColor);
-
-        return [
-          `l_one_pixel_tn2oaa,w_${w},h_${h}`,
-          `co_rgb:${hexColor},e_colorize:100,o_${opacity},fl_layer_apply,x_${x},y_${y},g_north_west`,
-          `l_${public_id},c_pad,w_${fitW},h_${fitH},g_center,b_auto`,
-          `fl_layer_apply,x_${logoX},y_${logoY},g_north_west`,
-        ].join('/');
-      } else {
-        return [
-          `l_${public_id},c_pad,w_${fitW},h_${fitH},g_center,b_auto`,
-          `fl_layer_apply,x_${logoX},y_${logoY},g_north_west`,
-        ].join('/');
-      }
-    });
-
-    return `${base}/${transformations.join('/')}/${imageName}`;
-  } catch (err) {
-    console.error('Thumbnail generation failed:', err);
-    return imageUrl;
+  function getOrientation(w, h) {
+    const aspect = w / h;
+    if (aspect >= 1.2) return 'horizontal';
+    if (aspect <= 0.8) return 'vertical';
+    return 'square';
   }
-};
 
+  const generateThumbnailUrl = async (data, logo, overlayEnabled, color) => {
+    if (!ENABLE_CLOUDINARY) return data.imageUrl;
+
+    const { imageUrl, mappings } = data;
+    const folder = 'dfuecvdyc';
+    const base = `https://res.cloudinary.com/${folder}/image/upload`;
+    const imageName = imageUrl.split('/').pop();
+
+    const { public_id, width: logoWidth, height: logoHeight } = logo;
+
+    try {
+      const baseSize = await getImageSize(imageUrl);
+      const naturalW = baseSize.width;
+      const naturalH = baseSize.height;
+
+      const transformations = mappings.map(m => {
+        const x = Math.round(m.xPercent * naturalW);
+        const y = Math.round(m.yPercent * naturalH);
+        const w = Math.round(m.wPercent * naturalW);
+        const h = Math.round(m.hPercent * naturalH);
+
+        const logoOrientation = getOrientation(logoWidth, logoHeight);
+        const boxOrientation = getOrientation(w, h);
+
+        const logoAspect = logoWidth / logoHeight;
+        const boxAspect = w / h;
+
+        let fitW, fitH;
+        if (logoAspect >= boxAspect) {
+          fitW = w;
+          fitH = Math.round(w / logoAspect);
+        } else {
+          fitH = h;
+          fitW = Math.round(h * logoAspect);
+        }
+
+        let doScaleUp = logoOrientation !== boxOrientation;
+        const aspectDiff = Math.abs(logoAspect - boxAspect) / Math.max(logoAspect, boxAspect);
+        if (doScaleUp && aspectDiff > ASPECT_DIFF_THRESHOLD) {
+          fitW = Math.round(fitW * SCALE_UP_FACTOR);
+          fitH = Math.round(fitH * SCALE_UP_FACTOR);
+        }
+
+        const logoX = x + Math.round((w - fitW) / 2);
+        const logoY = y + Math.round((h - fitH) / 2);
+
+        if (overlayEnabled) {
+          const r = color.r.toString(16).padStart(2, '0');
+          const g = color.g.toString(16).padStart(2, '0');
+          const b = color.b.toString(16).padStart(2, '0');
+          const hexColor = `${r}${g}${b}`;
+          const opacity = Math.round((color.a ?? 1) * 100);
+          setOverayColor(hexColor);
+
+          return [
+            `l_one_pixel_tn2oaa,w_${w},h_${h}`,
+            `co_rgb:${hexColor},e_colorize:100,o_${opacity},fl_layer_apply,x_${x},y_${y},g_north_west`,
+            `l_${public_id},c_pad,w_${fitW},h_${fitH},g_center,b_auto`,
+            `fl_layer_apply,x_${logoX},y_${logoY},g_north_west`,
+          ].join('/');
+        } else {
+          return [
+            `l_${public_id},c_pad,w_${fitW},h_${fitH},g_center,b_auto`,
+            `fl_layer_apply,x_${logoX},y_${logoY},g_north_west`,
+          ].join('/');
+        }
+      });
+
+      return `${base}/${transformations.join('/')}/${imageName}`;
+    } catch (err) {
+      console.error('Thumbnail generation failed:', err);
+      return imageUrl;
+    }
+  };
 
   function getContrastTextColor(hexColor) {
     const color = hexColor.replace('#', '');
@@ -386,6 +351,32 @@ const generateThumbnailUrl = async (data, logo, overlayEnabled, color) => {
     const maxPrice = minPrice + Math.random() * (max - minPrice);
     return `${minPrice.toFixed(2)}₪ - ${maxPrice.toFixed(2)}₪`;
   };
+
+  // ✅ FIX: useEffect with fetchLogos as dep
+  useEffect(() => {
+    try {
+      const storedData = localStorage.getItem('logo_page_data');
+      const storedOverlay = localStorage.getItem('view_with_overlay') === 'true';
+      const storedColor = localStorage.getItem('overlay_color');
+
+      if (storedData) {
+        const parsedData = JSON.parse(storedData);
+        const colorValue = parseColor(storedColor);
+
+        setPageData(parsedData);
+        setViewWithOverlay(storedOverlay);
+        setColor(colorValue);
+        fetchLogos(parsedData, storedOverlay, colorValue);
+      } else {
+        setError('No data found. Please go back and configure your image and placements.');
+        setLoading(false);
+      }
+    } catch (err) {
+      console.warn('Error loading from localStorage:', err);
+      setError('Corrupted data in storage.');
+      setLoading(false);
+    }
+  }, [fetchLogos]);
 
   if (loading) {
     return (
@@ -543,7 +534,7 @@ const generateThumbnailUrl = async (data, logo, overlayEnabled, color) => {
             <div key={logo.public_id} className="bg-white rounded shadow">
               <div className="bg-gray-100 m-0 cursor-pointer" onClick={() => handleImageClick(logo)}>
                 <LazyLoadImage 
-                  key={logo.imageKey} // This forces React to recreate the component
+                  key={logo.imageKey}
                   src={logo.thumbnailUrl} 
                   alt={logo.title} 
                   className="w-full h-auto block hover:opacity-90 transition-opacity" 

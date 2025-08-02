@@ -1,4 +1,5 @@
 // src/components/page/InfoBoxSection.jsx
+import Image from "next/image";
 
 const defaultBoxes = [
   {
@@ -28,12 +29,15 @@ export default function InfoBoxSection({ infoBoxes = defaultBoxes }) {
             key={i}
             className="flex flex-col items-center"
           >
-            <div className="flex items-center justify-center h-[70px] [70px] mb-4">
-              <img
+            <div className="flex items-center justify-center h-[70px] w-[70px] mb-4">
+              <Image
                 src={box.icon}
                 alt={box.title}
+                width={70}
+                height={70}
                 className="w-full h-auto max-w-[70px] max-h-[70px]"
                 loading="lazy"
+                unoptimized // Remove if local images and using next/image static optimization
               />
             </div>
             <h3 className="text-xl font-bold mb-2 text-center">{box.title}</h3>

@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 export default function ProductColorBoxes({ acf }) {
   // Only render if group_type === "Group" and color is non-empty array
   if (acf?.group_type === "Group" && Array.isArray(acf.color) && acf.color.length > 0) {
@@ -19,7 +21,13 @@ export default function ProductColorBoxes({ acf }) {
   // Fallback: single color or no colors
   return (
     <div className="text-sm border text-deepblue rounded-md font-normal bg-deepblue-light mb-2 px-2 py-1 text-center">
-     <img src="/info-icon.svg" className="w-[16px] h-[16px] inline-block ml-2" />
+      <Image
+        src="/info-icon.svg"
+        alt="Info"
+        width={16}
+        height={16}
+        className="w-[16px] h-[16px] inline-block ml-2"
+      />
       זמין בצבע אחד כבתמונה
     </div>
   );

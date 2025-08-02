@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
+import Image from "next/image";
 
 // Skeleton component with wave animation
 const ImageSkeleton = ({ className, aspectRatio = '16/9' }) => {
@@ -122,7 +123,7 @@ const LazyLoadImage = ({
 
       {/* Actual image */}
       {isVisible && !isReloading && (
-        <img
+        <Image
           ref={imgRef}
           src={currentSrc}
           alt={alt}

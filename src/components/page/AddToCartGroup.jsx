@@ -32,7 +32,7 @@ function useResponsiveModalWidth(sizes, minPad = 32) {
     updateWidth();
     window.addEventListener("resize", updateWidth);
     return () => window.removeEventListener("resize", updateWidth);
-  }, [sizes.length]);
+  }, [sizes.length, minPad]); // FIXED: include minPad
 
   return computedWidth;
 }
@@ -50,19 +50,17 @@ function getStepPrice(total, regularPrice, discountSteps = []) {
 }
 
 export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOpenQuickView  }) {
-  if (!product) return null;
-  const acf = product.acf || {};
+  // ---------- ALL HOOKS ALWAYS HERE, TOP LEVEL ----------
+  // If no product, still call all hooks!
+  const acf = product?.acf || {};
   const sizes = (acf.omit_sizes_from_chart || []).map((s) => s.value);
   const colors = acf.color || [];
-  const regularPrice = applyBumpToRegular(acf.regular_price || product.price || "0", bumpPrice);
+  const regularPrice = applyBumpToRegular(acf.regular_price || product?.price || "0", bumpPrice);
   const discountSteps = applyBumpPrice(acf.discount_steps || [], bumpPrice);
 
   const computedWidth = useResponsiveModalWidth(sizes);
-  const dialogPadding = 100; // 150px left + 150px right
+  const dialogPadding = 100;
   const modalWidth = computedWidth + dialogPadding;
-  
-  console.log("computedWidth", computedWidth);
-  console.log("modalWidth", modalWidth);
 
   const [quantities, setQuantities] = useState(() =>
     colors.map(() => sizes.map(() => ""))
@@ -101,15 +99,18 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
     );
   };
 
+  // ---------- EARLY RETURN AFTER HOOKS ----------
+  if (!product) return null;
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent
         className="rounded-2xl shadow-xl"
         style={{
-          width: `${modalWidth}px`, // Use modalWidth (computedWidth + padding)
+          width: `${modalWidth}px`,
           minWidth: `600px`,
           maxWidth: "100vw",
-          padding: "20px 50px 30px", // 50px left and right padding
+          padding: "20px 50px 30px",
           transition: "width 0.2s cubic-bezier(.42,0,.58,1)",
         }}
       >
@@ -121,14 +122,12 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
             <X className="w-5 h-5" />
           </button>
         </DialogClose>
-        
-        {/* Title - no extra padding needed since form has it */}
+
         <div className="">
           <h2 className="text-xl font-bold text-center mb-4 mt-3">{product.name}</h2>
         </div>
-        
+
         <form className="flex items-center flex-col relative allaround--group-form">
-          {/* Scrollable table - now properly sized within padded container */}
           <div
             className={clsx(
               "overflow-x-auto overflow-y-auto rounded-lg bg-white mb-4",
@@ -141,7 +140,6 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
               transition: "width 0.2s cubic-bezier(.42,0,.58,1)",
             }}
           >
-            {/* Header */}
             <div className="w-full bg-white sticky top-0 z-10 sticky-top-size-ttile">
               <div className="flex items-center">
                 <div className="w-[110px] min-w-[110px] h-[52px] bg-white px-2 flex items-center"></div>
@@ -156,8 +154,6 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
                 </div>
               </div>
             </div>
-            
-            {/* Body */}
             <div className="w-full">
               {colors.map((color, rIdx) => {
                 const bg = color.color_hex_code || "#fff";
@@ -168,7 +164,6 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
                     className="flex items-center"
                     style={{ borderColor: "#eee" }}
                   >
-                    {/* Color badge */}
                     <div className="w-[110px] min-w-[110px] px-2 flex items-center">
                       <span
                         className={clsx(
@@ -186,7 +181,6 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
                         {color.title}
                       </span>
                     </div>
-                    {/* Size inputs */}
                     <div className="flex gap-[10px] pl-2 flex-1">
                       {sizes.map((size, cIdx) => (
                         <div key={cIdx} className="block flex-1 py-1.5">
@@ -200,7 +194,7 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
                               error && "border-red-400"
                             )}
                             style={{
-                                boxShadow: `0px 0px 0px 1px ${bg}`,
+                              boxShadow: `0px 0px 0px 1px ${bg}`,
                             }}
                             inputMode="numeric"
                             pattern="[0-9]*"
@@ -220,16 +214,15 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
               })}
             </div>
           </div>
-          
-          {/* Content below table - no extra padding needed since form has it */}
           <div className="w-full">
-            {/* Discount/step message */}
             {error ? (
               <div className="text-red-500 text-sm text-center mb-2">{error}</div>
             ) : unitsToNext ? (
               <div className="text-pink text-xl pt-[10px] text-center mb-2 flex flex-col">
-                <span>הוסיפו {unitsToNext} פריטים נוספים להורדת המחיר ל-{" "}
-                <b>{nextStep.amount || regularPrice}₪</b> ליחידה</span>
+                <span>
+                  הוסיפו {unitsToNext} פריטים נוספים להורדת המחיר ל-
+                  <b>{nextStep.amount || regularPrice}₪</b> ליחידה
+                </span>
                 <span className="line-through">(כרגע {stepInfo.price}₪)</span>
               </div>
             ) : total > 0 && (
@@ -237,59 +230,51 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
                 {`מחיר ליחידה: ${stepInfo.price}₪`}
               </div>
             )}
-            
             <div className="flex justify-between items-center">
-                <div className="flex-shrink-0">
-                    {/* QuickViewModal Trigger Button */}
-                    <button
-                    type="button"
-                    className="trigger-view-modal-btn alarnd-btn"
-                    onClick={() => onOpenQuickView && onOpenQuickView(product)}
-                    >
-                    Quick View
-                    </button>
+              <div className="flex-shrink-0">
+                <button
+                  type="button"
+                  className="trigger-view-modal-btn alarnd-btn"
+                  onClick={() => onOpenQuickView && onOpenQuickView(product)}
+                >
+                  Quick View
+                </button>
+              </div>
+              <div className="flex-1 text-center">
+                <div className="alarnd--price-by-shirt text-center my-4">
+                  <p className="alarnd--group-price text-lg font-semibold">
+                    <span>
+                      <span className="alarnd__wc-price">{stepInfo.price}</span>
+                      <span className="woocommerce-Price-currencySymbol">₪</span>
+                    </span>{" "}
+                    / {acf.first_line_keyword || "תיק"}
+                  </p>
+                  <p>
+                    סה&quot;כ יחידות: <span className="alarnd__total_qty">{total}</span>
+                  </p>
+                  <span className="alarnd--total-price">
+                    סה&quot;כ:{" "}
+                    <span>
+                      <span className="alarnd__wc-price">{total * stepInfo.price}</span>
+                      <span className="woocommerce-Price-currencySymbol">₪</span>
+                    </span>
+                  </span>
                 </div>
-
-                <div className="flex-1 text-center">
-                    {/* Totals UI */}
-                    <div className="alarnd--price-by-shirt text-center my-4">
-                        <p className="alarnd--group-price text-lg font-semibold">
-                            <span>
-                            <span className="alarnd__wc-price">{stepInfo.price}</span>
-                            <span className="woocommerce-Price-currencySymbol">₪</span>
-                            </span>{" "}
-                            / {acf.first_line_keyword || "תיק"}
-                        </p>
-                        <p>
-                            סה"כ יחידות: <span className="alarnd__total_qty">{total}</span>
-                        </p>
-                        <span className="alarnd--total-price">
-                            סה"כ:{" "}
-                            <span>
-                            <span className="alarnd__wc-price">{total * stepInfo.price}</span>
-                            <span className="woocommerce-Price-currencySymbol">₪</span>
-                            </span>
-                        </span>
-                    </div>
-                </div>
-
-                <div className="flex-shrink-0">
-                    {/* Add to cart button */}
-                    <button
-                    type="button"
-                    disabled={total === 0}
-                    className="alarnd-btn"
-                    onClick={() => {
-                        // TODO: Add to cart logic here
-                        onClose();
-                    }}
-                    >
-                    הוסף לעגלה
-                    </button>
-                </div>
-
+              </div>
+              <div className="flex-shrink-0">
+                <button
+                  type="button"
+                  disabled={total === 0}
+                  className="alarnd-btn"
+                  onClick={() => {
+                    // TODO: Add to cart logic here
+                    onClose();
+                  }}
+                >
+                  הוסף לעגלה
+                </button>
+              </div>
             </div>
-
           </div>
         </form>
       </DialogContent>

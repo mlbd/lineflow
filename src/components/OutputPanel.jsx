@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -9,7 +9,17 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
   const [overlayUrl, setOverlayUrl] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
 
-  const generateUrls = async () => {
+  const getImageSize = useCallback(url => {
+    return new Promise((resolve, reject) => {
+      const img = new window.Image();
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = reject;
+      img.src = url;
+    });
+  }, []);
+
+  // Wrap generateUrls in useCallback!
+  const generateUrls = useCallback(async () => {
     if (mappings.length === 0) {
       setOverlayUrl('');
       setLogoUrl('');
@@ -17,7 +27,7 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
     }
 
     const imageName = imageUrl.split('/').pop();
-    const folder = 'dfuecvdyc'; // static for now
+    const folder = 'dfuecvdyc';
     const base = `https://res.cloudinary.com/${folder}/image/upload`;
 
     const img = document.querySelector('img');
@@ -26,29 +36,23 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
       return;
     }
 
-    // Use natural dimensions for Cloudinary transformations
     const naturalW = img.naturalWidth;
     const naturalH = img.naturalHeight;
 
     try {
-      // Generate overlay-only transformations (just the placement boxes)
       const overlayTransformations = mappings.map(m => {
-        // Use percentage coordinates if available, otherwise fall back to pixel coordinates
         let x, y, w, h;
-
         if (
           m.xPercent !== undefined &&
           m.yPercent !== undefined &&
           m.wPercent !== undefined &&
           m.hPercent !== undefined
         ) {
-          // Convert percentage to natural pixel coordinates
           x = Math.round(m.xPercent * naturalW);
           y = Math.round(m.yPercent * naturalH);
           w = Math.round(m.wPercent * naturalW);
           h = Math.round(m.hPercent * naturalH);
         } else {
-          // Fallback to old method for backward compatibility
           const displayW = img.clientWidth;
           const displayH = img.clientHeight;
           const scaleX = naturalW / displayW;
@@ -59,7 +63,6 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
           w = Math.round(m.w * scaleX);
           h = Math.round(m.h * scaleY);
         }
-
         return [
           `l_one_pixel_tn2oaa,w_${w},h_${h}`,
           `co_rgb:000000,e_colorize,fl_layer_apply,x_${x},y_${y},g_north_west`,
@@ -69,29 +72,24 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
       const overlayOnlyUrl = `${base}/${overlayTransformations.join('/')}/${imageName}`;
       setOverlayUrl(overlayOnlyUrl);
 
-      // Generate logo URL only if logoId is provided
       if (logoId) {
         const logoSize = await getImageSize(
           `https://res.cloudinary.com/${folder}/image/upload/${logoId}.png`
         );
 
         const logoTransformations = mappings.map(m => {
-          // Use percentage coordinates if available, otherwise fall back to pixel coordinates
           let x, y, w, h;
-
           if (
             m.xPercent !== undefined &&
             m.yPercent !== undefined &&
             m.wPercent !== undefined &&
             m.hPercent !== undefined
           ) {
-            // Convert percentage to natural pixel coordinates
             x = Math.round(m.xPercent * naturalW);
             y = Math.round(m.yPercent * naturalH);
             w = Math.round(m.wPercent * naturalW);
             h = Math.round(m.hPercent * naturalH);
           } else {
-            // Fallback to old method for backward compatibility
             const displayW = img.clientWidth;
             const displayH = img.clientHeight;
             const scaleX = naturalW / displayW;
@@ -103,10 +101,8 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
             h = Math.round(m.h * scaleY);
           }
 
-          // Fit the logo
           const logoAspect = logoSize.width / logoSize.height;
           const boxAspect = w / h;
-
           let logoW, logoH;
 
           if (logoAspect > boxAspect) {
@@ -117,7 +113,6 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
             logoW = Math.round(h * logoAspect);
           }
 
-          // Rule: if logo is too small in width or height compared to box, scale up
           const widthRatio = logoW / w;
           const heightRatio = logoH / h;
 
@@ -129,7 +124,6 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
             logoH = Math.round(logoH * upscaleFactor);
           }
 
-          // Center logo (even if overflow)
           const logoX = x + Math.round((w - logoW) / 2);
           const logoY = y + Math.round((h - logoH) / 2);
 
@@ -151,21 +145,12 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
       setOverlayUrl('');
       setLogoUrl('');
     }
-  };
+  }, [imageUrl, mappings, logoId, getImageSize]);
 
-  const getImageSize = url => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-      img.onerror = reject;
-      img.src = url;
-    });
-  };
-
-  // Auto-generate URLs when mappings, logoId, or imageUrl changes
+  // Now, add generateUrls to effect deps (safe)
   useEffect(() => {
     generateUrls();
-  }, [mappings, logoId, imageUrl]);
+  }, [generateUrls]);
 
   const hasOverlayUrl = overlayUrl && mappings.length > 0;
   const hasLogoUrl = logoUrl && mappings.length > 0 && logoId;
@@ -196,7 +181,6 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
             Open with Logo in Browser
           </Button>
         </div>
-
         <Textarea
           className="text-xs font-mono h-40"
           value={`Overlay URL: ${overlayUrl}\n\nLogo URL: ${logoUrl}`}

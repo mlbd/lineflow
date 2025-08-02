@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogClose } from '@/components/ui/dialog';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import Image from "next/image";
 
 const DEFAULT_MIN_HEIGHT = 350; // px, adjust for your expected image sizes
 
@@ -114,16 +115,15 @@ export default function ImageModal({
               position: 'relative',
             }}
           >
-            {!loading && (
-              <img
+            {!loading && src && (
+              <Image
                 src={src}
                 alt={alt}
                 width={maxWidth}
                 height={imgHeight}
-                className={`block w-full h-auto transition-opacity duration-300 ${
-                  fade ? "opacity-100" : "opacity-0"
-                }`}
+                className={`block w-full h-auto transition-opacity duration-300 ${fade ? "opacity-100" : "opacity-0"}`}
                 style={{ width: maxWidth, height: imgHeight }}
+                unoptimized
               />
             )}
             {loading && (

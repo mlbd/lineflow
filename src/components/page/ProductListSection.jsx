@@ -5,6 +5,7 @@ import ProductPriceLabel from "@/components/page/ProductPriceLabel";
 import ProductColorBoxes from "@/components/page/ProductColorBoxes";
 import ProductQuickViewModal from "@/components/page/ProductQuickViewModal";
 import AddToCartModal from "@/components/page/AddToCartModal";
+import Image from "next/image"; // <-- import Image!
 
 const PRODUCT_PER_PAGE = 12;
 
@@ -21,8 +22,6 @@ export default function ProductListSection({ wpUrl, pageId, bumpPrice }) {
   const [cartModalProduct, setCartModalProduct] = useState(null);
   const [modalProduct, setModalProduct] = useState(null);
   const [cartModalOpen, setCartModalOpen] = useState(false);
-
-  
 
   // Fetch first page of products on mount
   useEffect(() => {
@@ -96,23 +95,19 @@ export default function ProductListSection({ wpUrl, pageId, bumpPrice }) {
 
   // Handlers for modal
   const handleOpenModal = (product) => {
-    console.log("Opening modal for:", product);
     setModalProduct(product);
   };
 
-  // This is called when you click "הוסף להזמנה" on the product card
-const handleAddToCartFromCard = (product) => {
-  setModalProduct(null); // Close quickview if open
-  setTimeout(() => setCartModalProduct(product), 120);
-};
-
-  // This is called when you click "הוסיפו לעגלה" in ProductQuickViewModal
-  const handleAddToCartFromModal = (product) => {
-    setModalProduct(null); // Close quickview
+  const handleAddToCartFromCard = (product) => {
+    setModalProduct(null);
     setTimeout(() => setCartModalProduct(product), 120);
-};
+  };
 
-// ⬇️ NEW: Handler for Quick View from AddToCartModal
+  const handleAddToCartFromModal = (product) => {
+    setModalProduct(null);
+    setTimeout(() => setCartModalProduct(product), 120);
+  };
+
   const handleOpenQuickViewFromCartModal = (product) => {
     setCartModalProduct(null);
     setTimeout(() => setModalProduct(product), 120);
@@ -168,11 +163,14 @@ const handleAddToCartFromCard = (product) => {
                 className="w-full h-[200px] flex items-center cursor-pointer overflow-hidden rounded-t-2xl"
                 onClick={() => handleOpenModal(p)}
               >
-                <img
+                <Image
                   src={p.thumbnail}
                   alt={p.name}
+                  width={300}
+                  height={200}
                   className="h-[200px] w-full object-contain bg-bglighter mb-3"
                   loading="lazy"
+                  unoptimized // Remove if image domains are in next.config.js images.domains
                 />
               </div>
               <div className="w-full p-7 flex flex-col justify-center items-center flex-grow">
@@ -195,9 +193,11 @@ const handleAddToCartFromCard = (product) => {
                   לפרטים על המוצר
                 </Button>
                 <Button 
-                onClick={() => handleAddToCartFromCard(p)}
-                className="bg-accent rounded-[11px] mt-5 w-auto text-primary font-bold hover:bg-[#002266] hover:text-white text-[17px] py-[23px] px-[25px] transition cursor-pointer"
-                >הוסף להזמנה</Button>
+                  onClick={() => handleAddToCartFromCard(p)}
+                  className="bg-accent rounded-[11px] mt-5 w-auto text-primary font-bold hover:bg-[#002266] hover:text-white text-[17px] py-[23px] px-[25px] transition cursor-pointer"
+                >
+                  הוסף להזמנה
+                </Button>
               </div>
             </div>
           ))}

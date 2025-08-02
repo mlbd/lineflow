@@ -7,17 +7,14 @@ import { X } from "lucide-react";
 const QTY_LIMIT = 50000;
 
 export default function AddToCartQuantity({ open, onClose, product, bumpPrice }) {
-  if (!product) return null;
-  const acf = product.acf || {};
+  // ---- Move all hooks to top, before early return ----
+  const acf = product?.acf || {};
   const steps = applyBumpPrice(acf.quantity_steps || [], bumpPrice);
-
   const minStep = steps[0] ? parseInt(steps[0].quantity) : 1;
+
   const [selectedIdx, setSelectedIdx] = useState(1); // Default to second option
   const [customQty, setCustomQty] = useState("");
   const [error, setError] = useState(null);
-
-  // Modal width: 470px
-  const sizeWidth = 470;
 
   // Compute current selection
   const { quantity, price } = useMemo(() => {
@@ -49,6 +46,11 @@ export default function AddToCartQuantity({ open, onClose, product, bumpPrice })
     }
     setCustomQty(newVal);
   };
+
+  if (!product) return null; // Hooks above
+
+  // Modal width: 470px
+  const sizeWidth = 470;
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -122,7 +124,7 @@ export default function AddToCartQuantity({ open, onClose, product, bumpPrice })
                     </span>
                 </div>
                 <div className="alarnd-single-qty flex-shrink-0">
-                    <span className="font-bold">{step.amount} ש"ח ליחידה</span>
+                    <span className="font-bold">{step.amount} ש&quot;ח ליחידה</span>
                 </div>
               </label>
             ))}

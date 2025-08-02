@@ -1,7 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Image, Plus, Trash2, ArrowsUpFromLine, Upload, Grid3X3 } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import {
+  Image,
+  Plus,
+  Trash2,
+  ArrowsUpFromLine,
+  Upload,
+  Grid3X3,
+} from 'lucide-react';
 
 import ImageCanvas from '@/components/ImageCanvas';
 import MappingList from '@/components/MappingList';
@@ -36,53 +43,61 @@ export default function HomePage() {
   const [logoId, setLogoId] = useState('file_vchdkq');
   const [hasFuturePlan, setHasFuturePlan] = useState(false);
 
+  // Read ?future_plan param on mount
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const futurePlan = urlParams.get('future_plan');
     setHasFuturePlan(futurePlan === 'true');
   }, []);
 
-  const handleDelete = id => {
-    setMappings(prev => prev.filter(m => m.id !== id));
-    if (selectedMapping?.id === id) setSelectedMapping(null);
-  };
+  // Memoize handler because it's used in useEffect and passed to children
+  const handleDelete = useCallback(
+    (id) => {
+      setMappings((prev) => prev.filter((m) => m.id !== id));
+      if (selectedMapping?.id === id) setSelectedMapping(null);
+    },
+    [selectedMapping]
+  );
 
-  const handleEdit = id => {
-    const mapping = mappings.find(m => m.id === id);
-    if (mapping) {
-      setSelectedMapping(mapping);
-      setEditOpen(true);
-    }
-  };
+  // Memoize other handlers used as props or inside effects
+  const handleEdit = useCallback(
+    (id) => {
+      const mapping = mappings.find((m) => m.id === id);
+      if (mapping) {
+        setSelectedMapping(mapping);
+        setEditOpen(true);
+      }
+    },
+    [mappings]
+  );
 
-  const handleClearAll = () => {
+  const handleClearAll = useCallback(() => {
     setMappings([]);
     setSelectedMapping(null);
-  };
+  }, []);
 
-  const handleUpdateMeta = () => {
+  const handleUpdateMeta = useCallback(() => {
     alert('Coming Soon..');
-  };
+  }, []);
 
-  const handleUploadSelect = (value, type) => {
+  const handleUploadSelect = useCallback((value, type) => {
     if (type === 'background') {
       setImageUrl(value);
     } else if (type === 'logo') {
       setLogoId(value);
     }
-  };
+  }, []);
 
-  const handleViewWithAllLogos = () => {
+  const handleViewWithAllLogos = useCallback(() => {
     if (mappings.length === 0) {
       alert('Please create at least one placement area before viewing logos.');
       return;
     }
-
     window.open('/logos', '_blank');
-  };
+  }, [mappings.length]);
 
+  // Persist logo page data to localStorage whenever it changes
   useEffect(() => {
-    console.log('mappings', mappings);
     const dataToPass = {
       imageUrl,
       mappings,
@@ -91,15 +106,16 @@ export default function HomePage() {
     localStorage.setItem('logo_page_data', JSON.stringify(dataToPass));
   }, [imageUrl, mappings, logoId]);
 
+  // Delete mapping by keyboard shortcut
   useEffect(() => {
-    const handleKeyDown = e => {
+    const handleKeyDown = (e) => {
       if ((e.key === 'Delete' || e.key === 'Del') && selectedMapping) {
         handleDelete(selectedMapping.id);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedMapping]);
+  }, [selectedMapping, handleDelete]);
 
   return (
     <main className="w-full flex justify-center bg-muted min-h-screen">
@@ -113,8 +129,8 @@ export default function HomePage() {
           <MappingList
             mappings={mappings}
             selectedId={selectedMapping?.id}
-            onSelect={id => {
-              const mapping = mappings.find(m => m.id === id);
+            onSelect={(id) => {
+              const mapping = mappings.find((m) => m.id === id);
               if (mapping) setSelectedMapping(mapping);
             }}
             onDelete={handleDelete}
@@ -141,7 +157,7 @@ export default function HomePage() {
               onClick={() => {
                 setShowLogoPanel(false);
                 setShowUploadModal(false);
-                setShowEditPanel(!showEditPanel);
+                setShowEditPanel((prev) => !prev);
               }}
             />
             <ToolButton
@@ -150,7 +166,7 @@ export default function HomePage() {
               onClick={() => {
                 setShowEditPanel(false);
                 setShowUploadModal(false);
-                setShowLogoPanel(!showLogoPanel);
+                setShowLogoPanel((prev) => !prev);
               }}
             />
             <ToolButton
@@ -169,7 +185,11 @@ export default function HomePage() {
               className="bg-blue-50 text-blue-600 hover:bg-blue-100"
             />
             {hasFuturePlan && (
-              <ToolButton icon={ArrowsUpFromLine} label="Update meta" onClick={handleUpdateMeta} />
+              <ToolButton
+                icon={ArrowsUpFromLine}
+                label="Update meta"
+                onClick={handleUpdateMeta}
+              />
             )}
             <ToolButton
               icon={Trash2}
@@ -201,8 +221,8 @@ export default function HomePage() {
         mapping={selectedMapping}
         open={editOpen}
         onClose={() => setEditOpen(false)}
-        onSave={updated => {
-          setMappings(prev => prev.map(m => (m.id === updated.id ? updated : m)));
+        onSave={(updated) => {
+          setMappings((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
           setSelectedMapping(updated);
         }}
       />
@@ -210,13 +230,13 @@ export default function HomePage() {
       <EditImagePanel
         open={showEditPanel}
         onClose={() => setShowEditPanel(false)}
-        onSelect={url => setImageUrl(url)}
+        onSelect={(url) => setImageUrl(url)}
       />
 
       <EditLogoPanel
         open={showLogoPanel}
         onClose={() => setShowLogoPanel(false)}
-        onSelect={publicId => {
+        onSelect={(publicId) => {
           setLogoId(publicId);
           setShowLogoPanel(false);
         }}

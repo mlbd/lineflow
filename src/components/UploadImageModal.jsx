@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Upload, X, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
+import Image from "next/image";
 
 const UploadImageModal = ({ open, onClose, onSelect }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -206,10 +207,13 @@ const UploadImageModal = ({ open, onClose, onSelect }) => {
 
               {/* Image Preview */}
               <div className="border rounded-lg p-4">
-                <img
+                <Image
                   src={uploadedImage.url}
                   alt="Uploaded"
+                  width={uploadedImage.width || 400}
+                  height={uploadedImage.height || 300}
                   className="w-full h-32 object-cover rounded mb-2"
+                  unoptimized
                 />
                 <p className="text-sm text-gray-600">
                   {uploadedImage.filename} ({Math.round(uploadedImage.bytes / 1024)}KB)

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { Dialog, DialogContent, DialogTitle, DialogClose, DialogDescription } from "@/components/ui/dialog";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -46,10 +47,9 @@ function PriceChart({ steps }) {
 }
 
 export default function ProductQuickViewModal({ open, onClose, product, onAddToCart, bumpPrice }) {
-  if (!product) return null;
+  // Move all hooks to the top level!
   const acf = product?.acf || {};
 
-  // Which steps to show
   let steps = [];
   if (acf.group_type === "Group" && Array.isArray(acf.discount_steps)) {
     steps = acf.discount_steps;
@@ -57,15 +57,13 @@ export default function ProductQuickViewModal({ open, onClose, product, onAddToC
     steps = acf.quantity_steps;
   }
 
-  // SLIDER for Group/Color
   const hasSlider = acf.group_type === "Group" && Array.isArray(acf.color) && acf.color.length > 0;
   const [sliderIdx, setSliderIdx] = useState(0);
 
   const handleDotClick = (idx) => setSliderIdx(idx);
-  const handlePrev = () => setSliderIdx((sliderIdx - 1 + acf.color.length) % acf.color.length);
-  const handleNext = () => setSliderIdx((sliderIdx + 1) % acf.color.length);
+  const handlePrev = () => setSliderIdx((sliderIdx - 1 + (acf.color?.length || 1)) % (acf.color?.length || 1));
+  const handleNext = () => setSliderIdx((sliderIdx + 1) % (acf.color?.length || 1));
 
-  // **Preload all color images when modal opens**
   useEffect(() => {
     if (open && hasSlider) {
       acf.color.forEach((clr) => {
@@ -77,10 +75,11 @@ export default function ProductQuickViewModal({ open, onClose, product, onAddToC
     }
   }, [open, hasSlider, acf.color]);
 
-  // Reset sliderIdx when modal/product changes
   useEffect(() => {
     setSliderIdx(0);
   }, [product]);
+
+  if (!product) return null; // Hooks always above
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -123,14 +122,16 @@ export default function ProductQuickViewModal({ open, onClose, product, onAddToC
               <>
                 {/* Slick-like image */}
                 <div className="flex items-center justify-center w-full" style={{ height: 310 }}>
-                  <img
+                  <Image
                     src={acf.color[sliderIdx]?.thumbnail?.url}
-                    alt={acf.color[sliderIdx]?.title}
+                    alt={acf.color[sliderIdx]?.title || product?.name || "Product"}
+                    width={340}
+                    height={300}
                     className="max-h-[300px] max-w-full object-contain rounded-xl shadow"
-                    loading="eager"
+                    priority
+                    unoptimized
                   />
                 </div>
-                {/* Show prev/next ONLY if more than one slide */}
                 {acf.color.length > 1 && (
                   <>
                     <button
@@ -164,13 +165,15 @@ export default function ProductQuickViewModal({ open, onClose, product, onAddToC
                 </div>
               </>
             ) : (
-              // Not "Group" or no color array, show product thumbnail as fallback
               <div className="flex items-center justify-center w-full" style={{ height: 310 }}>
-                <img
+                <Image
                   src={product.thumbnail}
                   alt={product.name}
+                  width={340}
+                  height={300}
                   className="max-h-[300px] max-w-full object-contain rounded-xl shadow"
-                  loading="eager"
+                  priority
+                  unoptimized
                 />
               </div>
             )}
