@@ -2,7 +2,14 @@ import AddToCartGroup from './AddToCartGroup';
 import AddToCartQuantity from './AddToCartQuantity';
 
 // ⬇️ Added onOpenQuickView
-export default function AddToCartModal({ open, onClose, product, bumpPrice, onOpenQuickView, onCartAddSuccess }) {
+export default function AddToCartModal({
+  open,
+  onClose,
+  product,
+  bumpPrice,
+  onOpenQuickView,
+  onCartAddSuccess,
+}) {
   if (!product) return null;
   const groupType = product.acf?.group_type;
   if (!open) return null;
@@ -20,7 +27,13 @@ export default function AddToCartModal({ open, onClose, product, bumpPrice, onOp
   }
   if (groupType === 'Quantity') {
     return (
-      <AddToCartQuantity open={open} onClose={onClose} product={product} bumpPrice={bumpPrice} onCartAddSuccess={onCartAddSuccess} />
+      <AddToCartQuantity
+        open={open}
+        onClose={onClose}
+        product={product}
+        bumpPrice={bumpPrice}
+        onCartAddSuccess={onCartAddSuccess}
+      />
     );
   }
   return null;

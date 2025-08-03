@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { GoogleTagManager } from '@next/third-parties/google'
+import { GoogleTagManager } from '@next/third-parties/google';
 import Head from 'next/head';
 import CustomLoading from '@/components/CustomLoading';
 import CircleReveal from '@/components/CircleReveal';
@@ -90,7 +90,7 @@ export default function LandingPage({ slug }) {
 
   const handleScrollToCart = () => {
     if (cartSectionRef.current) {
-      cartSectionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      cartSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
 
@@ -154,12 +154,14 @@ export default function LandingPage({ slug }) {
         <main className="alrndr-hero">
           <HeroSection company={company} />
           <InfoBoxSection />
-          <ProductListSection wpUrl={WP_URL} pageId={pageId} bumpPrice={bumpPrice} onCartAddSuccess={handleScrollToCart} />
+          <ProductListSection
+            wpUrl={WP_URL}
+            pageId={pageId}
+            bumpPrice={bumpPrice}
+            onCartAddSuccess={handleScrollToCart}
+          />
           {/* Cart section - always visible, under product list */}
-          <div 
-            className="mt-16 max-w-[900px] mx-auto w-full"
-            ref={cartSectionRef}
-          >
+          <div className="mt-16 max-w-[900px] mx-auto w-full" ref={cartSectionRef}>
             <CartPage />
           </div>
         </main>

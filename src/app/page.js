@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Image, Plus, Trash2, ArrowsUpFromLine, Upload, Grid3X3 } from 'lucide-react';
-import { sendGTMEvent } from '@next/third-parties/google'
+import { sendGTMEvent } from '@next/third-parties/google';
 
 import ImageCanvas from '@/components/ImageCanvas';
 import MappingList from '@/components/MappingList';
@@ -122,7 +122,9 @@ export default function HomePage() {
           </h1>
 
           <div>
-           <Button onClick={() => sendGTMEvent({ event: 'buttonClicked', value: 'xyz' })}>sendGTMEvent</Button>
+            <Button onClick={() => sendGTMEvent({ event: 'buttonClicked', value: 'xyz' })}>
+              sendGTMEvent
+            </Button>
           </div>
 
           <MappingList

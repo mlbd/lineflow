@@ -1,27 +1,27 @@
 // AddToCartQuantity.jsx
-import { useState, useMemo } from "react";
-import { Dialog, DialogContent, DialogClose } from "@/components/ui/dialog";
-import clsx from "clsx";
-import { applyBumpPrice } from "@/utils/price";
-import { X } from "lucide-react";
-import { useCartStore } from "@/components/cart/cartStore"; // <-- NEW
+import { useState, useMemo } from 'react';
+import { Dialog, DialogContent, DialogClose } from '@/components/ui/dialog';
+import clsx from 'clsx';
+import { applyBumpPrice } from '@/utils/price';
+import { X } from 'lucide-react';
+import { useCartStore } from '@/components/cart/cartStore';
 
 const QTY_LIMIT = 50000;
 
 export default function AddToCartQuantity({ open, onClose, product, bumpPrice, onCartAddSuccess }) {
-  if (!product) return null;
-  const acf = product.acf || {};
+  // -------- All hooks must be called at the top --------
+  const acf = product?.acf || {};
   const steps = applyBumpPrice(acf.quantity_steps || [], bumpPrice);
 
   const minStep = steps[0] ? parseInt(steps[0].quantity) : 1;
   const [selectedIdx, setSelectedIdx] = useState(1); // Default to second option
-  const [customQty, setCustomQty] = useState("");
+  const [customQty, setCustomQty] = useState('');
   const [error, setError] = useState(null);
+
+  const addItem = useCartStore(s => s.addItem);
 
   // Modal width: 470px
   const sizeWidth = 470;
-
-  const addItem = useCartStore((s) => s.addItem); // <-- NEW
 
   // Compute current selection
   const { quantity, price } = useMemo(() => {
@@ -41,9 +41,12 @@ export default function AddToCartQuantity({ open, onClose, product, bumpPrice, o
     }
   }, [selectedIdx, customQty, steps]);
 
+  // Return early if no product
+  if (!product) return null;
+
   // Validation for custom input
-  const handleCustomQty = (val) => {
-    let newVal = val.replace(/[^0-9]/g, "");
+  const handleCustomQty = val => {
+    let newVal = val.replace(/[^0-9]/g, '');
     if (parseInt(newVal) > QTY_LIMIT) {
       setError(`כמות מקסימלית לרכישה: ${QTY_LIMIT}`);
       newVal = QTY_LIMIT.toString();
@@ -66,20 +69,20 @@ export default function AddToCartQuantity({ open, onClose, product, bumpPrice, o
       price,
       options: {}, // add options if any (for quantity type, usually none)
     });
-    if (typeof window !== "undefined" && window.dataLayer) {
-        window.dataLayer.push({
-            event: "add_to_cart",
-            ecommerce: {
-            items: [
-                {
-                    item_id: product.id,
-                    item_name: product.name,
-                    price,
-                    quantity,
-                },
-            ],
+    if (typeof window !== 'undefined' && window.dataLayer) {
+      window.dataLayer.push({
+        event: 'add_to_cart',
+        ecommerce: {
+          items: [
+            {
+              item_id: product.id,
+              item_name: product.name,
+              price,
+              quantity,
             },
-        });
+          ],
+        },
+      });
     }
     if (onCartAddSuccess) onCartAddSuccess();
     onClose();
@@ -92,15 +95,12 @@ export default function AddToCartQuantity({ open, onClose, product, bumpPrice, o
         style={{
           width: `${sizeWidth}px`,
           minWidth: `${sizeWidth}px`,
-          maxWidth: "100vw",
-          transition: "width 0.2s cubic-bezier(.42,0,.58,1)",
+          maxWidth: '100vw',
+          transition: 'width 0.2s cubic-bezier(.42,0,.58,1)',
         }}
       >
         <DialogClose asChild>
-          <button
-            className="alarnd-close-btn"
-            aria-label="סגור"
-          >
+          <button className="alarnd-close-btn" aria-label="סגור">
             <X className="w-5 h-5" />
           </button>
         </DialogClose>
@@ -108,63 +108,55 @@ export default function AddToCartQuantity({ open, onClose, product, bumpPrice, o
         <form className="p-[30px]">
           <div className="flex flex-col gap-2">
             {/* Custom input option first */}
-            <label
-              className={clsx(
-                "flex justify-between items-center gap-3 p-1 cursor-pointer",
-              )}
-            >
-                <div className="alarnd-single-qty flex-shrink-0">
-              <input
-                type="radio"
-                name="quantity_choice"
-                checked={selectedIdx === 0}
-                onChange={() => setSelectedIdx(0)}
-                className="form-radio mx-2"
-              />
-              <input
-                className="border rounded-lg px-2 py-1 w-24 text-right"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                placeholder="הקלידו כמות…"
-                value={customQty}
-                onChange={(e) => handleCustomQty(e.target.value)}
-                onBlur={() => setError(null)}
-                maxLength={5}
-              />
+            <label className={clsx('flex justify-between items-center gap-3 p-1 cursor-pointer')}>
+              <div className="alarnd-single-qty flex-shrink-0">
+                <input
+                  type="radio"
+                  name="quantity_choice"
+                  checked={selectedIdx === 0}
+                  onChange={() => setSelectedIdx(0)}
+                  className="form-radio mx-2"
+                />
+                <input
+                  className="border rounded-lg px-2 py-1 w-24 text-right"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="הקלידו כמות…"
+                  value={customQty}
+                  onChange={e => handleCustomQty(e.target.value)}
+                  onBlur={() => setError(null)}
+                  maxLength={5}
+                />
               </div>
             </label>
             {/* Preset steps */}
             {steps.map((step, idx) => (
               <label
                 key={idx + 1}
-                className={clsx(
-                  "flex justify-between items-center gap-3 p-1 cursor-pointer",
-                )}
+                className={clsx('flex justify-between items-center gap-3 p-1 cursor-pointer')}
               >
                 <div className="alarnd-single-qty flex-shrink-0">
-                    <input
+                  <input
                     type="radio"
                     name="quantity_choice"
                     checked={selectedIdx === idx + 1}
                     onChange={() => setSelectedIdx(idx + 1)}
                     className="form-radio mx-2"
-                    />
-                    <span className="font-semibold">{step.quantity}</span>
+                  />
+                  <span className="font-semibold">{step.quantity}</span>
                 </div>
                 <div className="alarnd-single-qty flex-1 text-center">
-                    <span className="text-gray-400">
+                  <span className="text-gray-400">
                     {Math.round(parseFloat(step.quantity) * parseFloat(step.amount))}₪
-                    </span>
+                  </span>
                 </div>
                 <div className="alarnd-single-qty flex-shrink-0">
-                    <span className="font-bold">{step.amount} ש"ח ליחידה</span>
+                  <span className="font-bold">{step.amount} ש&quot;ח ליחידה</span>
                 </div>
               </label>
             ))}
           </div>
-          {error && (
-            <div className="text-red-500 text-sm text-center mt-2">{error}</div>
-          )}
+          {error && <div className="text-red-500 text-sm text-center mt-2">{error}</div>}
           <div className="text-center mt-4">
             <button
               type="button"

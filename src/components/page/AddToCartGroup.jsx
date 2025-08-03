@@ -1,13 +1,17 @@
-import { useState, useMemo, useLayoutEffect } from "react";
-import { Dialog, DialogContent, DialogClose } from "@/components/ui/dialog";
-import clsx from "clsx";
-import { applyBumpPrice, applyBumpToRegular } from "@/utils/price";
-import { X } from "lucide-react";
-import { useCartStore } from "@/components/cart/cartStore"; // <-- NEW
+import { useState, useMemo, useLayoutEffect } from 'react';
+import { Dialog, DialogContent, DialogClose } from '@/components/ui/dialog';
+import clsx from 'clsx';
+import { applyBumpPrice, applyBumpToRegular } from '@/utils/price';
+import { X } from 'lucide-react';
+import { useCartStore } from '@/components/cart/cartStore'; // <-- NEW
 
 function getLuminance(hex) {
-  hex = hex.replace(/^#/, "");
-  if (hex.length === 3) hex = hex.split('').map(x => x + x).join('');
+  hex = hex.replace(/^#/, '');
+  if (hex.length === 3)
+    hex = hex
+      .split('')
+      .map(x => x + x)
+      .join('');
   const num = parseInt(hex, 16);
   const r = (num >> 16) & 255;
   const g = (num >> 8) & 255;
@@ -31,9 +35,9 @@ function useResponsiveModalWidth(sizes, minPad = 32) {
       setComputedWidth(Math.min(base, maxWidth));
     }
     updateWidth();
-    window.addEventListener("resize", updateWidth);
-    return () => window.removeEventListener("resize", updateWidth);
-  }, [sizes.length]);
+    window.addEventListener('resize', updateWidth);
+    return () => window.removeEventListener('resize', updateWidth);
+  }, [sizes.length, minPad]); // FIXED: add minPad
 
   return computedWidth;
 }
@@ -50,21 +54,26 @@ function getStepPrice(total, regularPrice, discountSteps = []) {
   return { price, lastStepQty };
 }
 
-export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOpenQuickView, onCartAddSuccess }) {
-  if (!product) return null;
-  const acf = product.acf || {};
-  const sizes = (acf.omit_sizes_from_chart || []).map((s) => s.value);
+export default function AddToCartGroup({
+  open,
+  onClose,
+  product,
+  bumpPrice,
+  onOpenQuickView,
+  onCartAddSuccess,
+}) {
+  // ------ ALL HOOKS AT THE TOP ------
+  const acf = product?.acf || {};
+  const sizes = (acf.omit_sizes_from_chart || []).map(s => s.value);
   const colors = acf.color || [];
-  const regularPrice = applyBumpToRegular(acf.regular_price || product.price || "0", bumpPrice);
+  const regularPrice = applyBumpToRegular(acf.regular_price || product?.price || '0', bumpPrice);
   const discountSteps = applyBumpPrice(acf.discount_steps || [], bumpPrice);
 
   const computedWidth = useResponsiveModalWidth(sizes);
-  const dialogPadding = 100; // 150px left + 150px right
+  const dialogPadding = 100;
   const modalWidth = computedWidth + dialogPadding;
 
-  const [quantities, setQuantities] = useState(() =>
-    colors.map(() => sizes.map(() => ""))
-  );
+  const [quantities, setQuantities] = useState(() => colors.map(() => sizes.map(() => '')));
   const [error, setError] = useState(null);
 
   const { total, stepInfo } = useMemo(() => {
@@ -74,84 +83,80 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
     return { total: t, stepInfo: { price, lastStepQty } };
   }, [quantities, discountSteps, regularPrice]);
 
-  const nextStep = discountSteps.find(
-    (s) => parseInt(s.quantity) > total
-  );
+  const nextStep = discountSteps.find(s => parseInt(s.quantity) > total);
   const unitsToNext =
     nextStep && parseInt(nextStep.quantity) - total > 0
       ? parseInt(nextStep.quantity) - total
       : null;
 
+  const addItem = useCartStore(s => s.addItem);
+
   const handleInput = (colorIdx, sizeIdx, val) => {
-    let newVal = val.replace(/[^0-9]/g, "");
-    if (newVal.length > 1 && newVal[0] === "0") newVal = newVal.replace(/^0+/, "");
+    let newVal = val.replace(/[^0-9]/g, '');
+    if (newVal.length > 1 && newVal[0] === '0') newVal = newVal.replace(/^0+/, '');
     if (parseInt(newVal) > QTY_LIMIT) {
       setError(`כמות מקסימלית לרכישה: ${QTY_LIMIT}`);
       newVal = QTY_LIMIT.toString();
     } else setError(null);
 
-    setQuantities((prev) =>
+    setQuantities(prev =>
       prev.map((row, rIdx) =>
-        rIdx === colorIdx
-          ? row.map((col, cIdx) => (cIdx === sizeIdx ? newVal : col))
-          : row
+        rIdx === colorIdx ? row.map((col, cIdx) => (cIdx === sizeIdx ? newVal : col)) : row
       )
     );
   };
 
-  // --- Zustand cart store logic ---
-  const addItem = useCartStore((s) => s.addItem);
-
   const handleAddToCart = () => {
-  if (total === 0) return;
+    if (total === 0) return;
 
-  colors.forEach((color, rIdx) => {
-    sizes.forEach((size, cIdx) => {
-      const qty = parseInt(quantities[rIdx][cIdx] || 0);
-      if (qty > 0) {
-        addItem({
-          product_id: product.id,
-          name: product.name,
-          thumbnail: product.thumbnail,
-          price: stepInfo.price,
-          quantity: qty,
-          options: {
-            group_type: "Group",
-            color: color.title,
-            color_hex_code: color.color_hex_code,
-            size,
-          },
-        });
+    colors.forEach((color, rIdx) => {
+      sizes.forEach((size, cIdx) => {
+        const qty = parseInt(quantities[rIdx][cIdx] || 0);
+        if (qty > 0) {
+          addItem({
+            product_id: product.id,
+            name: product.name,
+            thumbnail: product.thumbnail,
+            price: stepInfo.price,
+            quantity: qty,
+            options: {
+              group_type: 'Group',
+              color: color.title,
+              color_hex_code: color.color_hex_code,
+              size,
+            },
+          });
 
-        // GTM event for each unique color/size/qty
-        if (typeof window !== "undefined" && window.dataLayer) {
+          // GTM event for each unique color/size/qty
+          if (typeof window !== 'undefined' && window.dataLayer) {
             window.dataLayer.push({
-            event: "add_to_cart",
-            ecommerce: {
+              event: 'add_to_cart',
+              ecommerce: {
                 items: [
-                {
+                  {
                     item_id: product.id,
                     item_name: product.name,
                     price: stepInfo.price,
                     quantity: qty,
                     item_color: color.title,
                     item_size: size,
-                },
+                  },
                 ],
-            },
+              },
             });
+          }
         }
-
-      }
+      });
     });
-  });
 
-  if (onCartAddSuccess) {
-    console.log('onCartAddSuccess: triggered');
-    onCartAddSuccess();
-  }
-  onClose();
-};
+    if (onCartAddSuccess) {
+      onCartAddSuccess();
+    }
+    onClose();
+  };
+
+  // ------- Hooks are always at the top, so now you can return null if no product ------
+  if (!product) return null;
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -160,9 +165,9 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
         style={{
           width: `${modalWidth}px`,
           minWidth: `600px`,
-          maxWidth: "100vw",
-          padding: "20px 50px 30px",
-          transition: "width 0.2s cubic-bezier(.42,0,.58,1)",
+          maxWidth: '100vw',
+          padding: '20px 50px 30px',
+          transition: 'width 0.2s cubic-bezier(.42,0,.58,1)',
         }}
       >
         <DialogClose asChild>
@@ -180,14 +185,14 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
           {/* Grouped Inputs */}
           <div
             className={clsx(
-              "overflow-x-auto overflow-y-auto rounded-lg bg-white mb-4",
-              "scrollbar-thin allaround-scrollbar"
+              'overflow-x-auto overflow-y-auto rounded-lg bg-white mb-4',
+              'scrollbar-thin allaround-scrollbar'
             )}
             style={{
               width: `${computedWidth}px`,
               minWidth: `300px`,
-              maxHeight: "357px",
-              transition: "width 0.2s cubic-bezier(.42,0,.58,1)",
+              maxHeight: '357px',
+              transition: 'width 0.2s cubic-bezier(.42,0,.58,1)',
             }}
           >
             {/* Header */}
@@ -209,27 +214,23 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
             {/* Body */}
             <div className="w-full">
               {colors.map((color, rIdx) => {
-                const bg = color.color_hex_code || "#fff";
+                const bg = color.color_hex_code || '#fff';
                 const dark = isDarkColor(bg);
                 return (
-                  <div
-                    key={rIdx}
-                    className="flex items-center"
-                    style={{ borderColor: "#eee" }}
-                  >
+                  <div key={rIdx} className="flex items-center" style={{ borderColor: '#eee' }}>
                     {/* Color badge */}
                     <div className="w-[110px] min-w-[110px] px-2 flex items-center">
                       <span
                         className={clsx(
-                          "inline-block border",
-                          "text-[16px] font-medium px-[10px] leading-[2] py-[5px] rounded-[5px]",
-                          "border-[#ccc]",
-                          dark ? "text-white" : "text-[#222]"
+                          'inline-block border',
+                          'text-[16px] font-medium px-[10px] leading-[2] py-[5px] rounded-[5px]',
+                          'border-[#ccc]',
+                          dark ? 'text-white' : 'text-[#222]'
                         )}
                         style={{
                           background: bg,
-                          width: "100%",
-                          textAlign: "center",
+                          width: '100%',
+                          textAlign: 'center',
                         }}
                       >
                         {color.title}
@@ -241,12 +242,12 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
                         <div key={cIdx} className="block flex-1 py-1.5">
                           <input
                             className={clsx(
-                              "text-center outline-none",
-                              "border border-[#ccc] rounded-[6px] bg-white text-[#222222]",
-                              "text-sm leading-[2] py-[5px] px-[6px]",
-                              "w-full",
-                              "focus:ring focus:ring-skyblue",
-                              error && "border-red-400"
+                              'text-center outline-none',
+                              'border border-[#ccc] rounded-[6px] bg-white text-[#222222]',
+                              'text-sm leading-[2] py-[5px] px-[6px]',
+                              'w-full',
+                              'focus:ring focus:ring-skyblue',
+                              error && 'border-red-400'
                             )}
                             style={{
                               boxShadow: `0px 0px 0px 1px ${bg}`,
@@ -255,9 +256,7 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
                             pattern="[0-9]*"
                             maxLength={3}
                             value={quantities[rIdx][cIdx]}
-                            onChange={(e) =>
-                              handleInput(rIdx, cIdx, e.target.value)
-                            }
+                            onChange={e => handleInput(rIdx, cIdx, e.target.value)}
                             onBlur={() => setError(null)}
                             autoComplete="off"
                           />
@@ -277,14 +276,18 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
               <div className="text-red-500 text-sm text-center mb-2">{error}</div>
             ) : unitsToNext ? (
               <div className="text-pink text-xl pt-[10px] text-center mb-2 flex flex-col">
-                <span>הוסיפו {unitsToNext} פריטים נוספים להורדת המחיר ל-{" "}
-                  <b>{nextStep.amount || regularPrice}₪</b> ליחידה</span>
+                <span>
+                  הוסיפו {unitsToNext} פריטים נוספים להורדת המחיר ל-{' '}
+                  <b>{nextStep.amount || regularPrice}₪</b> ליחידה
+                </span>
                 <span className="line-through">(כרגע {stepInfo.price}₪)</span>
               </div>
-            ) : total > 0 && (
-              <div className="text-green-600 text-center mb-2">
-                {`מחיר ליחידה: ${stepInfo.price}₪`}
-              </div>
+            ) : (
+              total > 0 && (
+                <div className="text-green-600 text-center mb-2">
+                  {`מחיר ליחידה: ${stepInfo.price}₪`}
+                </div>
+              )
             )}
 
             <div className="flex justify-between items-center">
@@ -303,14 +306,14 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
                     <span>
                       <span className="alarnd__wc-price">{stepInfo.price}</span>
                       <span className="woocommerce-Price-currencySymbol">₪</span>
-                    </span>{" "}
-                    / {acf.first_line_keyword || "תיק"}
+                    </span>{' '}
+                    / {acf.first_line_keyword || 'תיק'}
                   </p>
                   <p>
-                    סה"כ יחידות: <span className="alarnd__total_qty">{total}</span>
+                    סה&quot;כ יחידות: <span className="alarnd__total_qty">{total}</span>
                   </p>
                   <span className="alarnd--total-price">
-                    סה"כ:{" "}
+                    סה&quot;כ:{' '}
                     <span>
                       <span className="alarnd__wc-price">{total * stepInfo.price}</span>
                       <span className="woocommerce-Price-currencySymbol">₪</span>

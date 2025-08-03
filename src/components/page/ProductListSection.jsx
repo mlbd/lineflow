@@ -156,14 +156,14 @@ export default function ProductListSection({ wpUrl, pageId, bumpPrice, onCartAdd
                 onClick={() => handleOpenModal(p)}
               >
                 <div className="relative w-full h-[200px] bg-bglighter mb-3">
-                <Image
+                  <Image
                     src={p.thumbnail}
                     alt={p.name}
                     fill
                     className="object-contain"
                     loading="lazy"
                     unoptimized
-                />
+                  />
                 </div>
               </div>
               <div className="w-full p-7 flex flex-col justify-center items-center flex-grow">
