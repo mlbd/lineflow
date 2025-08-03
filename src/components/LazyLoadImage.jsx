@@ -1,15 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import Image from "next/image";
+import Image from 'next/image';
 
 // Skeleton component with wave animation
 const ImageSkeleton = ({ className, aspectRatio = '16/9' }) => {
   return (
-    <div 
-      className={cn(
-        "relative overflow-hidden bg-gray-200 rounded",
-        className
-      )}
+    <div
+      className={cn('relative overflow-hidden bg-gray-200 rounded', className)}
       style={{ aspectRatio }}
     >
       <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/60 to-transparent"></div>
@@ -25,15 +22,15 @@ const ImageSkeleton = ({ className, aspectRatio = '16/9' }) => {
 };
 
 // Enhanced Lazy loading image component
-const LazyLoadImage = ({ 
-  src, 
-  alt, 
+const LazyLoadImage = ({
+  src,
+  alt,
   className,
   aspectRatio = '16/9',
   onLoad,
   onError,
   forceReload = false,
-  ...props 
+  ...props
 }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isError, setIsError] = useState(false);
@@ -50,12 +47,12 @@ const LazyLoadImage = ({
       setIsLoaded(false);
       setIsError(false);
       setCurrentSrc(src);
-      
+
       // Add a small delay to show the reloading state
       const timer = setTimeout(() => {
         setIsReloading(false);
       }, 100);
-      
+
       return () => clearTimeout(timer);
     }
   }, [src, currentSrc]);
@@ -85,22 +82,22 @@ const LazyLoadImage = ({
       setIsLoaded(false);
       setIsError(false);
       setIsReloading(true);
-      
+
       const timer = setTimeout(() => {
         setIsReloading(false);
       }, 100);
-      
+
       return () => clearTimeout(timer);
     }
   }, [forceReload, isLoaded]);
 
-  const handleLoad = (e) => {
+  const handleLoad = e => {
     setIsLoaded(true);
     setIsReloading(false);
     onLoad?.(e);
   };
 
-  const handleError = (e) => {
+  const handleError = e => {
     setIsError(true);
     setIsReloading(false);
     onError?.(e);
@@ -111,15 +108,10 @@ const LazyLoadImage = ({
   return (
     <div
       ref={containerRef}
-      className={cn(
-        "relative overflow-hidden w-full",
-        showSkeleton && "min-h-[200px]"
-      )}
+      className={cn('relative overflow-hidden w-full', showSkeleton && 'min-h-[200px]')}
     >
       {/* Skeleton loader */}
-      {showSkeleton && (
-        <div className="skeleton-loader"></div>
-      )}
+      {showSkeleton && <div className="skeleton-loader"></div>}
 
       {/* Actual image */}
       {isVisible && !isReloading && (
@@ -129,8 +121,8 @@ const LazyLoadImage = ({
           alt={alt}
           className={cn(
             className,
-            "transition-opacity duration-300",
-            isLoaded ? "opacity-100" : "opacity-0 absolute inset-0"
+            'transition-opacity duration-300',
+            isLoaded ? 'opacity-100' : 'opacity-0 absolute inset-0'
           )}
           onLoad={handleLoad}
           onError={handleError}
@@ -140,17 +132,14 @@ const LazyLoadImage = ({
 
       {/* Error fallback */}
       {isError && !isReloading && (
-        <div 
-          className={cn(
-            "flex items-center justify-center bg-gray-100 text-gray-500",
-            className
-          )}
+        <div
+          className={cn('flex items-center justify-center bg-gray-100 text-gray-500', className)}
           style={{ aspectRatio }}
         >
           <span className="text-sm">Failed to load image</span>
         </div>
       )}
-      
+
       {/* Reloading indicator */}
       {isReloading && (
         <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">

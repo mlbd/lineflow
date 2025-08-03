@@ -14,18 +14,18 @@ export async function GET(request) {
     // Check if force refresh is requested
     const { searchParams } = new URL(request.url);
     const forceRefresh = searchParams.get('refresh') === 'true';
-    
+
     // Get logos with caching logic
     const logos = await LogosService.getLogos(forceRefresh);
-    
+
     // Get database stats for debugging
     const stats = await LogosService.getStats();
-    
+
     return NextResponse.json({
       logos,
       stats,
-      source: forceRefresh ? 'cloudinary' : (logos.length > 0 ? 'database' : 'cloudinary'),
-      timestamp: new Date().toISOString()
+      source: forceRefresh ? 'cloudinary' : logos.length > 0 ? 'database' : 'cloudinary',
+      timestamp: new Date().toISOString(),
     });
   } catch (err) {
     console.error('[Logos API Error]', err);
@@ -43,11 +43,11 @@ export async function GET(request) {
 export async function DELETE() {
   try {
     const clearedCount = await LogosService.clearLogosFromDB();
-    
+
     return NextResponse.json({
       success: true,
       message: `Cache cleared successfully. Removed ${clearedCount} logos.`,
-      clearedCount
+      clearedCount,
     });
   } catch (err) {
     console.error('[Clear Cache Error]', err);

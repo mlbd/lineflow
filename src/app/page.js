@@ -1,14 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import {
-  Image,
-  Plus,
-  Trash2,
-  ArrowsUpFromLine,
-  Upload,
-  Grid3X3,
-} from 'lucide-react';
+import { Image, Plus, Trash2, ArrowsUpFromLine, Upload, Grid3X3 } from 'lucide-react';
+import { sendGTMEvent } from '@next/third-parties/google'
 
 import ImageCanvas from '@/components/ImageCanvas';
 import MappingList from '@/components/MappingList';
@@ -17,6 +11,7 @@ import EditMappingModal from '@/components/EditMappingModal';
 import EditImagePanel from '@/components/EditImagePanel';
 import EditLogoPanel from '@/components/EditLogoPanel';
 import UploadImageModal from '@/components/UploadImageModal';
+import { Button } from '@/components/ui/button';
 
 function ToolButton({ icon: Icon, label, onClick, className = '' }) {
   return (
@@ -52,8 +47,8 @@ export default function HomePage() {
 
   // Memoize handler because it's used in useEffect and passed to children
   const handleDelete = useCallback(
-    (id) => {
-      setMappings((prev) => prev.filter((m) => m.id !== id));
+    id => {
+      setMappings(prev => prev.filter(m => m.id !== id));
       if (selectedMapping?.id === id) setSelectedMapping(null);
     },
     [selectedMapping]
@@ -61,8 +56,8 @@ export default function HomePage() {
 
   // Memoize other handlers used as props or inside effects
   const handleEdit = useCallback(
-    (id) => {
-      const mapping = mappings.find((m) => m.id === id);
+    id => {
+      const mapping = mappings.find(m => m.id === id);
       if (mapping) {
         setSelectedMapping(mapping);
         setEditOpen(true);
@@ -108,7 +103,7 @@ export default function HomePage() {
 
   // Delete mapping by keyboard shortcut
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    const handleKeyDown = e => {
       if ((e.key === 'Delete' || e.key === 'Del') && selectedMapping) {
         handleDelete(selectedMapping.id);
       }
@@ -126,11 +121,15 @@ export default function HomePage() {
             Placement Editor
           </h1>
 
+          <div>
+           <Button onClick={() => sendGTMEvent({ event: 'buttonClicked', value: 'xyz' })}>sendGTMEvent</Button>
+          </div>
+
           <MappingList
             mappings={mappings}
             selectedId={selectedMapping?.id}
-            onSelect={(id) => {
-              const mapping = mappings.find((m) => m.id === id);
+            onSelect={id => {
+              const mapping = mappings.find(m => m.id === id);
               if (mapping) setSelectedMapping(mapping);
             }}
             onDelete={handleDelete}
@@ -157,7 +156,7 @@ export default function HomePage() {
               onClick={() => {
                 setShowLogoPanel(false);
                 setShowUploadModal(false);
-                setShowEditPanel((prev) => !prev);
+                setShowEditPanel(prev => !prev);
               }}
             />
             <ToolButton
@@ -166,7 +165,7 @@ export default function HomePage() {
               onClick={() => {
                 setShowEditPanel(false);
                 setShowUploadModal(false);
-                setShowLogoPanel((prev) => !prev);
+                setShowLogoPanel(prev => !prev);
               }}
             />
             <ToolButton
@@ -185,11 +184,7 @@ export default function HomePage() {
               className="bg-blue-50 text-blue-600 hover:bg-blue-100"
             />
             {hasFuturePlan && (
-              <ToolButton
-                icon={ArrowsUpFromLine}
-                label="Update meta"
-                onClick={handleUpdateMeta}
-              />
+              <ToolButton icon={ArrowsUpFromLine} label="Update meta" onClick={handleUpdateMeta} />
             )}
             <ToolButton
               icon={Trash2}
@@ -221,8 +216,8 @@ export default function HomePage() {
         mapping={selectedMapping}
         open={editOpen}
         onClose={() => setEditOpen(false)}
-        onSave={(updated) => {
-          setMappings((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+        onSave={updated => {
+          setMappings(prev => prev.map(m => (m.id === updated.id ? updated : m)));
           setSelectedMapping(updated);
         }}
       />
@@ -230,13 +225,13 @@ export default function HomePage() {
       <EditImagePanel
         open={showEditPanel}
         onClose={() => setShowEditPanel(false)}
-        onSelect={(url) => setImageUrl(url)}
+        onSelect={url => setImageUrl(url)}
       />
 
       <EditLogoPanel
         open={showLogoPanel}
         onClose={() => setShowLogoPanel(false)}
-        onSelect={(publicId) => {
+        onSelect={publicId => {
           setLogoId(publicId);
           setShowLogoPanel(false);
         }}

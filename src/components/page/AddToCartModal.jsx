@@ -1,12 +1,12 @@
-import AddToCartGroup from "./AddToCartGroup";
-import AddToCartQuantity from "./AddToCartQuantity";
+import AddToCartGroup from './AddToCartGroup';
+import AddToCartQuantity from './AddToCartQuantity';
 
 // ⬇️ Added onOpenQuickView
-export default function AddToCartModal({ open, onClose, product, bumpPrice, onOpenQuickView }) {
+export default function AddToCartModal({ open, onClose, product, bumpPrice, onOpenQuickView, onCartAddSuccess }) {
   if (!product) return null;
   const groupType = product.acf?.group_type;
   if (!open) return null;
-  if (groupType === "Group") {
+  if (groupType === 'Group') {
     return (
       <AddToCartGroup
         open={open}
@@ -14,17 +14,13 @@ export default function AddToCartModal({ open, onClose, product, bumpPrice, onOp
         product={product}
         bumpPrice={bumpPrice}
         onOpenQuickView={onOpenQuickView}
+        onCartAddSuccess={onCartAddSuccess}
       />
     );
   }
-  if (groupType === "Quantity") {
+  if (groupType === 'Quantity') {
     return (
-      <AddToCartQuantity
-        open={open}
-        onClose={onClose}
-        product={product}
-        bumpPrice={bumpPrice}
-      />
+      <AddToCartQuantity open={open} onClose={onClose} product={product} bumpPrice={bumpPrice} onCartAddSuccess={onCartAddSuccess} />
     );
   }
   return null;

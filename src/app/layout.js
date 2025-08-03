@@ -1,7 +1,8 @@
 import { Heebo } from 'next/font/google';
+import { GoogleTagManager } from '@next/third-parties/google';
 import './globals.css';
 
-const heebo = Heebo({ subsets: ["latin"], weight: ["400", "500", "700"] });
+const heebo = Heebo({ subsets: ['latin'], weight: ['400', '500', '700'] });
 
 export const metadata = {
   title: 'Placement Editor | Mockup Generator for AllAround',
@@ -14,8 +15,11 @@ export default function RootLayout({ children }) {
   const isRTL = true; // Replace with language/company logic as needed
 
   return (
-    <html lang="en" dir={isRTL ? "rtl" : "ltr"}>
-      <body className={`${heebo.className} antialiased`}>{children}</body>
+    <html lang="en" dir={isRTL ? 'rtl' : 'ltr'}>
+      <body className={`${heebo.className} antialiased`}>
+        <GoogleTagManager gtmId={process.env.NEXT_PUBLIC_GTM_ID} />
+        {children}
+      </body>
     </html>
   );
 }

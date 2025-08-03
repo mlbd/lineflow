@@ -8,9 +8,7 @@ export class LogosService {
    */
   static async getLogosFromDB() {
     try {
-      const result = await pool.query(
-        'SELECT * FROM logos ORDER BY created_at DESC'
-      );
+      const result = await pool.query('SELECT * FROM logos ORDER BY created_at DESC');
       return result.rows;
     } catch (error) {
       console.error('Error fetching logos from database:', error);
@@ -25,7 +23,7 @@ export class LogosService {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      
+
       for (const logo of logos) {
         await client.query(
           `INSERT INTO logos (public_id, name, url, width, height, format, bytes, folder)
@@ -48,11 +46,11 @@ export class LogosService {
             logo.height,
             logo.format,
             logo.bytes,
-            logo.folder || ''
+            logo.folder || '',
           ]
         );
       }
-      
+
       await client.query('COMMIT');
       console.log(`Saved ${logos.length} logos to database`);
     } catch (error) {
@@ -90,7 +88,7 @@ export class LogosService {
         .execute();
 
       const resources = result.resources || [];
-      
+
       return resources.map(r => ({
         public_id: r.public_id,
         name: r.public_id.split('/').pop(),
@@ -120,7 +118,7 @@ export class LogosService {
 
       // Try to get logos from database first
       const dbLogos = await this.getLogosFromDB();
-      
+
       if (dbLogos.length > 0 && !forceRefresh) {
         console.log(`Retrieved ${dbLogos.length} logos from database cache`);
         return dbLogos;
@@ -129,12 +127,12 @@ export class LogosService {
       // If no logos in database or force refresh, fetch from Cloudinary
       console.log('Fetching logos from Cloudinary...');
       const cloudinaryLogos = await this.fetchLogosFromCloudinary();
-      
+
       // Save to database for future use
       if (cloudinaryLogos.length > 0) {
         await this.saveLogosToDB(cloudinaryLogos);
       }
-      
+
       return cloudinaryLogos;
     } catch (error) {
       console.error('Error in getLogos:', error);
@@ -154,7 +152,7 @@ export class LogosService {
           MAX(updated_at) as latest_update
         FROM logos
       `);
-      
+
       return result.rows[0];
     } catch (error) {
       console.error('Error getting database stats:', error);

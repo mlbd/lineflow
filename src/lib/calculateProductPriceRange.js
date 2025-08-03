@@ -2,9 +2,7 @@ export function applyPercentageIncrease(steps, percentage) {
   if (!Array.isArray(steps)) return steps;
   return steps.map(step => ({
     ...step,
-    amount: Math.round(
-      Number(step.amount) + (Number(step.amount) * (Number(percentage) / 100))
-    )
+    amount: Math.round(Number(step.amount) + Number(step.amount) * (Number(percentage) / 100)),
   }));
 }
 
@@ -15,10 +13,7 @@ export function formatPrice(price) {
 
 export function calculateProductPriceRange(product) {
   const acf = product.acf || {};
-  let {
-    regular_price,
-    bump_price
-  } = product;
+  let { regular_price, bump_price } = product;
 
   let discount_steps = acf.discount_steps || [];
   let quantity_steps = acf.quantity_steps || [];
@@ -29,7 +24,8 @@ export function calculateProductPriceRange(product) {
   if (bump_price) {
     if (discount_steps) discount_steps = applyPercentageIncrease(discount_steps, bump_price);
     if (quantity_steps) quantity_steps = applyPercentageIncrease(quantity_steps, bump_price);
-    if (regular_price) regular_price = Math.round(regular_price + (regular_price * (Number(bump_price) / 100)));
+    if (regular_price)
+      regular_price = Math.round(regular_price + regular_price * (Number(bump_price) / 100));
   }
 
   let priceArr = [];

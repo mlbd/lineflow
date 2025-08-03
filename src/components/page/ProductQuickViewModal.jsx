@@ -1,14 +1,20 @@
-import { useState, useEffect } from "react";
-import Image from "next/image";
-import { Dialog, DialogContent, DialogTitle, DialogClose, DialogDescription } from "@/components/ui/dialog";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useState, useEffect } from 'react';
+import Image from 'next/image';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogClose,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 // Helper to render the price chart (either discount_steps or quantity_steps)
 function PriceChart({ steps }) {
   if (!Array.isArray(steps) || steps.length === 0) return null;
 
-  const getRange = (i) => {
+  const getRange = i => {
     const thisQty = Number(steps[i]?.quantity);
     const nextQty = steps[i + 1] ? Number(steps[i + 1].quantity) : null;
     if (i === 0 && nextQty !== null) {
@@ -28,14 +34,16 @@ function PriceChart({ steps }) {
           {steps.map((step, i) => {
             const rowIdx = Math.floor(i / 2);
             const colIdx = i % 2;
-            const checkerBg = rowIdx % 2 === colIdx % 2 ? "bg-bglight" : "";
+            const checkerBg = rowIdx % 2 === colIdx % 2 ? 'bg-bglight' : '';
 
             return (
               <div
                 key={i}
                 className={`flex flex-col items-center border-b last:border-b-0 sm:border-r px-4 py-3 ${checkerBg}`}
               >
-                <div className="text-lg font-bold text-primary">{Number(step.amount).toFixed(2)}₪</div>
+                <div className="text-lg font-bold text-primary">
+                  {Number(step.amount).toFixed(2)}₪
+                </div>
                 <div className="text-xs text-gray-500 mt-1">{getRange(i)}</div>
               </div>
             );
@@ -51,22 +59,23 @@ export default function ProductQuickViewModal({ open, onClose, product, onAddToC
   const acf = product?.acf || {};
 
   let steps = [];
-  if (acf.group_type === "Group" && Array.isArray(acf.discount_steps)) {
+  if (acf.group_type === 'Group' && Array.isArray(acf.discount_steps)) {
     steps = acf.discount_steps;
-  } else if (acf.group_type === "Quantity" && Array.isArray(acf.quantity_steps)) {
+  } else if (acf.group_type === 'Quantity' && Array.isArray(acf.quantity_steps)) {
     steps = acf.quantity_steps;
   }
 
-  const hasSlider = acf.group_type === "Group" && Array.isArray(acf.color) && acf.color.length > 0;
+  const hasSlider = acf.group_type === 'Group' && Array.isArray(acf.color) && acf.color.length > 0;
   const [sliderIdx, setSliderIdx] = useState(0);
 
-  const handleDotClick = (idx) => setSliderIdx(idx);
-  const handlePrev = () => setSliderIdx((sliderIdx - 1 + (acf.color?.length || 1)) % (acf.color?.length || 1));
+  const handleDotClick = idx => setSliderIdx(idx);
+  const handlePrev = () =>
+    setSliderIdx((sliderIdx - 1 + (acf.color?.length || 1)) % (acf.color?.length || 1));
   const handleNext = () => setSliderIdx((sliderIdx + 1) % (acf.color?.length || 1));
 
   useEffect(() => {
     if (open && hasSlider) {
-      acf.color.forEach((clr) => {
+      acf.color.forEach(clr => {
         if (clr.thumbnail?.url) {
           const img = new window.Image();
           img.src = clr.thumbnail.url;
@@ -93,38 +102,46 @@ export default function ProductQuickViewModal({ open, onClose, product, onAddToC
           </button>
         </DialogClose>
         <div className="flex items-center justify-center w-full pt-8 pb-2">
-          <DialogTitle className="text-2xl font-bold text-deepblue mb-2">{product?.name}</DialogTitle>
+          <DialogTitle className="text-2xl font-bold text-deepblue mb-2">
+            {product?.name}
+          </DialogTitle>
         </div>
         <div className="flex flex-row w-full pb-8" style={{ minHeight: 360 }}>
           {/* Left column */}
-          <div className="flex flex-col justify-start px-[35px] pt-2 pb-8" style={{ flexBasis: "38%" }}>
+          <div
+            className="flex flex-col justify-start px-[35px] pt-2 pb-8"
+            style={{ flexBasis: '38%' }}
+          >
             <DialogDescription className="prose prose-sm max-w-none mb-4 text-primary">
-                {product?.acf?.pricing_description
+              {product?.acf?.pricing_description
                 ? product.acf.pricing_description.replace(/<[^>]+>/g, '')
-                : "פרטי מוצר"}
+                : 'פרטי מוצר'}
             </DialogDescription>
             <PriceChart steps={steps} />
             <div>
-                <button
+              <button
                 className="alarnd-btn mt-5 bg-primary text-white"
                 onClick={() => {
-                    if (onClose) onClose(); // Close product quick view modal
-                    if (onAddToCart) onAddToCart(); // Open add to cart modal
+                  if (onClose) onClose(); // Close product quick view modal
+                  if (onAddToCart) onAddToCart(); // Open add to cart modal
                 }}
-                >
+              >
                 הוסיפו לעגלה
-                </button>
+              </button>
             </div>
           </div>
           {/* Right column */}
-          <div className="flex flex-col justify-center items-center relative" style={{ flexBasis: "62%" }}>
+          <div
+            className="flex flex-col justify-center items-center relative"
+            style={{ flexBasis: '62%' }}
+          >
             {hasSlider ? (
               <>
                 {/* Slick-like image */}
                 <div className="flex items-center justify-center w-full" style={{ height: 310 }}>
                   <Image
                     src={acf.color[sliderIdx]?.thumbnail?.url}
-                    alt={acf.color[sliderIdx]?.title || product?.name || "Product"}
+                    alt={acf.color[sliderIdx]?.title || product?.name || 'Product'}
                     width={340}
                     height={300}
                     className="max-h-[300px] max-w-full object-contain rounded-xl shadow"
@@ -157,7 +174,7 @@ export default function ProductQuickViewModal({ open, onClose, product, onAddToC
                       key={idx}
                       onClick={() => handleDotClick(idx)}
                       className={`w-[20px] h-[20px] rounded-[7px] border-2 cursor-pointer shadow-[0_0_0_2px_white,0_0_0_3px_#cccccc] transition-all duration-150
-                        ${sliderIdx === idx ? "ring-2 ring-skyblue" : ""}`}
+                        ${sliderIdx === idx ? 'ring-2 ring-skyblue' : ''}`}
                       style={{ background: clr.color_hex_code }}
                       title={clr.title}
                     />

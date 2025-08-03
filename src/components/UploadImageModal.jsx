@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Upload, X, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
-import Image from "next/image";
+import Image from 'next/image';
 
 const UploadImageModal = ({ open, onClose, onSelect }) => {
   const [isDragging, setIsDragging] = useState(false);

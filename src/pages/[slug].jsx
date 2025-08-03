@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { GoogleTagManager } from '@next/third-parties/google'
 import Head from 'next/head';
 import CustomLoading from '@/components/CustomLoading';
 import CircleReveal from '@/components/CircleReveal';
@@ -7,6 +8,9 @@ import TopBar from '@/components/page/TopBar';
 import HeroSection from '@/components/page/HeroSection';
 import InfoBoxSection from '@/components/page/InfoBoxSection';
 import ProductListSection from '@/components/page/ProductListSection';
+import CartPage from '@/components/cart/CartPage';
+
+import Script from 'next/script';
 
 const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
 
@@ -30,11 +34,13 @@ export default function LandingPage({ slug }) {
 
   const [bumpPrice, setBumpPrice] = useState(null);
 
+  const cartSectionRef = useRef(null);
+
   // SEO data - Initialize with static loading data
   const [seoData, setSeoData] = useState({
-    title: "The mini site is loading...",
-    description: "Please wait while we load your personalized mini site experience.",
-    image: null
+    title: 'The mini site is loading...',
+    description: 'Please wait while we load your personalized mini site experience.',
+    image: null,
   });
 
   useEffect(() => {
@@ -59,8 +65,11 @@ export default function LandingPage({ slug }) {
         // Set SEO data
         setSeoData({
           title: data.meta.seo_title || companyData.name || `${slug} - Company Page`,
-          description: data.meta.seo_description || companyData.description || `Discover ${companyData.name} and explore our products.`,
-          image: data.meta.seo_image?.url || companyData.logo || null
+          description:
+            data.meta.seo_description ||
+            companyData.description ||
+            `Discover ${companyData.name} and explore our products.`,
+          image: data.meta.seo_image?.url || companyData.logo || null,
         });
 
         setError(false);
@@ -70,7 +79,7 @@ export default function LandingPage({ slug }) {
         setSeoData({
           title: `${slug} - Page Not Found`,
           description: 'The requested page could not be found.',
-          image: null
+          image: null,
         });
       } finally {
         setDataLoaded(true);
@@ -78,6 +87,12 @@ export default function LandingPage({ slug }) {
     }
     fetchData();
   }, [slug]);
+
+  const handleScrollToCart = () => {
+    if (cartSectionRef.current) {
+      cartSectionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
 
   if (!dataLoaded) {
     return (
@@ -93,7 +108,7 @@ export default function LandingPage({ slug }) {
   }
 
   if (!animationDone) return <CircleReveal onFinish={() => setAnimationDone(true)} />;
-  
+
   if (error) {
     return (
       <>
@@ -114,31 +129,39 @@ export default function LandingPage({ slug }) {
       <Head>
         <title>{seoData.title}</title>
         <meta name="description" content={seoData.description} />
-        
+
         {/* Open Graph / Facebook */}
         <meta property="og:type" content="website" />
         <meta property="og:title" content={seoData.title} />
         <meta property="og:description" content={seoData.description} />
         {seoData.image && <meta property="og:image" content={seoData.image} />}
-        
+
         {/* Twitter */}
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={seoData.title} />
         <meta name="twitter:description" content={seoData.description} />
         {seoData.image && <meta name="twitter:image" content={seoData.image} />}
-        
+
         {/* Additional SEO */}
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="canonical" href={`${process.env.NEXT_PUBLIC_SITE_URL || ''}/${slug}`} />
       </Head>
-      
+
+      <GoogleTagManager gtmId={process.env.NEXT_PUBLIC_GTM_ID} />
+
       <div className="min-h-screen bg-gradient-to-b from-[#f7f7f7] to-[#fff] flex flex-col px-0 py-0">
         <TopBar wpUrl={WP_URL} />
         <main className="alrndr-hero">
           <HeroSection company={company} />
           <InfoBoxSection />
-          <ProductListSection wpUrl={WP_URL} pageId={pageId} bumpPrice={bumpPrice} />
-          {/* TODO: Cart, etc */}
+          <ProductListSection wpUrl={WP_URL} pageId={pageId} bumpPrice={bumpPrice} onCartAddSuccess={handleScrollToCart} />
+          {/* Cart section - always visible, under product list */}
+          <div 
+            className="mt-16 max-w-[900px] mx-auto w-full"
+            ref={cartSectionRef}
+          >
+            <CartPage />
+          </div>
         </main>
       </div>
     </>

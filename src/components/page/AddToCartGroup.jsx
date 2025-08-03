@@ -1,8 +1,9 @@
 import { useState, useMemo, useLayoutEffect } from "react";
-import { Dialog, DialogContent, DialogTitle, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogClose } from "@/components/ui/dialog";
 import clsx from "clsx";
 import { applyBumpPrice, applyBumpToRegular } from "@/utils/price";
 import { X } from "lucide-react";
+import { useCartStore } from "@/components/cart/cartStore"; // <-- NEW
 
 function getLuminance(hex) {
   hex = hex.replace(/^#/, "");
@@ -32,7 +33,7 @@ function useResponsiveModalWidth(sizes, minPad = 32) {
     updateWidth();
     window.addEventListener("resize", updateWidth);
     return () => window.removeEventListener("resize", updateWidth);
-  }, [sizes.length, minPad]); // FIXED: include minPad
+  }, [sizes.length]);
 
   return computedWidth;
 }
@@ -49,17 +50,16 @@ function getStepPrice(total, regularPrice, discountSteps = []) {
   return { price, lastStepQty };
 }
 
-export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOpenQuickView  }) {
-  // ---------- ALL HOOKS ALWAYS HERE, TOP LEVEL ----------
-  // If no product, still call all hooks!
-  const acf = product?.acf || {};
+export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOpenQuickView, onCartAddSuccess }) {
+  if (!product) return null;
+  const acf = product.acf || {};
   const sizes = (acf.omit_sizes_from_chart || []).map((s) => s.value);
   const colors = acf.color || [];
-  const regularPrice = applyBumpToRegular(acf.regular_price || product?.price || "0", bumpPrice);
+  const regularPrice = applyBumpToRegular(acf.regular_price || product.price || "0", bumpPrice);
   const discountSteps = applyBumpPrice(acf.discount_steps || [], bumpPrice);
 
   const computedWidth = useResponsiveModalWidth(sizes);
-  const dialogPadding = 100;
+  const dialogPadding = 100; // 150px left + 150px right
   const modalWidth = computedWidth + dialogPadding;
 
   const [quantities, setQuantities] = useState(() =>
@@ -99,8 +99,59 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
     );
   };
 
-  // ---------- EARLY RETURN AFTER HOOKS ----------
-  if (!product) return null;
+  // --- Zustand cart store logic ---
+  const addItem = useCartStore((s) => s.addItem);
+
+  const handleAddToCart = () => {
+  if (total === 0) return;
+
+  colors.forEach((color, rIdx) => {
+    sizes.forEach((size, cIdx) => {
+      const qty = parseInt(quantities[rIdx][cIdx] || 0);
+      if (qty > 0) {
+        addItem({
+          product_id: product.id,
+          name: product.name,
+          thumbnail: product.thumbnail,
+          price: stepInfo.price,
+          quantity: qty,
+          options: {
+            group_type: "Group",
+            color: color.title,
+            color_hex_code: color.color_hex_code,
+            size,
+          },
+        });
+
+        // GTM event for each unique color/size/qty
+        if (typeof window !== "undefined" && window.dataLayer) {
+            window.dataLayer.push({
+            event: "add_to_cart",
+            ecommerce: {
+                items: [
+                {
+                    item_id: product.id,
+                    item_name: product.name,
+                    price: stepInfo.price,
+                    quantity: qty,
+                    item_color: color.title,
+                    item_size: size,
+                },
+                ],
+            },
+            });
+        }
+
+      }
+    });
+  });
+
+  if (onCartAddSuccess) {
+    console.log('onCartAddSuccess: triggered');
+    onCartAddSuccess();
+  }
+  onClose();
+};
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -115,19 +166,18 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
         }}
       >
         <DialogClose asChild>
-          <button
-            className="alarnd-close-btn"
-            aria-label="סגור"
-          >
+          <button className="alarnd-close-btn" aria-label="סגור">
             <X className="w-5 h-5" />
           </button>
         </DialogClose>
 
-        <div className="">
+        {/* Title */}
+        <div>
           <h2 className="text-xl font-bold text-center mb-4 mt-3">{product.name}</h2>
         </div>
 
         <form className="flex items-center flex-col relative allaround--group-form">
+          {/* Grouped Inputs */}
           <div
             className={clsx(
               "overflow-x-auto overflow-y-auto rounded-lg bg-white mb-4",
@@ -140,6 +190,7 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
               transition: "width 0.2s cubic-bezier(.42,0,.58,1)",
             }}
           >
+            {/* Header */}
             <div className="w-full bg-white sticky top-0 z-10 sticky-top-size-ttile">
               <div className="flex items-center">
                 <div className="w-[110px] min-w-[110px] h-[52px] bg-white px-2 flex items-center"></div>
@@ -154,6 +205,8 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
                 </div>
               </div>
             </div>
+
+            {/* Body */}
             <div className="w-full">
               {colors.map((color, rIdx) => {
                 const bg = color.color_hex_code || "#fff";
@@ -164,6 +217,7 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
                     className="flex items-center"
                     style={{ borderColor: "#eee" }}
                   >
+                    {/* Color badge */}
                     <div className="w-[110px] min-w-[110px] px-2 flex items-center">
                       <span
                         className={clsx(
@@ -181,6 +235,7 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
                         {color.title}
                       </span>
                     </div>
+                    {/* Size inputs */}
                     <div className="flex gap-[10px] pl-2 flex-1">
                       {sizes.map((size, cIdx) => (
                         <div key={cIdx} className="block flex-1 py-1.5">
@@ -214,15 +269,16 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
               })}
             </div>
           </div>
+
+          {/* Summary/Actions */}
           <div className="w-full">
+            {/* Discount/step message */}
             {error ? (
               <div className="text-red-500 text-sm text-center mb-2">{error}</div>
             ) : unitsToNext ? (
               <div className="text-pink text-xl pt-[10px] text-center mb-2 flex flex-col">
-                <span>
-                  הוסיפו {unitsToNext} פריטים נוספים להורדת המחיר ל-
-                  <b>{nextStep.amount || regularPrice}₪</b> ליחידה
-                </span>
+                <span>הוסיפו {unitsToNext} פריטים נוספים להורדת המחיר ל-{" "}
+                  <b>{nextStep.amount || regularPrice}₪</b> ליחידה</span>
                 <span className="line-through">(כרגע {stepInfo.price}₪)</span>
               </div>
             ) : total > 0 && (
@@ -230,6 +286,7 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
                 {`מחיר ליחידה: ${stepInfo.price}₪`}
               </div>
             )}
+
             <div className="flex justify-between items-center">
               <div className="flex-shrink-0">
                 <button
@@ -250,10 +307,10 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
                     / {acf.first_line_keyword || "תיק"}
                   </p>
                   <p>
-                    סה&quot;כ יחידות: <span className="alarnd__total_qty">{total}</span>
+                    סה"כ יחידות: <span className="alarnd__total_qty">{total}</span>
                   </p>
                   <span className="alarnd--total-price">
-                    סה&quot;כ:{" "}
+                    סה"כ:{" "}
                     <span>
                       <span className="alarnd__wc-price">{total * stepInfo.price}</span>
                       <span className="woocommerce-Price-currencySymbol">₪</span>
@@ -266,10 +323,7 @@ export default function AddToCartGroup({ open, onClose, product, bumpPrice, onOp
                   type="button"
                   disabled={total === 0}
                   className="alarnd-btn"
-                  onClick={() => {
-                    // TODO: Add to cart logic here
-                    onClose();
-                  }}
+                  onClick={handleAddToCart}
                 >
                   הוסף לעגלה
                 </button>

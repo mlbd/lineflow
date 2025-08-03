@@ -1,5 +1,5 @@
 // src/components/page/HeroSection.jsx
-import Image from "next/image";
+import Image from 'next/image';
 
 export default function HeroSection({ company }) {
   const { name, description, logo } = company;

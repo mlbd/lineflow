@@ -1,5 +1,5 @@
 // src/components/page/InfoBoxSection.jsx
-import Image from "next/image";
+import Image from 'next/image';
 
 const defaultBoxes = [
   {
@@ -25,10 +25,7 @@ export default function InfoBoxSection({ infoBoxes = defaultBoxes }) {
     <section className="w-full py-[50px] flex justify-center bg-[#f1f1f1]">
       <div className="max-w-[var(--site-max-width)] w-full grid grid-cols-1 md:grid-cols-3 gap-6 px-4">
         {infoBoxes.map((box, i) => (
-          <div
-            key={i}
-            className="flex flex-col items-center"
-          >
+          <div key={i} className="flex flex-col items-center">
             <div className="flex items-center justify-center h-[70px] w-[70px] mb-4">
               <Image
                 src={box.icon}

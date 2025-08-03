@@ -1,20 +1,27 @@
+// AddToCartQuantity.jsx
 import { useState, useMemo } from "react";
 import { Dialog, DialogContent, DialogClose } from "@/components/ui/dialog";
 import clsx from "clsx";
 import { applyBumpPrice } from "@/utils/price";
 import { X } from "lucide-react";
+import { useCartStore } from "@/components/cart/cartStore"; // <-- NEW
 
 const QTY_LIMIT = 50000;
 
-export default function AddToCartQuantity({ open, onClose, product, bumpPrice }) {
-  // ---- Move all hooks to top, before early return ----
-  const acf = product?.acf || {};
+export default function AddToCartQuantity({ open, onClose, product, bumpPrice, onCartAddSuccess }) {
+  if (!product) return null;
+  const acf = product.acf || {};
   const steps = applyBumpPrice(acf.quantity_steps || [], bumpPrice);
-  const minStep = steps[0] ? parseInt(steps[0].quantity) : 1;
 
+  const minStep = steps[0] ? parseInt(steps[0].quantity) : 1;
   const [selectedIdx, setSelectedIdx] = useState(1); // Default to second option
   const [customQty, setCustomQty] = useState("");
   const [error, setError] = useState(null);
+
+  // Modal width: 470px
+  const sizeWidth = 470;
+
+  const addItem = useCartStore((s) => s.addItem); // <-- NEW
 
   // Compute current selection
   const { quantity, price } = useMemo(() => {
@@ -26,9 +33,10 @@ export default function AddToCartQuantity({ open, onClose, product, bumpPrice })
       }
       return { quantity: q, price: p };
     } else {
+      const idx = selectedIdx - 1;
       return {
-        quantity: parseInt(steps[selectedIdx]?.quantity || 0),
-        price: parseFloat(steps[selectedIdx]?.amount || 0),
+        quantity: steps[idx] ? parseInt(steps[idx].quantity || 0) : 0,
+        price: steps[idx] ? parseFloat(steps[idx].amount || 0) : 0,
       };
     }
   }, [selectedIdx, customQty, steps]);
@@ -47,10 +55,35 @@ export default function AddToCartQuantity({ open, onClose, product, bumpPrice })
     setCustomQty(newVal);
   };
 
-  if (!product) return null; // Hooks above
-
-  // Modal width: 470px
-  const sizeWidth = 470;
+  // --- Add to Cart Handler ---
+  const handleAddToCart = () => {
+    if (!quantity || !!error) return;
+    addItem({
+      product_id: product.id,
+      name: product.name,
+      thumbnail: product.thumbnail,
+      quantity,
+      price,
+      options: {}, // add options if any (for quantity type, usually none)
+    });
+    if (typeof window !== "undefined" && window.dataLayer) {
+        window.dataLayer.push({
+            event: "add_to_cart",
+            ecommerce: {
+            items: [
+                {
+                    item_id: product.id,
+                    item_name: product.name,
+                    price,
+                    quantity,
+                },
+            ],
+            },
+        });
+    }
+    if (onCartAddSuccess) onCartAddSuccess();
+    onClose();
+  };
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -124,34 +157,22 @@ export default function AddToCartQuantity({ open, onClose, product, bumpPrice })
                     </span>
                 </div>
                 <div className="alarnd-single-qty flex-shrink-0">
-                    <span className="font-bold">{step.amount} ש&quot;ח ליחידה</span>
+                    <span className="font-bold">{step.amount} ש"ח ליחידה</span>
                 </div>
               </label>
             ))}
           </div>
-          {/* Error or info */}
           {error && (
             <div className="text-red-500 text-sm text-center mt-2">{error}</div>
           )}
-          {/* Price summary */}
-          <div className="text-center my-4">
-            <div>
-              <span className="alarnd__total_qty">{quantity}</span> יחידות ×{" "}
-              <span className="alarnd__wc-price">{price}</span>₪ ={" "}
-              <span className="alarnd__wc-price">{quantity * price}</span>₪
-            </div>
-          </div>
-          <div className="text-center">
+          <div className="text-center mt-4">
             <button
-                type="button"
-                disabled={quantity < minStep || !!error}
-                className="alarnd-btn w-auto"
-                onClick={() => {
-                // TODO: Add to cart logic here
-                onClose();
-                }}
+              type="button"
+              disabled={!quantity || !!error}
+              className="alarnd-btn w-auto"
+              onClick={handleAddToCart}
             >
-                הוסף לעגלה
+              הוסף לעגלה
             </button>
           </div>
         </form>

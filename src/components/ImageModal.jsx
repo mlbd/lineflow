@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogClose } from '@/components/ui/dialog';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
-import Image from "next/image";
+import Image from 'next/image';
 
 const DEFAULT_MIN_HEIGHT = 350; // px, adjust for your expected image sizes
 
@@ -11,7 +11,7 @@ export default function ImageModal({
   logos = [],
   currentIndex = 0,
   onPrev,
-  onNext
+  onNext,
 }) {
   const logo = logos[currentIndex] || {};
   const { thumbnailUrl: src, title } = logo;
@@ -45,20 +45,22 @@ export default function ImageModal({
 
   useEffect(() => {
     if (!isOpen) return;
-    const handleKeyDown = (e) => {
-      if (e.key === "ArrowLeft") onPrev();
-      if (e.key === "ArrowRight") onNext();
-      if (e.key === "Escape") onClose();
+    const handleKeyDown = e => {
+      if (e.key === 'ArrowLeft') onPrev();
+      if (e.key === 'ArrowRight') onNext();
+      if (e.key === 'Escape') onClose();
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onPrev, onNext, onClose]);
 
   // Layout sizing
-  const screenWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
+  const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
   const maxWidth = Math.min(screenWidth * 0.8, imageDimensions.width || 700);
   const widthScale = imageDimensions.width ? maxWidth / imageDimensions.width : 1;
-  const imgHeight = imageDimensions.height ? Math.round(imageDimensions.height * widthScale) : DEFAULT_MIN_HEIGHT;
+  const imgHeight = imageDimensions.height
+    ? Math.round(imageDimensions.height * widthScale)
+    : DEFAULT_MIN_HEIGHT;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -121,7 +123,7 @@ export default function ImageModal({
                 alt={alt}
                 width={maxWidth}
                 height={imgHeight}
-                className={`block w-full h-auto transition-opacity duration-300 ${fade ? "opacity-100" : "opacity-0"}`}
+                className={`block w-full h-auto transition-opacity duration-300 ${fade ? 'opacity-100' : 'opacity-0'}`}
                 style={{ width: maxWidth, height: imgHeight }}
                 unoptimized
               />

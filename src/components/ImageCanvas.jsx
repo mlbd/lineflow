@@ -1,7 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useState, useCallback } from 'react';
-import Image from 'next/image';
+import { useRef, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 export default function ImageCanvas({
@@ -58,21 +57,17 @@ export default function ImageCanvas({
 
   // Update display size when image loads or resizes
   const updateImageSizes = () => {
-    if (!imageRef.current) return;
+    if (!imageRef.current || !imageRef.current.complete) return;
 
-    // Use the imageRef's parent (relative container) for size
-    const container = containerRef.current;
-    if (!container) return;
-
+    const displayRect = imageRef.current.getBoundingClientRect();
     const newDisplaySize = {
-      width: container.clientWidth,
-      height: container.clientHeight,
+      width: imageRef.current.clientWidth,
+      height: imageRef.current.clientHeight,
     };
 
-    const img = imageRef.current;
     const newNaturalSize = {
-      width: img.naturalWidth,
-      height: img.naturalHeight,
+      width: imageRef.current.naturalWidth,
+      height: imageRef.current.naturalHeight,
     };
 
     setImageDisplaySize(newDisplaySize);
@@ -83,7 +78,7 @@ export default function ImageCanvas({
   useEffect(() => {
     if (!imageUrl || !canvasRef.current) return;
 
-    const img = new window.Image();
+    const img = new Image();
     img.onload = () => {
       const canvasRect = canvasRef.current.getBoundingClientRect();
       const canvasWidth = canvasRect.width;
@@ -115,6 +110,7 @@ export default function ImageCanvas({
           width: '100%',
           height: 'auto',
         });
+        // Display size will be updated in the image onLoad callback
       }
     };
     img.src = imageUrl;
@@ -124,6 +120,7 @@ export default function ImageCanvas({
   useEffect(() => {
     if (imageRef.current) {
       const img = imageRef.current;
+
       if (img.complete) {
         updateImageSizes();
       } else {
@@ -137,6 +134,7 @@ export default function ImageCanvas({
     const handleResize = () => {
       updateImageSizes();
     };
+
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -160,6 +158,7 @@ export default function ImageCanvas({
       y,
       w: 1,
       h: 1,
+      // Store percentage coordinates
       xPercent: x / imageDisplaySize.width,
       yPercent: y / imageDisplaySize.height,
       wPercent: 1 / imageDisplaySize.width,
@@ -168,6 +167,57 @@ export default function ImageCanvas({
 
     setMappings(prev => [...prev, newBox]);
     setSelectedMapping(newBox);
+  };
+
+  const handleMouseMove = e => {
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (isCreating.current && selectedMapping) {
+      const newW = Math.abs(x - startX.current);
+      const newH = Math.abs(y - startY.current);
+      const newX = Math.min(x, startX.current);
+      const newY = Math.min(y, startY.current);
+
+      const updated = {
+        ...selectedMapping,
+        x: newX,
+        y: newY,
+        w: newW,
+        h: newH,
+      };
+
+      // Convert to percentage coordinates
+      const withPercent = toPercentCoords(updated);
+      updateSelected(withPercent);
+    }
+
+    if (isDragging.current && selectedMapping) {
+      const newX = x - dragOffset.current.x;
+      const newY = y - dragOffset.current.y;
+      const updated = { ...selectedMapping, x: newX, y: newY };
+      const withPercent = toPercentCoords(updated);
+      updateSelected(withPercent);
+    }
+
+    if (isResizing.current && selectedMapping) {
+      const deltaX = x - startX.current;
+      const deltaY = y - startY.current;
+      const updated = {
+        ...selectedMapping,
+        w: Math.max(10, startSize.current.w + deltaX),
+        h: Math.max(10, startSize.current.h + deltaY),
+      };
+      const withPercent = toPercentCoords(updated);
+      updateSelected(withPercent);
+    }
+  };
+
+  const handleMouseUp = () => {
+    isCreating.current = false;
+    isDragging.current = false;
+    isResizing.current = false;
   };
 
   const updateSelected = updated => {
@@ -197,60 +247,6 @@ export default function ImageCanvas({
     startSize.current = { w: displayMapping.w, h: displayMapping.h };
   };
 
-  // --- FIX 1: Wrap handleMouseMove in useCallback, include in effect deps ---
-  const handleMouseMove = useCallback(
-    e => {
-      const rect = containerRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-
-      if (isCreating.current && selectedMapping) {
-        const newW = Math.abs(x - startX.current);
-        const newH = Math.abs(y - startY.current);
-        const newX = Math.min(x, startX.current);
-        const newY = Math.min(y, startY.current);
-
-        const updated = {
-          ...selectedMapping,
-          x: newX,
-          y: newY,
-          w: newW,
-          h: newH,
-        };
-        const withPercent = toPercentCoords(updated);
-        updateSelected(withPercent);
-      }
-
-      if (isDragging.current && selectedMapping) {
-        const newX = x - dragOffset.current.x;
-        const newY = y - dragOffset.current.y;
-        const updated = { ...selectedMapping, x: newX, y: newY };
-        const withPercent = toPercentCoords(updated);
-        updateSelected(withPercent);
-      }
-
-      if (isResizing.current && selectedMapping) {
-        const deltaX = x - startX.current;
-        const deltaY = y - startY.current;
-        const updated = {
-          ...selectedMapping,
-          w: Math.max(10, startSize.current.w + deltaX),
-          h: Math.max(10, startSize.current.h + deltaY),
-        };
-        const withPercent = toPercentCoords(updated);
-        updateSelected(withPercent);
-      }
-    },
-    [selectedMapping, imageDisplaySize]
-  );
-
-  const handleMouseUp = () => {
-    isCreating.current = false;
-    isDragging.current = false;
-    isResizing.current = false;
-  };
-
-  // --- FIX 1: useCallback in effect deps ---
   useEffect(() => {
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
@@ -258,7 +254,7 @@ export default function ImageCanvas({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [handleMouseMove]);
+  }, [selectedMapping, imageDisplaySize]);
 
   return (
     <div
@@ -282,21 +278,13 @@ export default function ImageCanvas({
             style={containerStyle}
             onMouseDown={handleMouseDown}
           >
-            {/* --- FIX 2: Use Next.js <Image /> for LCP, layout fill for dynamic sizing --- */}
-            <div className="relative w-full h-full min-h-[200px]" style={imageStyle}>
-              {imageUrl && (
-                <Image
-                  ref={imageRef}
-                  src={imageUrl}
-                  alt="T-Shirt"
-                  fill
-                  className="pointer-events-none select-none object-contain"
-                  priority
-                  unoptimized
-                  onLoad={updateImageSizes}
-                />
-              )}
-            </div>
+            <img
+              ref={imageRef}
+              src={imageUrl}
+              alt="T-Shirt"
+              className="pointer-events-none select-none"
+              style={imageStyle}
+            />
             {mappings.map(box => {
               const displayBox = toDisplayCoords(box);
               return (

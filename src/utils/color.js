@@ -1,6 +1,6 @@
 function getLuminance(hex) {
   // Remove # if present
-  hex = hex.replace(/^#/, "");
+  hex = hex.replace(/^#/, '');
   // Parse r,g,b
   const num = parseInt(hex, 16);
   const r = (num >> 16) & 255;

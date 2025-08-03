@@ -3,7 +3,7 @@ export default {
     './src/**/*.{js,jsx,ts,tsx}',
     './src/app/**/*.{js,jsx,ts,tsx}',
     './src/pages/**/*.{js,jsx,ts,tsx}',
-    './src/components/**/*.{js,jsx,ts,tsx}'
+    './src/components/**/*.{js,jsx,ts,tsx}',
   ],
   theme: {
     extend: {
@@ -21,8 +21,5 @@ export default {
       },
     },
   },
-  plugins: [
-    require('tailwindcss-rtl'),
-    require('tailwind-scrollbar')
-],
-}
+  plugins: [require('tailwindcss-rtl'), require('tailwind-scrollbar')],
+};

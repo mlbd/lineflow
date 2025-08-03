@@ -34,7 +34,7 @@ export default function LogosPage() {
   const [showPicker, setShowPicker] = useState(false);
 
   // Function to handle image click
-  const handleImageClick = (logo) => {
+  const handleImageClick = logo => {
     const idx = logos.findIndex(l => l.public_id === logo.public_id);
     setModalImageIndex(idx);
     setModalOpen(true);
@@ -68,7 +68,7 @@ export default function LogosPage() {
     setShowPicker(false);
   };
 
-  const handleOverlayToggle = async (checked) => {
+  const handleOverlayToggle = async checked => {
     setViewWithOverlay(checked);
     localStorage.setItem('view_with_overlay', checked);
 
@@ -84,13 +84,18 @@ export default function LogosPage() {
     try {
       // Generate new thumbnail URLs for all logos
       const updatedLogos = await Promise.all(
-        logos.map(async (logo) => {
-          const thumbnailUrl = await generateThumbnailUrl(pageData, logo, overlayEnabled, colorValue);
+        logos.map(async logo => {
+          const thumbnailUrl = await generateThumbnailUrl(
+            pageData,
+            logo,
+            overlayEnabled,
+            colorValue
+          );
           return {
             ...logo,
             thumbnailUrl,
             // Add a cache-busting parameter to force image reload
-            imageKey: Date.now() + Math.random()
+            imageKey: Date.now() + Math.random(),
           };
         })
       );
@@ -134,7 +139,7 @@ export default function LogosPage() {
               thumbnailUrl,
               title: `Item ${i + 1}`,
               price: generateRandomPrice(),
-              imageKey: Date.now() + Math.random()
+              imageKey: Date.now() + Math.random(),
             };
           })
         );
@@ -191,7 +196,7 @@ export default function LogosPage() {
         thumbnailUrl: data.imageUrl,
         title: `Mock Item ${i + 1}`,
         price: generateRandomPrice(),
-        imageKey: Date.now() + Math.random()
+        imageKey: Date.now() + Math.random(),
       });
     }
     return mockLogos;
@@ -236,7 +241,7 @@ export default function LogosPage() {
             thumbnailUrl,
             title: `Item ${i + 1}`,
             price: generateRandomPrice(),
-            imageKey: Date.now() + Math.random()
+            imageKey: Date.now() + Math.random(),
           };
         })
       );
@@ -417,7 +422,7 @@ export default function LogosPage() {
               >
                 <ArrowLeft size={18} /> Back to Editor
               </Link>
-              
+
               <div className="flex items-center gap-4">
                 {/* Data Source Indicator */}
                 <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -425,9 +430,13 @@ export default function LogosPage() {
                   {dataSource === 'cloudinary' && <Cloud size={14} />}
                   {dataSource === 'mock' && <span>📝</span>}
                   <span>
-                    {dataSource === 'database' ? 'From Cache' : 
-                     dataSource === 'cloudinary' ? 'From Cloudinary' : 
-                     dataSource === 'mock' ? 'Mock Data' : 'Unknown'}
+                    {dataSource === 'database'
+                      ? 'From Cache'
+                      : dataSource === 'cloudinary'
+                        ? 'From Cloudinary'
+                        : dataSource === 'mock'
+                          ? 'Mock Data'
+                          : 'Unknown'}
                   </span>
                 </div>
 
@@ -499,7 +508,7 @@ export default function LogosPage() {
                 )}
               </div>
             </div>
-            
+
             {/* Database Stats */}
             {stats && (
               <div className="mt-2 text-xs text-gray-500">
@@ -511,7 +520,7 @@ export default function LogosPage() {
                 )}
               </div>
             )}
-            
+
             {/* Regenerating Images Indicator */}
             {regeneratingImages && (
               <div className="mt-2 text-xs text-blue-600 flex items-center gap-2">
@@ -523,21 +532,25 @@ export default function LogosPage() {
         </div>
 
         <div className="pt-[60px] pb-[50px] block text-center">
-          <h2 className='text-3xl font-bold'>Logo Gallery - MiniSite Demo Example</h2>
+          <h2 className="text-3xl font-bold">Logo Gallery - MiniSite Demo Example</h2>
           <p className="text-gray-600 mt-2">
-            Showing {logos.length} logos from {dataSource === 'database' ? 'cached data' : 'live data'}
+            Showing {logos.length} logos from{' '}
+            {dataSource === 'database' ? 'cached data' : 'live data'}
           </p>
         </div>
 
         <div className="max-w-[1000px] mx-auto px-6 pt-8 pb-[60px] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {logos.map(logo => (
             <div key={logo.public_id} className="bg-white rounded shadow">
-              <div className="bg-gray-100 m-0 cursor-pointer" onClick={() => handleImageClick(logo)}>
-                <LazyLoadImage 
+              <div
+                className="bg-gray-100 m-0 cursor-pointer"
+                onClick={() => handleImageClick(logo)}
+              >
+                <LazyLoadImage
                   key={logo.imageKey}
-                  src={logo.thumbnailUrl} 
-                  alt={logo.title} 
-                  className="w-full h-auto block hover:opacity-90 transition-opacity" 
+                  src={logo.thumbnailUrl}
+                  alt={logo.title}
+                  className="w-full h-auto block hover:opacity-90 transition-opacity"
                   aspectRatio="auto"
                 />
               </div>

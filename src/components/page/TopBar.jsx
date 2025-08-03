@@ -60,7 +60,13 @@ export default function TopBar({ wpUrl }) {
         {/* Right: Cart Icon */}
         <div className="flex items-center">
           <button className="relative group" aria-label="Open cart">
-            <svg width={28} height={28} fill="none" stroke="currentColor" className="w-7 h-7 text-white cursor-pointer">
+            <svg
+              width={28}
+              height={28}
+              fill="none"
+              stroke="currentColor"
+              className="w-7 h-7 text-white cursor-pointer"
+            >
               <path d="M6 6h15l-1.5 9h-13z" strokeWidth={2} />
               <circle cx={9} cy={23} r={1.5} />
               <circle cx={21} cy={23} r={1.5} />

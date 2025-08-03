@@ -1,8 +1,8 @@
-import Image from "next/image";
+import Image from 'next/image';
 
 export default function ProductColorBoxes({ acf }) {
   // Only render if group_type === "Group" and color is non-empty array
-  if (acf?.group_type === "Group" && Array.isArray(acf.color) && acf.color.length > 0) {
+  if (acf?.group_type === 'Group' && Array.isArray(acf.color) && acf.color.length > 0) {
     return (
       <div className="flex flex-wrap gap-[9px] mb-2 justify-center items-center">
         {acf.color.map((clr, idx) => (
@@ -10,9 +10,9 @@ export default function ProductColorBoxes({ acf }) {
             key={idx}
             className="w-[25px] h-[25px] rounded-[7px] cursor-pointer shadow-[0_0_0_2px_white,0_0_0_3px_#cccccc]"
             style={{
-              background: clr.color_hex_code || "#fff"
+              background: clr.color_hex_code || '#fff',
             }}
-            title={clr.title || ""}
+            title={clr.title || ''}
           />
         ))}
       </div>

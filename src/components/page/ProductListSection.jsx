@@ -1,18 +1,18 @@
-import { useState, useEffect } from "react";
-import { Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import ProductPriceLabel from "@/components/page/ProductPriceLabel";
-import ProductColorBoxes from "@/components/page/ProductColorBoxes";
-import ProductQuickViewModal from "@/components/page/ProductQuickViewModal";
-import AddToCartModal from "@/components/page/AddToCartModal";
-import Image from "next/image"; // <-- import Image!
+import { useState, useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import ProductPriceLabel from '@/components/page/ProductPriceLabel';
+import ProductColorBoxes from '@/components/page/ProductColorBoxes';
+import ProductQuickViewModal from '@/components/page/ProductQuickViewModal';
+import AddToCartModal from '@/components/page/AddToCartModal';
+import Image from 'next/image'; // <-- import Image!
 
 const PRODUCT_PER_PAGE = 12;
 
-export default function ProductListSection({ wpUrl, pageId, bumpPrice }) {
+export default function ProductListSection({ wpUrl, pageId, bumpPrice, onCartAddSuccess }) {
   const [allProducts, setAllProducts] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [selectedCategory, setSelectedCategory] = useState('all');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -37,9 +37,7 @@ export default function ProductListSection({ wpUrl, pageId, bumpPrice }) {
         // Extract unique category slugs from loaded products
         const catList = Array.from(
           new Set(
-            (data.products || [])
-              .flatMap((p) => p.categories?.map((c) => c.slug) || [])
-              .filter(Boolean)
+            (data.products || []).flatMap(p => p.categories?.map(c => c.slug) || []).filter(Boolean)
           )
         );
         setCategories(catList);
@@ -62,17 +60,14 @@ export default function ProductListSection({ wpUrl, pageId, bumpPrice }) {
       const res = await fetch(url);
       const data = await res.json();
       const newProducts = data.products || [];
-      setAllProducts((prev) => [...prev, ...newProducts]);
+      setAllProducts(prev => [...prev, ...newProducts]);
       setTotalPages(data.pagination?.total_pages || 1);
-      setPage((prev) => prev + 1);
+      setPage(prev => prev + 1);
 
       // Update categories from any new products loaded
-      setCategories((prev) =>
+      setCategories(prev =>
         Array.from(
-          new Set([
-            ...prev,
-            ...(newProducts.flatMap((p) => p.categories?.map((c) => c.slug) || [])),
-          ])
+          new Set([...prev, ...newProducts.flatMap(p => p.categories?.map(c => c.slug) || [])])
         )
       );
     } catch (err) {
@@ -84,31 +79,29 @@ export default function ProductListSection({ wpUrl, pageId, bumpPrice }) {
 
   // Only filter from products already loaded so far
   const filteredProducts =
-    selectedCategory === "all"
+    selectedCategory === 'all'
       ? allProducts
-      : allProducts.filter((p) =>
-          (p.categories || []).some((cat) => cat.slug === selectedCategory)
-        );
+      : allProducts.filter(p => (p.categories || []).some(cat => cat.slug === selectedCategory));
 
   // Helper: map category slug to readable name if needed (currently just slug)
-  const categoryName = (slug) => slug;
+  const categoryName = slug => slug;
 
   // Handlers for modal
-  const handleOpenModal = (product) => {
+  const handleOpenModal = product => {
     setModalProduct(product);
   };
 
-  const handleAddToCartFromCard = (product) => {
+  const handleAddToCartFromCard = product => {
     setModalProduct(null);
     setTimeout(() => setCartModalProduct(product), 120);
   };
 
-  const handleAddToCartFromModal = (product) => {
+  const handleAddToCartFromModal = product => {
     setModalProduct(null);
     setTimeout(() => setCartModalProduct(product), 120);
   };
 
-  const handleOpenQuickViewFromCartModal = (product) => {
+  const handleOpenQuickViewFromCartModal = product => {
     setCartModalProduct(null);
     setTimeout(() => setModalProduct(product), 120);
   };
@@ -119,8 +112,8 @@ export default function ProductListSection({ wpUrl, pageId, bumpPrice }) {
         {/* Filters */}
         <div className="mb-6 flex flex-wrap gap-2 items-center justify-center">
           {[
-            { value: "all", label: "הצג הכל" },
-            ...categories.map((cat) => ({ value: cat, label: categoryName(cat) })),
+            { value: 'all', label: 'הצג הכל' },
+            ...categories.map(cat => ({ value: cat, label: categoryName(cat) })),
           ].map(({ value, label }) => {
             const isActive = selectedCategory === value;
             return (
@@ -142,12 +135,11 @@ export default function ProductListSection({ wpUrl, pageId, bumpPrice }) {
                   hover:border-b-skyblue
                   active:border-b-skyblue
                   focus:border-b-skyblue
-                  ` +
-                  (isActive ? " text-skyblue border-b-skyblue" : "")
+                  ` + (isActive ? ' text-skyblue border-b-skyblue' : '')
                 }
                 style={{
-                  background: "none",
-                  outline: "none",
+                  background: 'none',
+                  outline: 'none',
                 }}
               >
                 {label}
@@ -157,21 +149,22 @@ export default function ProductListSection({ wpUrl, pageId, bumpPrice }) {
         </div>
         {/* Product Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {filteredProducts.map((p) => (
+          {filteredProducts.map(p => (
             <div key={p.id} className="bg-bglight rounded-2xl shadow flex flex-col items-center">
               <div
                 className="w-full h-[200px] flex items-center cursor-pointer overflow-hidden rounded-t-2xl"
                 onClick={() => handleOpenModal(p)}
               >
+                <div className="relative w-full h-[200px] bg-bglighter mb-3">
                 <Image
-                  src={p.thumbnail}
-                  alt={p.name}
-                  width={300}
-                  height={200}
-                  className="h-[200px] w-full object-contain bg-bglighter mb-3"
-                  loading="lazy"
-                  unoptimized // Remove if image domains are in next.config.js images.domains
+                    src={p.thumbnail}
+                    alt={p.name}
+                    fill
+                    className="object-contain"
+                    loading="lazy"
+                    unoptimized
                 />
+                </div>
               </div>
               <div className="w-full p-7 flex flex-col justify-center items-center flex-grow">
                 <h3
@@ -180,10 +173,7 @@ export default function ProductListSection({ wpUrl, pageId, bumpPrice }) {
                 >
                   {p.name}
                 </h3>
-                <ProductColorBoxes
-                  acf={p.acf}
-                  onBoxClick={() => handleOpenModal(p)}
-                />
+                <ProductColorBoxes acf={p.acf} onBoxClick={() => handleOpenModal(p)} />
                 <ProductPriceLabel product={p} />
                 <Button
                   variant="link"
@@ -192,7 +182,7 @@ export default function ProductListSection({ wpUrl, pageId, bumpPrice }) {
                 >
                   לפרטים על המוצר
                 </Button>
-                <Button 
+                <Button
                   onClick={() => handleAddToCartFromCard(p)}
                   className="bg-accent rounded-[11px] mt-5 w-auto text-primary font-bold hover:bg-[#002266] hover:text-white text-[17px] py-[23px] px-[25px] transition cursor-pointer"
                 >
@@ -227,9 +217,7 @@ export default function ProductListSection({ wpUrl, pageId, bumpPrice }) {
           </div>
         )}
         {loading && (
-          <div className="flex justify-center py-8 text-deepblue text-lg">
-            טוען מוצרים...
-          </div>
+          <div className="flex justify-center py-8 text-deepblue text-lg">טוען מוצרים...</div>
         )}
       </div>
       {/* Modal: Product Quick View */}
@@ -246,6 +234,7 @@ export default function ProductListSection({ wpUrl, pageId, bumpPrice }) {
         product={cartModalProduct}
         bumpPrice={bumpPrice}
         onOpenQuickView={handleOpenQuickViewFromCartModal}
+        onCartAddSuccess={onCartAddSuccess}
       />
     </section>
   );
