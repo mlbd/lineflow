@@ -174,7 +174,7 @@ export default function ProductListSection({ wpUrl, pageId, bumpPrice, onCartAdd
                   {p.name}
                 </h3>
                 <ProductColorBoxes acf={p.acf} onBoxClick={() => handleOpenModal(p)} />
-                <ProductPriceLabel product={p} />
+                <ProductPriceLabel product={p} bumpPrice={bumpPrice} />
                 <Button
                   variant="link"
                   className="text-skyblue mt-2 font-medium text-lg cursor-pointer"
@@ -184,7 +184,8 @@ export default function ProductListSection({ wpUrl, pageId, bumpPrice, onCartAdd
                 </Button>
                 <Button
                   onClick={() => handleAddToCartFromCard(p)}
-                  className="bg-accent rounded-[11px] mt-5 w-auto text-primary font-bold hover:bg-[#002266] hover:text-white text-[17px] py-[23px] px-[25px] transition cursor-pointer"
+                  id={`add-to-cart-${p.id}`}
+                  className={`bg-accent rounded-[11px] mt-5 w-auto text-primary font-bold hover:bg-[#002266] hover:text-white text-[17px] py-[23px] px-[25px] transition cursor-pointer`}
                 >
                   הוסף להזמנה
                 </Button>

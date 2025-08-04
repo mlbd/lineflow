@@ -89,3 +89,20 @@ export const getTotalItems = items => {
 export const getTotalPrice = items => {
   return items.reduce((total, item) => total + item.price * item.quantity, 0);
 };
+
+export const getCartTotalPrice = (items, { coupon = null, shippingCost = 0 } = {}) => {
+  const subtotal = getTotalPrice(items); // Use your original subtotal logic
+
+  let couponDiscount = 0;
+  if (coupon && coupon.valid) {
+    const couponAmount = Number(coupon.amount);
+    if (coupon.type === 'percent') {
+      couponDiscount = Math.round(subtotal * (couponAmount / 100));
+    } else {
+      couponDiscount = couponAmount;
+    }
+  }
+
+  const total = Math.max(0, subtotal + Number(shippingCost) - couponDiscount);
+  return total;
+};

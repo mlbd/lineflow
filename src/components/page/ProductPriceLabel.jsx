@@ -1,6 +1,7 @@
 import { calculateProductPriceRange } from '@/lib/calculateProductPriceRange';
 
-export default function ProductPriceButton({ product, bumpPrice = null }) {
+export default function ProductPriceLabel({ product, bumpPrice = null }) {
+  console.log('ProductPriceLabel', { product, bumpPrice });
   const priceDisplay = calculateProductPriceRange({
     ...product,
     bump_price: bumpPrice ?? product.bump_price,

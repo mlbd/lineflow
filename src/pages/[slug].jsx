@@ -11,6 +11,7 @@ import ProductListSection from '@/components/page/ProductListSection';
 import CartPage from '@/components/cart/CartPage';
 
 import Script from 'next/script';
+import Footer from '@/components/page/Footer';
 
 const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
 
@@ -30,7 +31,11 @@ export default function LandingPage({ slug }) {
   // Main data
   const [company, setCompany] = useState({});
   const [products, setProducts] = useState([]);
+  const [meta, setMeta] = useState([]);
   const [pageId, setPageId] = useState(null);
+
+  const [shippingOptions, setShippingOptions] = useState([]);
+  const [shippingLoading, setShippingLoading] = useState(true);
 
   const [bumpPrice, setBumpPrice] = useState(null);
 
@@ -60,6 +65,7 @@ export default function LandingPage({ slug }) {
         setCompany(companyData);
         setProducts(data.acf?.selected_products || []);
         setPageId(data?.id || null);
+        setMeta(data?.meta || []);
         setBumpPrice(data.acf?.bump_price || null);
 
         // Set SEO data
@@ -87,6 +93,32 @@ export default function LandingPage({ slug }) {
     }
     fetchData();
   }, [slug]);
+
+  useEffect(() => {
+    // Fetch initial shipping options with "empty cart" (or you can use demo/default product)
+    async function fetchShipping() {
+      setShippingLoading(true);
+      try {
+        const res = await fetch(`${WP_URL}/wp-json/mini-sites/v1/shipping`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            country: "IL",
+            postcode: "",
+            cart: [], // empty cart for now
+          }),
+        });
+        const data = await res.json();
+        console.log(data);
+        setShippingOptions(data.shipping || []);
+      } catch (err) {
+        setShippingOptions([]);
+      } finally {
+        setShippingLoading(false);
+      }
+    }
+    fetchShipping();
+  }, []);
 
   const handleScrollToCart = () => {
     if (cartSectionRef.current) {
@@ -150,7 +182,7 @@ export default function LandingPage({ slug }) {
       <GoogleTagManager gtmId={process.env.NEXT_PUBLIC_GTM_ID} />
 
       <div className="min-h-screen bg-gradient-to-b from-[#f7f7f7] to-[#fff] flex flex-col px-0 py-0">
-        <TopBar wpUrl={WP_URL} />
+        <TopBar wpUrl={WP_URL} onCartClick={handleScrollToCart} />
         <main className="alrndr-hero">
           <HeroSection company={company} />
           <InfoBoxSection />
@@ -161,9 +193,14 @@ export default function LandingPage({ slug }) {
             onCartAddSuccess={handleScrollToCart}
           />
           {/* Cart section - always visible, under product list */}
-          <div className="mt-16 max-w-[900px] mx-auto w-full" ref={cartSectionRef}>
-            <CartPage />
+          <div className="w-full" ref={cartSectionRef}>
+            <CartPage
+              shippingOptions={shippingOptions}
+              shippingLoading={shippingLoading}
+              meta={meta}
+            />
           </div>
+          <Footer />
         </main>
       </div>
     </>

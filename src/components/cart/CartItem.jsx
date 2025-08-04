@@ -70,14 +70,14 @@ export default function CartItem({ item, idx }) {
   const renderProductDetails = () => {
     return (
       <div className="space-y-1">
-        <div className="font-semibold text-gray-900">{item.name}</div>
+        <div className="font-semibold text-skyblue text-[15px]">{item.name}</div>
 
         {item.options?.group_type === 'Group' && (
           <div className="space-y-1 text-sm text-gray-600">
             <div className="flex items-center gap-2">
               <span>צבע:</span>
               <span
-                className="px-2 py-1 rounded text-xs font-medium text-white"
+                className="p-0.5 rounded text-xs font-medium text-white"
                 style={{ backgroundColor: item.options.color_hex_code }}
               >
                 {item.options.color}
@@ -107,7 +107,7 @@ export default function CartItem({ item, idx }) {
   const totalPrice = item.price * item.quantity;
 
   return (
-    <div className="grid grid-cols-6 gap-4 p-4 border border-gray-200 rounded-lg bg-white items-center">
+    <div className="grid grid-cols-7 gap-4 p-4 border border-gray-200 rounded-lg bg-white items-center">
       {/* 1. Thumbnail */}
       <div className="flex justify-center">
         <Image
@@ -124,7 +124,7 @@ export default function CartItem({ item, idx }) {
 
       {/* 3. Price per item */}
       <div className="text-center">
-        <div className="text-lg font-semibold text-gray-900">{item.price} ₪</div>
+        <div className="text-sm font-semibold text-gray-900">{item.price} ₪</div>
         <div className="text-xs text-gray-500">ליחידה</div>
       </div>
 
@@ -143,14 +143,14 @@ export default function CartItem({ item, idx }) {
             }`}
             maxLength="3"
           />
-          {error && <div className="text-xs text-red-500 mt-1">{error}</div>}
+          {error && <div className="text-sm text-red-500 mt-1">{error}</div>}
         </div>
       </div>
 
       {/* 5. Total Price */}
       <div className="text-center">
-        <div className="text-lg font-bold text-gray-900">{totalPrice} ₪</div>
-        <div className="text-xs text-gray-500">סה&quot;כ</div>
+        <div className="text-sm font-bold text-gray-900">{totalPrice} ₪</div>
+        <div className="text-sm text-gray-500">סה&quot;כ</div>
       </div>
 
       {/* 6. Delete Button */}
