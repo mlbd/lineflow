@@ -89,7 +89,7 @@ export default function AddToCartGroup({
       ? parseInt(nextStep.quantity) - total
       : null;
 
-  const addItem = useCartStore(s => s.addItem);
+  const addOrUpdateItem = useCartStore(s => s.addOrUpdateItem);
 
   const handleInput = (colorIdx, sizeIdx, val) => {
     let newVal = val.replace(/[^0-9]/g, '');
@@ -109,11 +109,14 @@ export default function AddToCartGroup({
   const handleAddToCart = () => {
     if (total === 0) return;
 
+    // Step 1: Collect all cart entries to add
+    const itemsToAdd = [];
+
     colors.forEach((color, rIdx) => {
       sizes.forEach((size, cIdx) => {
         const qty = parseInt(quantities[rIdx][cIdx] || 0);
         if (qty > 0) {
-          addItem({
+          itemsToAdd.push({
             product_id: product.id,
             name: product.name,
             thumbnail: product.thumbnail,
@@ -126,34 +129,40 @@ export default function AddToCartGroup({
               size,
             },
           });
-
-          // GTM event for each unique color/size/qty
-          if (typeof window !== 'undefined' && window.dataLayer) {
-            window.dataLayer.push({
-              event: 'add_to_cart',
-              ecommerce: {
-                items: [
-                  {
-                    item_id: product.id,
-                    item_name: product.name,
-                    price: stepInfo.price,
-                    quantity: qty,
-                    item_color: color.title,
-                    item_size: size,
-                  },
-                ],
-              },
-            });
-          }
         }
       });
     });
 
-    if (onCartAddSuccess) {
-      onCartAddSuccess();
+    // Step 2: Merge and apply all updates in one go
+    itemsToAdd.forEach(item => {
+      addOrUpdateItem(item); // This will now work because they're not stacked inside set()
+    });
+
+    // Fire GTM for each added item
+    if (typeof window !== 'undefined' && window.dataLayer) {
+      itemsToAdd.forEach(item => {
+        window.dataLayer.push({
+          event: 'add_to_cart',
+          ecommerce: {
+            items: [
+              {
+                item_id: item.product_id,
+                item_name: item.name,
+                price: item.price,
+                quantity: item.quantity,
+                item_color: item.options.color,
+                item_size: item.options.size,
+              },
+            ],
+          },
+        });
+      });
     }
+
+    if (onCartAddSuccess) onCartAddSuccess();
     onClose();
   };
+
 
   // ------- Hooks are always at the top, so now you can return null if no product ------
   if (!product) return null;

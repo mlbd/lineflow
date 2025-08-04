@@ -1,14 +1,21 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRemoveItem, useUpdateItemQuantity } from './cartStore';
 import Image from 'next/image';
 import { Trash2 } from 'lucide-react';
+import { isDarkColor } from '@/utils/color';
+
 
 export default function CartItem({ item, idx }) {
   const removeItem = useRemoveItem();
   const updateItemQuantity = useUpdateItemQuantity();
   const [error, setError] = useState('');
   const [localQuantity, setLocalQuantity] = useState(item.quantity.toString());
+
+  // Sync localQuantity when store updates item.quantity
+  useEffect(() => {
+    setLocalQuantity(item.quantity.toString());
+  }, [item.quantity]);
 
   // Get minimum quantity based on group type
   const getMinimumQuantity = () => {
@@ -77,11 +84,16 @@ export default function CartItem({ item, idx }) {
             <div className="flex items-center gap-2">
               <span>צבע:</span>
               <span
-                className="p-0.5 rounded text-xs font-medium text-white"
-                style={{ backgroundColor: item.options.color_hex_code }}
-              >
-                {item.options.color}
-              </span>
+              className="p-0.5 rounded text-xs font-medium"
+              style={{
+                backgroundColor: item.options.color_hex_code,
+                color: isDarkColor(item.options.color_hex_code) ? '#fff' : '#000',
+                border: `1px solid ${isDarkColor(item.options.color_hex_code) ? '#fff' : '#000'}`,
+                padding: '2px 6px',
+              }}
+            >
+              {item.options.color}
+            </span>
             </div>
             <div>
               מידה: <span className="font-medium">{item.options.size}</span>

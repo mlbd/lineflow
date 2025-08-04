@@ -8,7 +8,6 @@ export const useCartStore = create(
 
       addItem: item => {
         set(state => {
-          // For group_type = Group, merge by product/color/size
           if (item.options && item.options.group_type === 'Group') {
             const idx = state.items.findIndex(
               i =>
@@ -18,7 +17,6 @@ export const useCartStore = create(
                 i.options?.size === item.options.size
             );
             if (idx > -1) {
-              // Update quantity for matched item
               const newItems = [...state.items];
               newItems[idx] = {
                 ...newItems[idx],
@@ -26,11 +24,9 @@ export const useCartStore = create(
               };
               return { items: newItems };
             }
-            // Add as new if not matched
             return { items: [...state.items, item] };
           }
 
-          // For other types (or single products), merge by product_id & options
           const idx = state.items.findIndex(
             i =>
               i.product_id === item.product_id &&
@@ -44,7 +40,29 @@ export const useCartStore = create(
             };
             return { items: newItems };
           }
+
           return { items: [...state.items, item] };
+        });
+      },
+
+      addOrUpdateItem: item => {
+        set(state => {
+          const items = [...state.items];
+          const matchIndex = items.findIndex(i =>
+            i.product_id === item.product_id &&
+            i.options?.group_type === 'Group' &&
+            i.options?.color === item.options?.color &&
+            i.options?.size === item.options?.size
+          );
+
+          if (matchIndex > -1) {
+            console.log(`[CartStore] Updating existing item ${item.product_id} (${item.options.color} / ${item.options.size})`);
+            items[matchIndex].quantity += item.quantity;
+            return { items };
+          }
+
+          console.log(`[CartStore] Adding NEW item ${item.product_id} (${item.options.color} / ${item.options.size})`);
+          return { items: [...items, item] };
         });
       },
 
@@ -74,14 +92,15 @@ export const useCartStore = create(
   )
 );
 
-// Simple selectors - no object creation
+// Hooks
 export const useCartItems = () => useCartStore(state => state.items);
 export const useAddItem = () => useCartStore(state => state.addItem);
+export const useAddOrUpdateItem = () => useCartStore(state => state.addOrUpdateItem);
 export const useRemoveItem = () => useCartStore(state => state.removeItem);
 export const useUpdateItemQuantity = () => useCartStore(state => state.updateItemQuantity);
 export const useClearCart = () => useCartStore(state => state.clearCart);
 
-// Utility functions for calculations
+// Utility functions
 export const getTotalItems = items => {
   return items.reduce((total, item) => total + item.quantity, 0);
 };
@@ -91,7 +110,7 @@ export const getTotalPrice = items => {
 };
 
 export const getCartTotalPrice = (items, { coupon = null, shippingCost = 0 } = {}) => {
-  const subtotal = getTotalPrice(items); // Use your original subtotal logic
+  const subtotal = getTotalPrice(items);
 
   let couponDiscount = 0;
   if (coupon && coupon.valid) {
