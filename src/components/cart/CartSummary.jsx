@@ -73,7 +73,7 @@ export default function CartSummary({ selectedShipping, zCreditToken, coupon, us
         </div>
       )}
       <div className="flex justify-between text-lg">
-        <span>סה"כ לתשלום:</span>
+        <span>סה&quot;כ לתשלום:</span>
         <span className="font-bold">{total} ₪</span>
       </div>
 
