@@ -3,11 +3,16 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { X, RefreshCw } from 'lucide-react';
-import Image from 'next/image';
 
+// Cache object to store fetched logos
 const logoCache = new Map();
 
-export default function EditLogoPanel({ open, onClose, onSelect }) {
+export default function EditLogoPanel({
+  open,
+  onClose,
+  onSelect,
+  folder = 'logos', // <-- default folder, change as needed, or '' for all
+}) {
   const [logos, setLogos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -19,19 +24,22 @@ export default function EditLogoPanel({ open, onClose, onSelect }) {
 
   const observer = useRef();
   const scrollContainerRef = useRef();
+  const loadingRef = useRef(false);
 
-  const generateCacheKey = (pageNum, cursor) => {
-    return `logo_page_${pageNum}_cursor_${cursor || 'null'}`;
-  };
+  const generateCacheKey = (pageNum, cursor, folderKey) =>
+    `logo_page_${pageNum}_cursor_${cursor || 'null'}_folder_${folderKey || 'ALL'}`;
 
+  // fetchLogos: fetches from API, caches, supports force refresh and folder param
   const fetchLogos = useCallback(
     async (pageNum = 1, cursor = null, reset = false, forceRefresh = false) => {
-      if (loading || loadingMore) return;
+      if (loadingRef.current) return;
+      loadingRef.current = true;
 
-      const cacheKey = generateCacheKey(pageNum, cursor);
+      const cacheKey = generateCacheKey(pageNum, cursor, folder);
+
+      // Use cache unless forcing refresh
       if (!forceRefresh && logoCache.has(cacheKey)) {
         const cachedData = logoCache.get(cacheKey);
-
         if (reset) {
           setLogos(cachedData.logos);
           setHasMore(cachedData.hasMore);
@@ -43,6 +51,7 @@ export default function EditLogoPanel({ open, onClose, onSelect }) {
           setNextCursor(cachedData.nextCursor);
           setPage(pageNum);
         }
+        loadingRef.current = false;
         return;
       }
 
@@ -57,12 +66,10 @@ export default function EditLogoPanel({ open, onClose, onSelect }) {
         const params = new URLSearchParams({
           page: pageNum.toString(),
           limit: '3',
-          resource_type: 'image',
         });
-
-        if (cursor) {
-          params.append('next_cursor', cursor);
-        }
+        if (cursor) params.append('next_cursor', cursor);
+        // Only include folder if not empty string
+        if (folder && folder.trim() !== '') params.append('folder', folder);
 
         const response = await fetch(`/api/cloudinary/images?${params}`);
         const data = await response.json();
@@ -72,7 +79,7 @@ export default function EditLogoPanel({ open, onClose, onSelect }) {
         }
 
         const newLogos = data.resources || [];
-        const hasMoreLogos = newLogos.length === 3 && data.pagination?.has_more !== false;
+        const hasMoreLogos = !!data.pagination?.next_cursor;
         const newNextCursor = data.pagination?.next_cursor || null;
 
         logoCache.set(cacheKey, {
@@ -93,17 +100,17 @@ export default function EditLogoPanel({ open, onClose, onSelect }) {
         setPage(pageNum);
       } catch (err) {
         setError(err.message);
-        if (reset) {
-          setLogos([]);
-        }
+        if (reset) setLogos([]);
       } finally {
         setLoading(false);
         setLoadingMore(false);
+        loadingRef.current = false;
       }
     },
-    [loading, loadingMore] // Fixed: add all deps used in this function
+    [folder]
   );
 
+  // Clear cache and refresh
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
     logoCache.clear();
@@ -114,11 +121,11 @@ export default function EditLogoPanel({ open, onClose, onSelect }) {
     setError(null);
     setLoading(false);
     setLoadingMore(false);
-    fetchLogos(1, null, true, true).finally(() => {
-      setRefreshing(false);
-    });
+
+    fetchLogos(1, null, true, true).finally(() => setRefreshing(false));
   }, [fetchLogos]);
 
+  // Load initial logos when panel opens or folder changes
   useEffect(() => {
     if (open) {
       setLogos([]);
@@ -128,10 +135,12 @@ export default function EditLogoPanel({ open, onClose, onSelect }) {
       setError(null);
       setLoading(false);
       setLoadingMore(false);
+
       fetchLogos(1, null, true);
     }
-  }, [open, fetchLogos]);
+  }, [open, folder, fetchLogos]);
 
+  // Infinite scroll
   const lastLogoElementRef = useCallback(
     node => {
       if (loading || loadingMore || !hasMore) return;
@@ -212,11 +221,9 @@ export default function EditLogoPanel({ open, onClose, onSelect }) {
                 }}
                 className="cursor-pointer border rounded hover:bg-muted transition p-2"
               >
-                <Image
+                <img
                   src={logo.url}
                   alt={logo.public_id}
-                  width={logo.width || 400}
-                  height={logo.height || 300}
                   className="w-full h-auto rounded bg-gray-100"
                   loading="lazy"
                 />
@@ -235,6 +242,7 @@ export default function EditLogoPanel({ open, onClose, onSelect }) {
           </>
         )}
       </div>
+
       {logos.length > 0 && (
         <div className="absolute bottom-0 left-0 right-0 bg-gray-50 px-4 py-2 border-t">
           <div className="text-xs text-muted-foreground text-center">

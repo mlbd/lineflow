@@ -5,6 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 
+const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+
 export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
   const [overlayUrl, setOverlayUrl] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
@@ -13,7 +15,7 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
     return new Promise((resolve, reject) => {
       const img = new window.Image();
       img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-      img.onerror = reject;
+      img.onerror = () => reject(new Error('Failed to load image: ' + url));
       img.src = url;
     });
   }, []);
@@ -27,8 +29,7 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
     }
 
     const imageName = imageUrl.split('/').pop();
-    const folder = 'dfuecvdyc';
-    const base = `https://res.cloudinary.com/${folder}/image/upload`;
+    const base = `https://res.cloudinary.com/${cloudName}/image/upload`;
 
     const img = document.querySelector('img');
     if (!img?.complete) {
@@ -64,7 +65,7 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
           h = Math.round(m.h * scaleY);
         }
         return [
-          `l_one_pixel_tn2oaa,w_${w},h_${h}`,
+          `l_one_pixel_s4c3vt,w_${w},h_${h}`,
           `co_rgb:000000,e_colorize,fl_layer_apply,x_${x},y_${y},g_north_west`,
         ].join('/');
       });
@@ -74,7 +75,7 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
 
       if (logoId) {
         const logoSize = await getImageSize(
-          `https://res.cloudinary.com/${folder}/image/upload/${logoId}.png`
+          `https://res.cloudinary.com/${cloudName}/image/upload/${logoId}.png`
         );
 
         const logoTransformations = mappings.map(m => {
@@ -128,7 +129,7 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
           const logoY = y + Math.round((h - logoH) / 2);
 
           return [
-            `l_one_pixel_tn2oaa,w_${w},h_${h}`,
+            `l_one_pixel_s4c3vt,w_${w},h_${h}`,
             `co_rgb:000000,e_colorize,fl_layer_apply,x_${x},y_${y},g_north_west`,
             `l_${logoId},w_${logoW},h_${logoH}`,
             `fl_layer_apply,x_${logoX},y_${logoY},g_north_west`,

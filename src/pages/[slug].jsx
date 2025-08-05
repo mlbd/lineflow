@@ -10,6 +10,8 @@ import ProductListSection from '@/components/page/ProductListSection';
 import CartPage from '@/components/cart/CartPage';
 import Footer from '@/components/page/Footer';
 
+import { readShippingCache, writeShippingCache } from '@/lib/shippingCache';
+
 const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
 
 export async function getStaticPaths() {
@@ -41,6 +43,28 @@ export async function getStaticProps({ params }) {
     // Normalize to IDs
     const productIds = productIdsRaw.map(p => (typeof p === 'object' ? p.id : p)).filter(Boolean);
     console.log('🔢 Normalized product IDs:', productIds);
+
+    // SHIPPING CACHE LOGIC
+    let shippingOptions = readShippingCache();
+    if (!shippingOptions) {
+      const shippingRes = await fetch(`${WP_URL}/wp-json/mini-sites/v1/shipping`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          country: 'IL',
+          postcode: '',
+          cart: [],
+        }),
+      });
+      if (shippingRes.ok) {
+        const shippingData = await shippingRes.json();
+        shippingOptions = shippingData.shipping || [];
+        writeShippingCache(shippingOptions);
+      } else {
+        shippingOptions = [];
+      }
+    }
+    // END SHIPPING CACHE
 
     let products = [];
 
@@ -77,6 +101,7 @@ export async function getStaticProps({ params }) {
           image: data.meta.seo_image?.url || null,
         },
         meta: data?.meta || [],
+        shippingOptions,
       },
       revalidate: 60,
     };
@@ -105,35 +130,10 @@ export default function LandingPage({
   seo = {},
   meta = [],
   error = false,
+  shippingOptions = []
 }) {
   const [animationDone, setAnimationDone] = useState(false);
-  const [shippingOptions, setShippingOptions] = useState([]);
-  const [shippingLoading, setShippingLoading] = useState(true);
   const cartSectionRef = useRef(null);
-
-  useEffect(() => {
-    async function fetchShipping() {
-      try {
-        setShippingLoading(true);
-        const res = await fetch(`${WP_URL}/wp-json/mini-sites/v1/shipping`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            country: 'IL',
-            postcode: '',
-            cart: [],
-          }),
-        });
-        const data = await res.json();
-        setShippingOptions(data.shipping || []);
-      } catch (err) {
-        setShippingOptions([]);
-      } finally {
-        setShippingLoading(false);
-      }
-    }
-    fetchShipping();
-  }, []);
 
   const handleScrollToCart = () => {
     if (cartSectionRef.current) {
@@ -193,7 +193,7 @@ export default function LandingPage({
           <div className="w-full" ref={cartSectionRef}>
             <CartPage
               shippingOptions={shippingOptions}
-              shippingLoading={shippingLoading}
+              shippingLoading={false}
               meta={meta}
             />
           </div>

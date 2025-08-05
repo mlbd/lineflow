@@ -12,6 +12,7 @@ import ImageModal from '@/components/ImageModal';
 
 // Toggle this variable to enable/disable Cloudinary fetching
 const ENABLE_CLOUDINARY = true;
+const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
 
 export default function LogosPage() {
   const [pageData, setPageData] = useState(null);
@@ -269,8 +270,7 @@ export default function LogosPage() {
     if (!ENABLE_CLOUDINARY) return data.imageUrl;
 
     const { imageUrl, mappings } = data;
-    const folder = 'dfuecvdyc';
-    const base = `https://res.cloudinary.com/${folder}/image/upload`;
+    const base = `https://res.cloudinary.com/${cloudName}/image/upload`;
     const imageName = imageUrl.split('/').pop();
 
     const { public_id, width: logoWidth, height: logoHeight } = logo;
@@ -320,7 +320,7 @@ export default function LogosPage() {
           setOverayColor(hexColor);
 
           return [
-            `l_one_pixel_tn2oaa,w_${w},h_${h}`,
+            `l_one_pixel_s4c3vt,w_${w},h_${h}`,
             `co_rgb:${hexColor},e_colorize:100,o_${opacity},fl_layer_apply,x_${x},y_${y},g_north_west`,
             `l_${public_id},c_pad,w_${fitW},h_${fitH},g_center,b_auto`,
             `fl_layer_apply,x_${logoX},y_${logoY},g_north_west`,
@@ -547,12 +547,14 @@ export default function LogosPage() {
                 onClick={() => handleImageClick(logo)}
               >
                 <LazyLoadImage
-                  key={logo.imageKey}
-                  src={logo.thumbnailUrl}
-                  alt={logo.title}
-                  className="w-full h-auto block hover:opacity-90 transition-opacity"
-                  aspectRatio="auto"
-                />
+  key={logo.imageKey}
+  src={logo.thumbnailUrl}
+  alt={logo.title}
+  width={logo.width || 300}
+  height={logo.height || 200}
+  className="w-full h-auto block hover:opacity-90 transition-opacity"
+  aspectRatio="auto"
+/>
               </div>
               <div className="py-8 px-4 text-center">
                 <h3 className="font-semibold mb-1">{logo.title}</h3>

@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Image, Plus, Trash2, ArrowsUpFromLine, Upload, Grid3X3 } from 'lucide-react';
-import { sendGTMEvent } from '@next/third-parties/google';
 
 import ImageCanvas from '@/components/ImageCanvas';
 import MappingList from '@/components/MappingList';
@@ -11,7 +10,9 @@ import EditMappingModal from '@/components/EditMappingModal';
 import EditImagePanel from '@/components/EditImagePanel';
 import EditLogoPanel from '@/components/EditLogoPanel';
 import UploadImageModal from '@/components/UploadImageModal';
-import { Button } from '@/components/ui/button';
+
+const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+
 
 function ToolButton({ icon: Icon, label, onClick, className = '' }) {
   return (
@@ -27,7 +28,7 @@ function ToolButton({ icon: Icon, label, onClick, className = '' }) {
 
 export default function HomePage() {
   const [imageUrl, setImageUrl] = useState(
-    'https://res.cloudinary.com/dfuecvdyc/image/upload/Polo-Navy_gnpa40.jpg'
+    `https://res.cloudinary.com/${cloudName}/image/upload/V-Neck_L-Gray_ulfprv.jpg`
   );
   const [mappings, setMappings] = useState([]);
   const [selectedMapping, setSelectedMapping] = useState(null);
@@ -35,64 +36,56 @@ export default function HomePage() {
   const [showEditPanel, setShowEditPanel] = useState(false);
   const [showLogoPanel, setShowLogoPanel] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [logoId, setLogoId] = useState('file_vchdkq');
+  const [logoId, setLogoId] = useState('square');
   const [hasFuturePlan, setHasFuturePlan] = useState(false);
 
-  // Read ?future_plan param on mount
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const futurePlan = urlParams.get('future_plan');
     setHasFuturePlan(futurePlan === 'true');
   }, []);
 
-  // Memoize handler because it's used in useEffect and passed to children
-  const handleDelete = useCallback(
-    id => {
-      setMappings(prev => prev.filter(m => m.id !== id));
-      if (selectedMapping?.id === id) setSelectedMapping(null);
-    },
-    [selectedMapping]
-  );
+  const handleDelete = id => {
+    setMappings(prev => prev.filter(m => m.id !== id));
+    if (selectedMapping?.id === id) setSelectedMapping(null);
+  };
 
-  // Memoize other handlers used as props or inside effects
-  const handleEdit = useCallback(
-    id => {
-      const mapping = mappings.find(m => m.id === id);
-      if (mapping) {
-        setSelectedMapping(mapping);
-        setEditOpen(true);
-      }
-    },
-    [mappings]
-  );
+  const handleEdit = id => {
+    const mapping = mappings.find(m => m.id === id);
+    if (mapping) {
+      setSelectedMapping(mapping);
+      setEditOpen(true);
+    }
+  };
 
-  const handleClearAll = useCallback(() => {
+  const handleClearAll = () => {
     setMappings([]);
     setSelectedMapping(null);
-  }, []);
+  };
 
-  const handleUpdateMeta = useCallback(() => {
+  const handleUpdateMeta = () => {
     alert('Coming Soon..');
-  }, []);
+  };
 
-  const handleUploadSelect = useCallback((value, type) => {
+  const handleUploadSelect = (value, type) => {
     if (type === 'background') {
       setImageUrl(value);
     } else if (type === 'logo') {
       setLogoId(value);
     }
-  }, []);
+  };
 
-  const handleViewWithAllLogos = useCallback(() => {
+  const handleViewWithAllLogos = () => {
     if (mappings.length === 0) {
       alert('Please create at least one placement area before viewing logos.');
       return;
     }
-    window.open('/logos', '_blank');
-  }, [mappings.length]);
 
-  // Persist logo page data to localStorage whenever it changes
+    window.open('/logos', '_blank');
+  };
+
   useEffect(() => {
+    console.log('mappings', mappings);
     const dataToPass = {
       imageUrl,
       mappings,
@@ -101,7 +94,6 @@ export default function HomePage() {
     localStorage.setItem('logo_page_data', JSON.stringify(dataToPass));
   }, [imageUrl, mappings, logoId]);
 
-  // Delete mapping by keyboard shortcut
   useEffect(() => {
     const handleKeyDown = e => {
       if ((e.key === 'Delete' || e.key === 'Del') && selectedMapping) {
@@ -110,7 +102,7 @@ export default function HomePage() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedMapping, handleDelete]);
+  }, [selectedMapping]);
 
   return (
     <main className="w-full flex justify-center bg-muted min-h-screen">
@@ -120,12 +112,6 @@ export default function HomePage() {
           <h1 className="text-md bg-primary text-white font-bold border-b border-b-[#e6e8ea] h-[55px] flex items-center justify-center">
             Placement Editor
           </h1>
-
-          <div>
-            <Button onClick={() => sendGTMEvent({ event: 'buttonClicked', value: 'xyz' })}>
-              sendGTMEvent
-            </Button>
-          </div>
 
           <MappingList
             mappings={mappings}
@@ -158,7 +144,7 @@ export default function HomePage() {
               onClick={() => {
                 setShowLogoPanel(false);
                 setShowUploadModal(false);
-                setShowEditPanel(prev => !prev);
+                setShowEditPanel(!showEditPanel);
               }}
             />
             <ToolButton
@@ -167,7 +153,7 @@ export default function HomePage() {
               onClick={() => {
                 setShowEditPanel(false);
                 setShowUploadModal(false);
-                setShowLogoPanel(prev => !prev);
+                setShowLogoPanel(!showLogoPanel);
               }}
             />
             <ToolButton
@@ -228,6 +214,7 @@ export default function HomePage() {
         open={showEditPanel}
         onClose={() => setShowEditPanel(false)}
         onSelect={url => setImageUrl(url)}
+        folder="Thumbnails"
       />
 
       <EditLogoPanel
@@ -237,6 +224,7 @@ export default function HomePage() {
           setLogoId(publicId);
           setShowLogoPanel(false);
         }}
+        folder="Experiment"
       />
 
       <UploadImageModal
