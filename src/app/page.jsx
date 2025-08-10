@@ -1,18 +1,31 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Image, Plus, Trash2, ArrowsUpFromLine, Upload, Grid3X3 } from 'lucide-react';
+import {
+  Image,
+  Plus,
+  Trash2,
+  ArrowsUpFromLine,
+  Upload,
+  Grid3X3,
+  CheckCircle,
+  XCircle,
+  Loader2,
+} from 'lucide-react';
 
 import ImageCanvas from '@/components/ImageCanvas';
 import MappingList from '@/components/MappingList';
 import OutputPanel from '@/components/OutputPanel';
 import EditMappingModal from '@/components/EditMappingModal';
-import ProductPanel from '@/components/ProductPanel'; // NEW!
+import EditImagePanel from '@/components/EditImagePanel'; // <-- now used for Select Product
 import EditLogoPanel from '@/components/EditLogoPanel';
 import UploadImageModal from '@/components/UploadImageModal';
 
 const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
 const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
+
+// local cache keys this page clears
+const LS_KEYS = ['ms_cache_products_all_v1', 'ms_cache_pages_all_v1'];
 
 function ToolButton({ icon: Icon, label, onClick, className = '' }) {
   return (
@@ -26,6 +39,48 @@ function ToolButton({ icon: Icon, label, onClick, className = '' }) {
   );
 }
 
+function ResultModal({ open, type = 'success', title, message, onClose }) {
+  if (!open) return null;
+  const isSuccess = type === 'success';
+  const Icon = isSuccess ? CheckCircle : XCircle;
+  const colorWrap = isSuccess ? 'text-green-600' : 'text-red-600';
+  const bgRing = isSuccess ? 'bg-green-50 ring-green-200' : 'bg-red-50 ring-red-200';
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className={`w-full max-w-md rounded-2xl ring-1 ${bgRing} bg-white p-6 shadow-xl`}>
+        <div className="flex items-start gap-3">
+          <Icon className={`mt-0.5 ${colorWrap}`} size={28} />
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold">{title}</h3>
+            {message && <p className="text-sm text-gray-600 mt-1">{message}</p>}
+          </div>
+        </div>
+        <div className="mt-6 flex justify-end">
+          <button
+            onClick={onClose}
+            className="cursor-pointer inline-flex items-center rounded-md bg-gray-900 px-4 py-2 text-white hover:bg-black transition"
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SavingOverlay({ visible, label = 'Updating placements…' }) {
+  if (!visible) return null;
+  return (
+    <div className="fixed inset-0 z-[90] bg-black/40 backdrop-blur-sm flex items-center justify-center">
+      <div className="rounded-xl bg-white shadow-lg px-5 py-4 flex items-center gap-3">
+        <Loader2 className="animate-spin" size={20} />
+        <span className="text-sm font-medium">{label}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const [imageUrl, setImageUrl] = useState(
     `https://res.cloudinary.com/${cloudName}/image/upload/V-Neck_L-Gray_ulfprv.jpg`
@@ -33,12 +88,18 @@ export default function HomePage() {
   const [mappings, setMappings] = useState([]);
   const [selectedMapping, setSelectedMapping] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
-  const [showProductPanel, setShowProductPanel] = useState(false); // CHANGED
+  const [showProductPanel, setShowProductPanel] = useState(false);
   const [showLogoPanel, setShowLogoPanel] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [logoId, setLogoId] = useState('square');
-  const [selectedProductId, setSelectedProductId] = useState(null); // NEW
+  const [selectedProductId, setSelectedProductId] = useState(null);
   const [hasFuturePlan, setHasFuturePlan] = useState(false);
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [resultOpen, setResultOpen] = useState(false);
+  const [resultType, setResultType] = useState('success');
+  const [resultTitle, setResultTitle] = useState('');
+  const [resultMessage, setResultMessage] = useState('');
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -69,11 +130,8 @@ export default function HomePage() {
   };
 
   const handleUploadSelect = (value, type) => {
-    if (type === 'background') {
-      setImageUrl(value);
-    } else if (type === 'logo') {
-      setLogoId(value);
-    }
+    if (type === 'background') setImageUrl(value);
+    else if (type === 'logo') setLogoId(value);
   };
 
   const handleViewWithAllLogos = () => {
@@ -85,13 +143,7 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    console.log('mappings', mappings);
-    const dataToPass = {
-      imageUrl,
-      mappings,
-      logoId,
-      selectedProductId, // Save this for placements
-    };
+    const dataToPass = { imageUrl, mappings, logoId, selectedProductId };
     localStorage.setItem('logo_page_data', JSON.stringify(dataToPass));
   }, [imageUrl, mappings, logoId, selectedProductId]);
 
@@ -105,23 +157,61 @@ export default function HomePage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedMapping]);
 
-  // NEW: Save Placement API
   const handleSavePlacement = async () => {
-    if (!selectedProductId) return alert('Select a product first!');
-    const res = await fetch(`${WP_URL}/wp-json/mini-sites/v1/update=placement`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        product_id: selectedProductId,
-        placements: mappings,
-      }),
-    });
-    const data = await res.json();
-    alert(data.message || 'Placements saved!');
+    if (!selectedProductId) {
+      setResultType('error');
+      setResultTitle('Product not selected');
+      setResultMessage('Please select a product before updating placements.');
+      setResultOpen(true);
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const res = await fetch(`${WP_URL}/wp-json/mini-sites/v1/update=placement`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product_id: selectedProductId, placements: mappings }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.message || `HTTP ${res.status}`);
+      setResultType('success');
+      setResultTitle('Placements updated');
+      setResultMessage(data?.message || 'Your placements were saved successfully.');
+      setResultOpen(true);
+    } catch (err) {
+      setResultType('error');
+      setResultTitle('Update failed');
+      setResultMessage(err?.message || 'Something went wrong while saving placements.');
+      setResultOpen(true);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Clear both client + server caches
+  const handleClearAllCaches = async () => {
+    try {
+      // client caches
+      LS_KEYS.forEach(k => localStorage.removeItem(k));
+      // notify panels to drop in-memory too
+      window.dispatchEvent(new CustomEvent('ms-clear-cache'));
+
+      // server caches
+      await fetch('/api/ms/revalidate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tags: ['ms:products', 'ms:pages'] }),
+      });
+      alert('Cache cleared!');
+    } catch {
+      alert('Tried to clear cache, but something went wrong.');
+    }
   };
 
   return (
-    <main className="w-full flex justify-center bg-muted min-h-screen">
+    <main className="w-full flex justify-center bg-muted min-h-screen relative">
+      <SavingOverlay visible={isSaving} />
+
       <div className="w-full max-w-[1920px] flex h-screen overflow-hidden">
         {/* Sidebar */}
         <div className="w-[300px] bg-white border-r overflow-y-auto space-y-6">
@@ -146,18 +236,26 @@ export default function HomePage() {
             logoId={logoId}
             setLogoId={setLogoId}
           />
-          {/* NEW: Save placement button */}
+
+          {/* Save placement */}
           <button
             className={`mt-4 w-full py-2 cursor-pointer rounded font-semibold transition
               ${
-                mappings.length === 0
+                mappings.length === 0 || isSaving
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   : 'bg-blue-600 text-white hover:bg-blue-700'
               }`}
             onClick={handleSavePlacement}
-            disabled={mappings.length === 0}
+            disabled={mappings.length === 0 || isSaving}
           >
-            Update Placement
+            {isSaving ? (
+              <span className="inline-flex items-center gap-2">
+                <Loader2 className="animate-spin" size={18} />
+                Saving…
+              </span>
+            ) : (
+              'Update Placement'
+            )}
           </button>
         </div>
 
@@ -211,11 +309,8 @@ export default function HomePage() {
             />
             <ToolButton
               icon={Trash2}
-              label="Clear Product Cache"
-              onClick={() => {
-                localStorage.removeItem('mini_site_products_cache');
-                alert('Product cache cleared!');
-              }}
+              label="Clear Cache"
+              onClick={handleClearAllCaches}
               className="text-yellow-600 hover:bg-yellow-100"
             />
           </div>
@@ -238,6 +333,7 @@ export default function HomePage() {
         </div>
       </div>
 
+      {/* Edit Mapping */}
       <EditMappingModal
         mapping={selectedMapping}
         open={editOpen}
@@ -248,8 +344,8 @@ export default function HomePage() {
         }}
       />
 
-      {/* NEW: ProductPanel for Select Product */}
-      <ProductPanel
+      {/* Panels */}
+      <EditImagePanel
         open={showProductPanel}
         onClose={() => setShowProductPanel(false)}
         onSelect={(url, productId) => {
@@ -257,7 +353,6 @@ export default function HomePage() {
           setSelectedProductId(productId);
           setShowProductPanel(false);
         }}
-        wpUrl={WP_URL}
       />
 
       <EditLogoPanel
@@ -267,14 +362,23 @@ export default function HomePage() {
           setLogoId(publicId);
           setShowLogoPanel(false);
         }}
-        folder="Experiment"
-        wpUrl={WP_URL}
       />
 
       <UploadImageModal
         open={showUploadModal}
         onClose={() => setShowUploadModal(false)}
-        onSelect={handleUploadSelect}
+        onSelect={(value, type) => {
+          if (type === 'background') setImageUrl(value);
+          if (type === 'logo') setLogoId(value);
+        }}
+      />
+
+      <ResultModal
+        open={resultOpen}
+        type={resultType}
+        title={resultTitle}
+        message={resultMessage}
+        onClose={() => setResultOpen(false)}
       />
     </main>
   );

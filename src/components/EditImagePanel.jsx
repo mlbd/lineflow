@@ -1,191 +1,87 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
-import { X, RefreshCw } from 'lucide-react';
+import { X } from 'lucide-react';
 
-// Cache object to store fetched images
-const imageCache = new Map();
+// =================== Config / Globals ===================
+const LS_KEY = 'ms_cache_products_all_v1';
+const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days (change here)
 
-export default function EditImagePanel({ open, onClose, onSelect, folder = 'Thumbnails' }) {
-  const [images, setImages] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  const [nextCursor, setNextCursor] = useState(null);
-  const [page, setPage] = useState(1);
-  const [error, setError] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
+// =================== API ===================
+const API_ROOT = '/api/ms';
 
-  const observer = useRef();
-  const scrollContainerRef = useRef();
-
-  // Generate cache key based on page and cursor
-  const generateCacheKey = (pageNum, cursor) => {
-    return `page_${pageNum}_cursor_${cursor || 'null'}`;
-  };
-
-  // Function to fetch images with caching
-  const fetchImages = useCallback(
-    async (pageNum = 1, cursor = null, reset = false, forceRefresh = false) => {
-      // Prevent multiple simultaneous requests
-      if (loading || loadingMore) return;
-
-      const cacheKey = generateCacheKey(pageNum, cursor);
-
-      // Check cache first (unless forcing refresh)
-      if (!forceRefresh && imageCache.has(cacheKey)) {
-        console.log('Using cached data for:', cacheKey);
-        const cachedData = imageCache.get(cacheKey);
-
-        if (reset) {
-          setImages(cachedData.images);
-          setHasMore(cachedData.hasMore);
-          setNextCursor(cachedData.nextCursor);
-          setPage(pageNum);
-        } else {
-          setImages(prev => [...prev, ...cachedData.images]);
-          setHasMore(cachedData.hasMore);
-          setNextCursor(cachedData.nextCursor);
-          setPage(pageNum);
-        }
-        return;
-      }
-
-      if (reset) {
-        setLoading(true);
-        setError(null);
-      } else {
-        setLoadingMore(true);
-      }
-
-      try {
-        const params = new URLSearchParams({
-          page: pageNum.toString(),
-          limit: '3',
-        });
-
-        if (cursor) {
-          params.append('next_cursor', cursor);
-        }
-
-        // Only add folder if set and not empty
-        if (folder && folder.trim() !== '') params.append('folder', folder);
-
-        console.log('Fetching from Cloudinary:', cacheKey);
-        const response = await fetch(`/api/cloudinary/images?${params}`);
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to fetch images');
-        }
-
-        const newImages = data.resources || [];
-
-        // Check if we have more images to load
-        const hasMoreImages = newImages.length === 3 && data.pagination?.has_more !== false;
-        const newNextCursor = data.pagination?.next_cursor || null;
-
-        // Cache the fetched data immediately
-        imageCache.set(cacheKey, {
-          images: newImages,
-          hasMore: hasMoreImages,
-          nextCursor: newNextCursor,
-          timestamp: Date.now(),
-        });
-
-        if (reset) {
-          setImages(newImages);
-        } else {
-          setImages(prev => [...prev, ...newImages]);
-        }
-
-        setHasMore(hasMoreImages);
-        setNextCursor(newNextCursor);
-        setPage(pageNum);
-      } catch (err) {
-        setError(err.message);
-        console.error('Error fetching images:', err);
-        if (reset) {
-          setImages([]);
-        }
-      } finally {
-        setLoading(false);
-        setLoadingMore(false);
-      }
-    },
-    []
-  );
-
-  // Function to clear cache and refresh
-  const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-
-    // Clear all cache
-    imageCache.clear();
-    console.log('Cache cleared');
-
-    // Reset state
-    setImages([]);
-    setPage(1);
-    setNextCursor(null);
-    setHasMore(true);
-    setError(null);
-    setLoading(false);
-    setLoadingMore(false);
-
-    // Fetch fresh data
-    fetchImages(1, null, true, true).finally(() => {
-      setRefreshing(false);
-    });
-  }, [fetchImages]);
-
-  // Load initial images when panel opens
-  useEffect(() => {
-    if (open) {
-      // Reset state when opening
-      setImages([]);
-      setPage(1);
-      setNextCursor(null);
-      setHasMore(true);
-      setError(null);
-      setLoading(false);
-      setLoadingMore(false);
-
-      fetchImages(1, null, true);
+// Helpers: localStorage with TTL
+function lsGet(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const json = JSON.parse(raw);
+    if (!json?.__ts || !json?.__ttl) return null;
+    if (Date.now() - json.__ts > json.__ttl) {
+      localStorage.removeItem(key);
+      return null;
     }
-  }, [open, fetchImages]);
+    return json.data;
+  } catch {
+    return null;
+  }
+}
+function lsSet(key, data, ttl = CACHE_TTL_MS) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ data, __ts: Date.now(), __ttl: ttl }));
+  } catch {}
+}
 
-  // Intersection Observer callback for infinite scroll
-  const lastImageElementRef = useCallback(
-    node => {
-      if (loading || loadingMore || !hasMore) return;
-      if (observer.current) observer.current.disconnect();
+export default function EditImagePanel({ open, onClose, onSelect }) {
+  const [all, setAll] = useState([]); // aggregated products
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const [q, setQ] = useState('');
 
-      observer.current = new IntersectionObserver(
-        entries => {
-          if (entries[0].isIntersecting && hasMore && !loading && !loadingMore) {
-            console.log('Loading more images...'); // Debug log
-            fetchImages(page + 1, nextCursor);
-          }
-        },
-        {
-          threshold: 0.5, // Trigger when 50% of element is visible
-          rootMargin: '20px', // Trigger 20px before element comes into view
-        }
-      );
+  // derived filtered list
+  const filtered = q
+    ? all.filter(p => (p.name || '').toLowerCase().includes(q.toLowerCase()))
+    : all;
 
-      if (node) observer.current.observe(node);
-    },
-    [loading, loadingMore, hasMore, page, nextCursor, fetchImages]
-  );
-
-  // Cleanup observer on unmount
-  useEffect(() => {
-    return () => {
-      if (observer.current) observer.current.disconnect();
-    };
+  const load = useCallback(async () => {
+    // 1) local cache first
+    const cached = lsGet(LS_KEY);
+    if (cached && Array.isArray(cached?.products)) {
+      setAll(cached.products);
+      return;
+    }
+    // 2) server cache (shared) — one call returns ALL products aggregated
+    setLoading(true);
+    setErr('');
+    try {
+      const res = await fetch(`${API_ROOT}/products`, { cache: 'no-store' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
+      const products = Array.isArray(json?.products) ? json.products : [];
+      setAll(products);
+      lsSet(LS_KEY, { products });
+    } catch (e) {
+      setErr(e.message || 'Failed to load products');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  // React to Clear Cache global event from page.jsx
+  useEffect(() => {
+    const onClear = () => {
+      localStorage.removeItem(LS_KEY);
+      setAll([]);
+    };
+    window.addEventListener('ms-clear-cache', onClear);
+    return () => window.removeEventListener('ms-clear-cache', onClear);
+  }, []);
+
+  // Open -> load once (cache-first)
+  useEffect(() => {
+    if (open) load();
+  }, [open, load]);
 
   return (
     <div
@@ -195,88 +91,59 @@ export default function EditImagePanel({ open, onClose, onSelect, folder = 'Thum
     >
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b">
-        <h2 className="text-lg font-semibold">Choose Image</h2>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing || loading}
-            className="p-1 hover:bg-gray-100 rounded transition-colors disabled:opacity-50 cursor-pointer"
-            title="Refresh images"
-          >
-            <RefreshCw size={18} className={`${refreshing ? 'animate-spin' : ''}`} />
-          </button>
-          <button onClick={onClose} className="cursor-pointer">
-            <X size={20} />
-          </button>
-        </div>
+        <h2 className="text-lg font-semibold">Select Product</h2>
+        <button onClick={onClose} className="cursor-pointer">
+          <X size={20} />
+        </button>
       </div>
 
+      {/* Search */}
       <div className="p-4">
-        <Input placeholder="Search (not functional yet)" />
+        <Input placeholder="Search products" value={q} onChange={e => setQ(e.target.value)} />
       </div>
 
-      {/* Cache info for debugging */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="px-4 py-2 text-xs text-gray-500 bg-gray-50 border-b">
-          Cache entries: {imageCache.size}
-        </div>
-      )}
-
-      <div
-        ref={scrollContainerRef}
-        className="px-4 space-y-2 overflow-y-auto h-[calc(100vh-150px)]"
-      >
+      {/* Body */}
+      <div className="px-4 space-y-2 overflow-y-auto h-[calc(100vh-150px)]">
         {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
-            <span className="ml-2 text-sm text-muted-foreground">Loading images...</span>
+          <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+            Loading products…
           </div>
-        ) : error ? (
-          <div className="text-sm text-red-600 bg-red-50 p-3 rounded">Error: {error}</div>
-        ) : images.length === 0 ? (
-          <div className="text-sm text-muted-foreground">No images found.</div>
+        ) : err ? (
+          <div className="text-sm text-red-600 bg-red-50 p-3 rounded">Error: {err}</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-sm text-muted-foreground">No products found.</div>
         ) : (
-          <>
-            {images.map((img, index) => (
+          filtered.map(p => {
+            const img = p?.thumbnail_meta?.url || p?.thumbnail || '';
+            return (
               <div
-                key={img.public_id}
-                ref={index === images.length - 1 ? lastImageElementRef : null}
+                key={p.id}
+                className="flex items-center gap-3 p-2 border rounded hover:bg-muted transition cursor-pointer"
                 onClick={() => {
-                  onSelect(img.url);
+                  if (!img) return;
+                  onSelect(img, p.id); // Keep existing expectation: (url, productId)
                   onClose();
                 }}
-                className="cursor-pointer border rounded hover:bg-muted transition"
               >
-                <img
-                  src={img.url}
-                  alt={img.public_id}
-                  className="w-full h-auto rounded"
-                  loading="lazy"
-                />
+                {img ? (
+                  <img src={img} alt={p.name} className="w-12 h-12 object-cover rounded" />
+                ) : (
+                  <div className="w-12 h-12 rounded bg-gray-100" />
+                )}
+                <div className="min-w-0">
+                  <div className="text-sm font-medium truncate">{p.name}</div>
+                </div>
               </div>
-            ))}
-
-            {/* Loading more indicator */}
-            {loadingMore && (
-              <div className="flex items-center justify-center py-4">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-900"></div>
-                <span className="ml-2 text-sm text-muted-foreground">Loading more...</span>
-              </div>
-            )}
-
-            {/* End of results indicator */}
-            {!hasMore && images.length > 0 && (
-              <div className="text-center py-4 text-sm text-muted-foreground">No more images</div>
-            )}
-          </>
+            );
+          })
         )}
       </div>
 
-      {/* Image count footer */}
-      {images.length > 0 && (
+      {/* Footer */}
+      {filtered.length > 0 && (
         <div className="absolute bottom-0 left-0 right-0 bg-gray-50 px-4 py-2 border-t">
           <div className="text-xs text-muted-foreground text-center">
-            Showing {images.length} images
+            Showing {filtered.length} products
           </div>
         </div>
       )}
