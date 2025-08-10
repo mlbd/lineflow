@@ -70,7 +70,7 @@ export default function EditImagePanel({ open, onClose, onSelect, folder = 'Thum
         }
 
         // Only add folder if set and not empty
-      if (folder && folder.trim() !== '') params.append('folder', folder);
+        if (folder && folder.trim() !== '') params.append('folder', folder);
 
         console.log('Fetching from Cloudinary:', cacheKey);
         const response = await fetch(`/api/cloudinary/images?${params}`);

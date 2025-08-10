@@ -1,23 +1,22 @@
 'use client';
-import { useState, useEffect } from "react";
+import { useState, useEffect } from 'react';
 import { useCartItems } from './cartStore';
 import CartItem from './CartItem';
 import CartSummary from './CartSummary';
 import CartEmpty from './CartEmpty';
-import ShippingOptions from "./ShippingOptions";
-import CouponField from "./CouponField";
-import CartShimmer from "./CartShimmer";
+import ShippingOptions from './ShippingOptions';
+import CouponField from './CouponField';
+import CartShimmer from './CartShimmer';
 
-export default function CartPage({ shippingOptions = [], shippingLoading = false, meta = {} }) {
+export default function CartPage({ shippingOptions = [], shippingLoading = false, meta = {}, companyLogos = {} }) {
   const items = useCartItems();
   const [selectedShipping, setSelectedShipping] = useState(null);
 
   // Coupon logic
   const [validating, setValidating] = useState(false);
   const [coupon, setCoupon] = useState(null); // { valid, amount, type, description, ... }
-  const [couponInput, setCouponInput] = useState("");
+  const [couponInput, setCouponInput] = useState('');
 
-  
   useEffect(() => {
     if (!selectedShipping && shippingOptions.length > 0) {
       // ✅ Always select first one
@@ -30,16 +29,19 @@ export default function CartPage({ shippingOptions = [], shippingLoading = false
     setValidating(true);
     setCoupon(null);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_WP_SITE_URL}/wp-json/mini-sites/v1/coupon/validate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ coupon_code: code, email: meta?.user_email || "" }),
-      });
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_WP_SITE_URL}/wp-json/mini-sites/v1/coupon/validate`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ coupon_code: code, email: meta?.user_email || '' }),
+        }
+      );
       const data = await res.json();
       setCoupon(data);
       if (!data.valid && data.error) onError(data.error);
     } catch (e) {
-      onError("שגיאה באימות קופון");
+      onError('שגיאה באימות קופון');
     } finally {
       setValidating(false);
     }
@@ -47,7 +49,7 @@ export default function CartPage({ shippingOptions = [], shippingLoading = false
 
   const handleRemoveCoupon = () => {
     setCoupon(null);
-    setCouponInput("");
+    setCouponInput('');
   };
 
   if (!items.length) return <CartEmpty />;
@@ -55,13 +57,12 @@ export default function CartPage({ shippingOptions = [], shippingLoading = false
   return (
     <div className="relative">
       <div className="mt-16 max-w-[900px] mx-auto w-full">
-        
-          <div className="container mx-auto py-8 px-4">
-            <h1 className="text-3xl font-bold mb-8 text-center">סל קניות</h1>
-            {validating ? (
-          <CartShimmer itemCount={items.length || 3} />
-        ) : (
-          <div className="flex flex-col md:flex-row gap-8 items-start">
+        <div className="container mx-auto py-8 px-4">
+          <h1 className="text-3xl font-bold mb-8 text-center">סל קניות</h1>
+          {validating ? (
+            <CartShimmer itemCount={items.length || 3} />
+          ) : (
+            <div className="flex flex-col md:flex-row gap-8 items-start">
               {/* Cart Section: 80% width on desktop */}
               <div className="md:w-[70%] w-full">
                 {/* Cart Header */}
@@ -78,7 +79,12 @@ export default function CartPage({ shippingOptions = [], shippingLoading = false
                   {/* Cart Items */}
                   <div className="space-y-4">
                     {items.map((item, idx) => (
-                      <CartItem key={`${item.product_id}-${idx}`} item={item} idx={idx} />
+                      <CartItem 
+                        key={`${item.product_id}-${idx}`} 
+                        item={item} 
+                        idx={idx}
+                        companyLogos={companyLogos}
+                       />
                     ))}
                   </div>
                   {validating && (
@@ -111,9 +117,8 @@ export default function CartPage({ shippingOptions = [], shippingLoading = false
                 />
               </div>
             </div>
-           )}
-          </div>
-       
+          )}
+        </div>
       </div>
       <div className="py-[50px] mt-[50px] bg-bglight">
         <div className="mt-16 flex justify-center max-w-[900px] mx-auto w-full">

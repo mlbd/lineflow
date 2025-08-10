@@ -7,12 +7,12 @@ import ImageCanvas from '@/components/ImageCanvas';
 import MappingList from '@/components/MappingList';
 import OutputPanel from '@/components/OutputPanel';
 import EditMappingModal from '@/components/EditMappingModal';
-import EditImagePanel from '@/components/EditImagePanel';
+import ProductPanel from '@/components/ProductPanel';   // NEW!
 import EditLogoPanel from '@/components/EditLogoPanel';
 import UploadImageModal from '@/components/UploadImageModal';
 
 const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-
+const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
 
 function ToolButton({ icon: Icon, label, onClick, className = '' }) {
   return (
@@ -33,10 +33,11 @@ export default function HomePage() {
   const [mappings, setMappings] = useState([]);
   const [selectedMapping, setSelectedMapping] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
-  const [showEditPanel, setShowEditPanel] = useState(false);
+  const [showProductPanel, setShowProductPanel] = useState(false); // CHANGED
   const [showLogoPanel, setShowLogoPanel] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [logoId, setLogoId] = useState('square');
+  const [selectedProductId, setSelectedProductId] = useState(null); // NEW
   const [hasFuturePlan, setHasFuturePlan] = useState(false);
 
   useEffect(() => {
@@ -80,7 +81,6 @@ export default function HomePage() {
       alert('Please create at least one placement area before viewing logos.');
       return;
     }
-
     window.open('/logos', '_blank');
   };
 
@@ -90,9 +90,10 @@ export default function HomePage() {
       imageUrl,
       mappings,
       logoId,
+      selectedProductId, // Save this for placements
     };
     localStorage.setItem('logo_page_data', JSON.stringify(dataToPass));
-  }, [imageUrl, mappings, logoId]);
+  }, [imageUrl, mappings, logoId, selectedProductId]);
 
   useEffect(() => {
     const handleKeyDown = e => {
@@ -103,6 +104,21 @@ export default function HomePage() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedMapping]);
+
+  // NEW: Save Placement API
+  const handleSavePlacement = async () => {
+    if (!selectedProductId) return alert("Select a product first!");
+    const res = await fetch(`${WP_URL}/wp-json/mini-sites/v1/update=placement`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        product_id: selectedProductId,
+        placements: mappings,
+      }),
+    });
+    const data = await res.json();
+    alert(data.message || "Placements saved!");
+  };
 
   return (
     <main className="w-full flex justify-center bg-muted min-h-screen">
@@ -130,6 +146,17 @@ export default function HomePage() {
             logoId={logoId}
             setLogoId={setLogoId}
           />
+          {/* NEW: Save placement button */}
+          <button
+            className={`mt-4 w-full py-2 cursor-pointer rounded font-semibold transition
+              ${mappings.length === 0
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+            onClick={handleSavePlacement}
+            disabled={mappings.length === 0}
+          >
+            Update Placement
+          </button>
         </div>
 
         {/* Canvas Section */}
@@ -140,18 +167,18 @@ export default function HomePage() {
           >
             <ToolButton
               icon={Image}
-              label={hasFuturePlan ? 'Product List' : 'Edit Image'}
+              label="Select Product"
               onClick={() => {
                 setShowLogoPanel(false);
                 setShowUploadModal(false);
-                setShowEditPanel(!showEditPanel);
+                setShowProductPanel(!showProductPanel);
               }}
             />
             <ToolButton
               icon={Plus}
-              label={hasFuturePlan ? 'Landing Pages' : 'Add Logo'}
+              label="Select Logo"
               onClick={() => {
-                setShowEditPanel(false);
+                setShowProductPanel(false);
                 setShowUploadModal(false);
                 setShowLogoPanel(!showLogoPanel);
               }}
@@ -160,7 +187,7 @@ export default function HomePage() {
               icon={Upload}
               label="Upload Image"
               onClick={() => {
-                setShowEditPanel(false);
+                setShowProductPanel(false);
                 setShowLogoPanel(false);
                 setShowUploadModal(true);
               }}
@@ -180,13 +207,22 @@ export default function HomePage() {
               onClick={handleClearAll}
               className="text-red-600 hover:bg-red-50"
             />
+            <ToolButton
+              icon={Trash2}
+              label="Clear Product Cache"
+              onClick={() => {
+                localStorage.removeItem('mini_site_products_cache');
+                alert('Product cache cleared!');
+              }}
+              className="text-yellow-600 hover:bg-yellow-100"
+            />
           </div>
 
           <div
             id="canvasMainWrapper"
             className="flex-1 overflow-auto bg-gray-100 p-6"
             onClick={() => {
-              if (showEditPanel) setShowEditPanel(false);
+              if (showProductPanel) setShowProductPanel(false);
             }}
           >
             <ImageCanvas
@@ -210,11 +246,16 @@ export default function HomePage() {
         }}
       />
 
-      <EditImagePanel
-        open={showEditPanel}
-        onClose={() => setShowEditPanel(false)}
-        onSelect={url => setImageUrl(url)}
-        folder="Thumbnails"
+      {/* NEW: ProductPanel for Select Product */}
+      <ProductPanel
+        open={showProductPanel}
+        onClose={() => setShowProductPanel(false)}
+        onSelect={(url, productId) => {
+          setImageUrl(url);
+          setSelectedProductId(productId);
+          setShowProductPanel(false);
+        }}
+        wpUrl={WP_URL}
       />
 
       <EditLogoPanel
@@ -225,7 +266,9 @@ export default function HomePage() {
           setShowLogoPanel(false);
         }}
         folder="Experiment"
+        wpUrl={WP_URL}
       />
+      
 
       <UploadImageModal
         open={showUploadModal}

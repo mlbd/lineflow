@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogClose } from '@/components/ui/dialog';
 import clsx from 'clsx';
 import { applyBumpPrice, applyBumpToRegular } from '@/utils/price';
 import { X } from 'lucide-react';
-import { useCartStore } from '@/components/cart/cartStore'; // <-- NEW
+import { useCartStore } from '@/components/cart/cartStore'; // <-- keep
 
 function getLuminance(hex) {
   hex = hex.replace(/^#/, '');
@@ -37,7 +37,7 @@ function useResponsiveModalWidth(sizes, minPad = 32) {
     updateWidth();
     window.addEventListener('resize', updateWidth);
     return () => window.removeEventListener('resize', updateWidth);
-  }, [sizes.length, minPad]); // FIXED: add minPad
+  }, [sizes.length, minPad]);
 
   return computedWidth;
 }
@@ -119,14 +119,37 @@ export default function AddToCartGroup({
           itemsToAdd.push({
             product_id: product.id,
             name: product.name,
+
+            // Keep a simple fallback thumbnail; cart will build Cloudinary URL anyway
             thumbnail: product.thumbnail,
+
+            // Price per unit from current step
             price: stepInfo.price,
             quantity: qty,
+
+            // ✅ placements saved on the item (percent-based expected)
+            placement_coordinates: Array.isArray(product?.placement_coordinates)
+              ? product.placement_coordinates
+              : [],
+
+            // ✅ minimal product snapshot for fallback color lookup (and placements)
+            product: {
+              id: product.id,
+              placement_coordinates: Array.isArray(product?.placement_coordinates)
+                ? product.placement_coordinates
+                : [],
+              acf: {
+                color: Array.isArray(product?.acf?.color) ? product.acf.color : [],
+              },
+            },
+
+            // ✅ store color info (including the *color* thumbnail URL)
             options: {
               group_type: 'Group',
               color: color.title,
               color_hex_code: color.color_hex_code,
               size,
+              color_thumbnail_url: color?.thumbnail?.url || '',
             },
           });
         }
@@ -135,7 +158,7 @@ export default function AddToCartGroup({
 
     // Step 2: Merge and apply all updates in one go
     itemsToAdd.forEach(item => {
-      addOrUpdateItem(item); // This will now work because they're not stacked inside set()
+      addOrUpdateItem(item);
     });
 
     // Fire GTM for each added item
@@ -162,7 +185,6 @@ export default function AddToCartGroup({
     if (onCartAddSuccess) onCartAddSuccess();
     onClose();
   };
-
 
   // ------- Hooks are always at the top, so now you can return null if no product ------
   if (!product) return null;

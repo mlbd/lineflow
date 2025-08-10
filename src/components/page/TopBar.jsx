@@ -30,7 +30,14 @@ export default function TopBar({ wpUrl, onCartClick }) {
         {/* Logo */}
         <div className="flex items-center">
           <Link href="/" aria-label="Home" className="flex items-center">
-            <Image src="/allaround.svg" alt="Logo" width={110} height={40} className="h-10 w-auto" priority />
+            <Image
+              src="/allaround.svg"
+              alt="Logo"
+              width={110}
+              height={40}
+              className="h-10 w-auto"
+              priority
+            />
           </Link>
         </div>
 
@@ -44,9 +51,13 @@ export default function TopBar({ wpUrl, onCartClick }) {
               title: menu.attr_title || undefined,
             };
             return isInternal ? (
-              <Link key={menu.id} href={menu.url} {...menuProps}>{menu.title}</Link>
+              <Link key={menu.id} href={menu.url} {...menuProps}>
+                {menu.title}
+              </Link>
             ) : (
-              <a key={menu.id} href={menu.url} {...menuProps}>{menu.title}</a>
+              <a key={menu.id} href={menu.url} {...menuProps}>
+                {menu.title}
+              </a>
             );
           })}
         </nav>

@@ -24,7 +24,6 @@ export async function getStaticPaths() {
   };
 }
 
-
 export async function getStaticProps({ params }) {
   try {
     console.log('⏳ Fetching company page data for slug:', params.slug);
@@ -66,11 +65,20 @@ export async function getStaticProps({ params }) {
     }
     // END SHIPPING CACHE
 
+    const companyLogos = {
+      logo_darker: data?.acf?.logo_darker || null,
+      logo_lighter: data?.acf?.logo_lighter || null,
+      back_darker: data?.acf?.back_darker || null,
+      back_lighter: data?.acf?.back_lighter || null,
+    };
+
     let products = [];
 
     if (productIds.length) {
       const idsParam = productIds.join(',');
-      const productRes = await fetch(`${WP_URL}/wp-json/mini-sites/v1/get-products-by-ids?ids=${idsParam}`);
+      const productRes = await fetch(
+        `${WP_URL}/wp-json/mini-sites/v1/get-products-by-ids?ids=${idsParam}`
+      );
       console.log('📡 GET /get-products-by-ids response status:', productRes.status);
 
       if (productRes.ok) {
@@ -95,6 +103,7 @@ export async function getStaticProps({ params }) {
           description: data.meta.header_content || '',
           logo: data.acf?.logo_darker?.url || null,
         },
+        companyLogos,
         seo: {
           title: data.meta.seo_title || '',
           description: data.meta.seo_description || '',
@@ -130,7 +139,8 @@ export default function LandingPage({
   seo = {},
   meta = [],
   error = false,
-  shippingOptions = []
+  shippingOptions = [],
+  companyLogos = [],
 }) {
   const [animationDone, setAnimationDone] = useState(false);
   const cartSectionRef = useRef(null);
@@ -188,13 +198,15 @@ export default function LandingPage({
               products={initialProducts}
               bumpPrice={bumpPrice}
               onCartAddSuccess={handleScrollToCart}
+              companyLogos={companyLogos}
             />
           )}
           <div className="w-full" ref={cartSectionRef}>
-            <CartPage
-              shippingOptions={shippingOptions}
-              shippingLoading={false}
-              meta={meta}
+            <CartPage 
+              shippingOptions={shippingOptions} 
+              shippingLoading={false} 
+              meta={meta} 
+              companyLogos={companyLogos} 
             />
           </div>
           <Footer />

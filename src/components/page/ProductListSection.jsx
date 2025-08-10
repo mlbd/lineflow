@@ -6,28 +6,25 @@ import ProductColorBoxes from '@/components/page/ProductColorBoxes';
 import ProductQuickViewModal from '@/components/page/ProductQuickViewModal';
 import AddToCartModal from '@/components/page/AddToCartModal';
 import Image from 'next/image';
+import { generateProductImageUrl } from '@/utils/cloudinaryMockup';
 
 const PRODUCT_PER_PAGE = 12;
 
-export default function ProductListSection({ products = [], bumpPrice, onCartAddSuccess }) {
+export default function ProductListSection({ products = [], bumpPrice, onCartAddSuccess, companyLogos = {}  }) {
   const [page, setPage] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [modalProduct, setModalProduct] = useState(null);
   const [cartModalProduct, setCartModalProduct] = useState(null);
 
   const allCategories = useMemo(() => {
-    return Array.from(
-      new Set(products.flatMap(p => p.categories?.map(c => c.slug) || []))
-    );
+    return Array.from(new Set(products.flatMap(p => p.categories?.map(c => c.slug) || [])));
   }, [products]);
 
   const visibleProducts = useMemo(() => {
     const filtered =
       selectedCategory === 'all'
         ? products
-        : products.filter(p =>
-            (p.categories || []).some(cat => cat.slug === selectedCategory)
-          );
+        : products.filter(p => (p.categories || []).some(cat => cat.slug === selectedCategory));
     return filtered.slice(0, page * PRODUCT_PER_PAGE);
   }, [products, page, selectedCategory]);
 
@@ -35,9 +32,7 @@ export default function ProductListSection({ products = [], bumpPrice, onCartAdd
     const filtered =
       selectedCategory === 'all'
         ? products
-        : products.filter(p =>
-            (p.categories || []).some(cat => cat.slug === selectedCategory)
-          );
+        : products.filter(p => (p.categories || []).some(cat => cat.slug === selectedCategory));
     return visibleProducts.length < filtered.length;
   }, [visibleProducts, products, selectedCategory]);
 
@@ -47,12 +42,17 @@ export default function ProductListSection({ products = [], bumpPrice, onCartAdd
 
   const categoryName = slug => slug;
 
+  console.log('visibleProducts', visibleProducts);
+
   return (
     <section className="w-full py-10 flex justify-center">
       <div className="max-w-[var(--site-max-width)] w-full px-4">
         {/* Filters */}
         <div className="mb-6 flex flex-wrap gap-2 items-center justify-center">
-          {[{ value: 'all', label: 'הצג הכל' }, ...allCategories.map(cat => ({ value: cat, label: categoryName(cat) }))].map(({ value, label }) => {
+          {[
+            { value: 'all', label: 'הצג הכל' },
+            ...allCategories.map(cat => ({ value: cat, label: categoryName(cat) })),
+          ].map(({ value, label }) => {
             const isActive = selectedCategory === value;
             return (
               <button
@@ -80,7 +80,7 @@ export default function ProductListSection({ products = [], bumpPrice, onCartAdd
               >
                 <div className="relative w-full h-[200px] bg-bglighter mb-3">
                   <Image
-                    src={p.thumbnail}
+                    src={generateProductImageUrl(p, companyLogos)}
                     alt={p.name}
                     fill
                     className="object-contain"
@@ -128,11 +128,7 @@ export default function ProductListSection({ products = [], bumpPrice, onCartAdd
         {/* Load More */}
         {hasMore && (
           <div className="flex justify-center mt-8">
-            <Button
-              size="sm"
-              onClick={handleLoadMore}
-              className="alarnd-btn w-auto py-6 px-8"
-            >
+            <Button size="sm" onClick={handleLoadMore} className="alarnd-btn w-auto py-6 px-8">
               טען עוד
             </Button>
           </div>
@@ -148,6 +144,7 @@ export default function ProductListSection({ products = [], bumpPrice, onCartAdd
           setModalProduct(null);
           setTimeout(() => setCartModalProduct(modalProduct), 120);
         }}
+        companyLogos={companyLogos}
         bumpPrice={bumpPrice}
       />
       <AddToCartModal

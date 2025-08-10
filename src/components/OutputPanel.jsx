@@ -20,7 +20,6 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
     });
   }, []);
 
-  // Wrap generateUrls in useCallback!
   const generateUrls = useCallback(async () => {
     if (mappings.length === 0) {
       setOverlayUrl('');
@@ -31,7 +30,8 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
     const imageName = imageUrl.split('/').pop();
     const base = `https://res.cloudinary.com/${cloudName}/image/upload`;
 
-    const img = document.querySelector('img');
+    // Target the specific placement image
+    const img = document.getElementById('placementImage') || document.querySelector('img');
     if (!img?.complete) {
       console.warn('Image not fully loaded yet.');
       return;
@@ -39,9 +39,18 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
 
     const naturalW = img.naturalWidth;
     const naturalH = img.naturalHeight;
+    const displayW = img.clientWidth;
+    const displayH = img.clientHeight;
+
+    console.log('🖼 Image Sizes:', {
+      naturalW,
+      naturalH,
+      displayW,
+      displayH
+    });
 
     try {
-      const overlayTransformations = mappings.map(m => {
+      const overlayTransformations = mappings.map((m, idx) => {
         let x, y, w, h;
         if (
           m.xPercent !== undefined &&
@@ -54,8 +63,6 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
           w = Math.round(m.wPercent * naturalW);
           h = Math.round(m.hPercent * naturalH);
         } else {
-          const displayW = img.clientWidth;
-          const displayH = img.clientHeight;
           const scaleX = naturalW / displayW;
           const scaleY = naturalH / displayH;
 
@@ -64,6 +71,15 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
           w = Math.round(m.w * scaleX);
           h = Math.round(m.h * scaleY);
         }
+
+        console.log(`📦 Mapping ${idx + 1}:`, {
+          originalMapping: m,
+          calcX: x,
+          calcY: y,
+          calcW: w,
+          calcH: h
+        });
+
         return [
           `l_one_pixel_s4c3vt,w_${w},h_${h}`,
           `co_rgb:000000,e_colorize,fl_layer_apply,x_${x},y_${y},g_north_west`,
@@ -78,7 +94,7 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
           `https://res.cloudinary.com/${cloudName}/image/upload/${logoId}.png`
         );
 
-        const logoTransformations = mappings.map(m => {
+        const logoTransformations = mappings.map((m, idx) => {
           let x, y, w, h;
           if (
             m.xPercent !== undefined &&
@@ -91,8 +107,6 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
             w = Math.round(m.wPercent * naturalW);
             h = Math.round(m.hPercent * naturalH);
           } else {
-            const displayW = img.clientWidth;
-            const displayH = img.clientHeight;
             const scaleX = naturalW / displayW;
             const scaleY = naturalH / displayH;
 
@@ -101,6 +115,16 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
             w = Math.round(m.w * scaleX);
             h = Math.round(m.h * scaleY);
           }
+
+          console.log(`🪪 Logo Mapping ${idx + 1}:`, {
+            originalMapping: m,
+            calcX: x,
+            calcY: y,
+            calcW: w,
+            calcH: h,
+            logoNaturalW: logoSize.width,
+            logoNaturalH: logoSize.height
+          });
 
           const logoAspect = logoSize.width / logoSize.height;
           const boxAspect = w / h;
@@ -148,7 +172,6 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
     }
   }, [imageUrl, mappings, logoId, getImageSize]);
 
-  // Now, add generateUrls to effect deps (safe)
   useEffect(() => {
     generateUrls();
   }, [generateUrls]);

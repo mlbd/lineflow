@@ -3,7 +3,7 @@ import { useCartItems, getTotalPrice } from './cartStore';
 import { useState } from 'react';
 
 export default function CartSummary({ selectedShipping, zCreditToken, coupon, userMeta = {} }) {
-  console.log("userMeta", userMeta);
+  console.log('userMeta', userMeta);
   const items = useCartItems();
   const subtotal = getTotalPrice(items);
 
@@ -21,15 +21,11 @@ export default function CartSummary({ selectedShipping, zCreditToken, coupon, us
     }
   }
 
-  console.log("coupon", coupon);
-  console.log("selectedShipping", selectedShipping);
-  console.log("subtotal", subtotal);
+  console.log('coupon', coupon);
+  console.log('selectedShipping', selectedShipping);
+  console.log('subtotal', subtotal);
 
-  const total =
-    Math.max(
-      0,
-      subtotal + (selectedShipping?.cost || 0) - couponDiscount
-    );
+  const total = Math.max(0, subtotal + (selectedShipping?.cost || 0) - couponDiscount);
 
   const [form, setForm] = useState({
     fullName: (userMeta.first_name || '') + (userMeta.last_name ? ' ' + userMeta.last_name : ''),
@@ -38,10 +34,10 @@ export default function CartSummary({ selectedShipping, zCreditToken, coupon, us
     phone: userMeta.phone || '',
     city: userMeta.city || '',
     streetName: userMeta.streetName || '',
-    streetNumber: userMeta.streetNumber || ''
+    streetNumber: userMeta.streetNumber || '',
   });
 
-  const handleChange = (e) => {
+  const handleChange = e => {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
@@ -61,7 +57,9 @@ export default function CartSummary({ selectedShipping, zCreditToken, coupon, us
       {selectedShipping && (
         <div className="flex justify-between">
           <span>משלוח:</span>
-          <span className="font-bold">{selectedShipping.label} ({selectedShipping.cost} ₪)</span>
+          <span className="font-bold">
+            {selectedShipping.label} ({selectedShipping.cost} ₪)
+          </span>
         </div>
       )}
       {coupon && coupon.valid && (
@@ -78,7 +76,12 @@ export default function CartSummary({ selectedShipping, zCreditToken, coupon, us
       </div>
 
       {/* Z-Credit Custom Form */}
-      <form onSubmit={e => { e.preventDefault(); handleSubmit(); }}>
+      <form
+        onSubmit={e => {
+          e.preventDefault();
+          handleSubmit();
+        }}
+      >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <input
             name="fullName"

@@ -547,14 +547,14 @@ export default function LogosPage() {
                 onClick={() => handleImageClick(logo)}
               >
                 <LazyLoadImage
-  key={logo.imageKey}
-  src={logo.thumbnailUrl}
-  alt={logo.title}
-  width={logo.width || 300}
-  height={logo.height || 200}
-  className="w-full h-auto block hover:opacity-90 transition-opacity"
-  aspectRatio="auto"
-/>
+                  key={logo.imageKey}
+                  src={logo.thumbnailUrl}
+                  alt={logo.title}
+                  width={logo.width || 300}
+                  height={logo.height || 200}
+                  className="w-full h-auto block hover:opacity-90 transition-opacity"
+                  aspectRatio="auto"
+                />
               </div>
               <div className="py-8 px-4 text-center">
                 <h3 className="font-semibold mb-1">{logo.title}</h3>

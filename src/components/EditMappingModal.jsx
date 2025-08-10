@@ -26,6 +26,18 @@ export default function EditMappingModal({ mapping, open, onClose, onSave }) {
     setForm(prev => ({ ...prev, [key]: value }));
   };
 
+  const handleBackLogoChange = (enabled) => {
+    setForm(prev => {
+      // Add 'back: true' if enabled, else remove 'back'
+      if (enabled) {
+        return { ...prev, back: true };
+      } else {
+        const { back, ...rest } = prev;
+        return rest;
+      }
+    });
+  };
+
   const handleSave = () => {
     onSave(form);
     onClose();
@@ -148,6 +160,19 @@ export default function EditMappingModal({ mapping, open, onClose, onSave }) {
               </div>
             </>
           )}
+
+          {/* Back Logo Checkbox */}
+          <div>
+            <Label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={!!form.back}
+                onChange={e => handleBackLogoChange(e.target.checked)}
+                className="accent-blue-600"
+              />
+              Back Logo Enabled
+            </Label>
+          </div>
         </div>
 
         <DialogFooter>

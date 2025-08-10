@@ -59,7 +59,6 @@ export default function ImageCanvas({
   const updateImageSizes = () => {
     if (!imageRef.current || !imageRef.current.complete) return;
 
-    const displayRect = imageRef.current.getBoundingClientRect();
     const newDisplaySize = {
       width: imageRef.current.clientWidth,
       height: imageRef.current.clientHeight,
@@ -158,7 +157,7 @@ export default function ImageCanvas({
       y,
       w: 1,
       h: 1,
-      // Store percentage coordinates
+      // Store percentage coordinates (source of truth)
       xPercent: x / imageDisplaySize.width,
       yPercent: y / imageDisplaySize.height,
       wPercent: 1 / imageDisplaySize.width,
@@ -188,7 +187,6 @@ export default function ImageCanvas({
         h: newH,
       };
 
-      // Convert to percentage coordinates
       const withPercent = toPercentCoords(updated);
       updateSelected(withPercent);
     }
@@ -278,7 +276,9 @@ export default function ImageCanvas({
             style={containerStyle}
             onMouseDown={handleMouseDown}
           >
+            {/* IMPORTANT: give the image a stable ID so the generator reads THIS img */}
             <img
+              id="placementImage"
               ref={imageRef}
               src={imageUrl}
               alt="T-Shirt"

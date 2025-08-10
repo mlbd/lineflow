@@ -1,6 +1,6 @@
 export default async function handler(req, res) {
   const { slug } = req.query;
-  if (!slug) return res.status(400).json({ message: "Missing slug" });
+  if (!slug) return res.status(400).json({ message: 'Missing slug' });
 
   try {
     await res.revalidate(`/${slug}`);

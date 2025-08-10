@@ -71,4 +71,3 @@ export function calculateProductPriceRange(product, bumpPrice = null) {
   // console.log(`[Product ${productId}] No valid price data`);
   return '';
 }
-

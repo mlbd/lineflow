@@ -48,20 +48,25 @@ export const useCartStore = create(
       addOrUpdateItem: item => {
         set(state => {
           const items = [...state.items];
-          const matchIndex = items.findIndex(i =>
-            i.product_id === item.product_id &&
-            i.options?.group_type === 'Group' &&
-            i.options?.color === item.options?.color &&
-            i.options?.size === item.options?.size
+          const matchIndex = items.findIndex(
+            i =>
+              i.product_id === item.product_id &&
+              i.options?.group_type === 'Group' &&
+              i.options?.color === item.options?.color &&
+              i.options?.size === item.options?.size
           );
 
           if (matchIndex > -1) {
-            console.log(`[CartStore] Updating existing item ${item.product_id} (${item.options.color} / ${item.options.size})`);
+            console.log(
+              `[CartStore] Updating existing item ${item.product_id} (${item.options.color} / ${item.options.size})`
+            );
             items[matchIndex].quantity += item.quantity;
             return { items };
           }
 
-          console.log(`[CartStore] Adding NEW item ${item.product_id} (${item.options.color} / ${item.options.size})`);
+          console.log(
+            `[CartStore] Adding NEW item ${item.product_id} (${item.options.color} / ${item.options.size})`
+          );
           return { items: [...items, item] };
         });
       },
