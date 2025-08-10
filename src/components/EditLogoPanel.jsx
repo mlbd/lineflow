@@ -1,31 +1,14 @@
+// src/components/EditLogoPanel.jsx
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { X } from 'lucide-react';
 
-// =================== Config / Globals ===================
-const LS_KEY = 'ms_cache_pages_all_v1';
-const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days (change here)
-
-// =================== API ===================
 const API_ROOT = '/api/ms';
+const LS_KEY = 'ms_cache_pages_all_v3';
+const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-function getPublicIdFromCloudinaryUrl(url) {
-  try {
-    const u = new URL(url);
-    const parts = u.pathname.split('/').filter(Boolean);
-    const vIdx = parts.findIndex(p => /^v\d+$/i.test(p));
-    const after = vIdx >= 0 ? parts.slice(vIdx + 1) : parts;
-    let candidate = after[after.length - 1] || '';
-    candidate = candidate.replace(/\.[a-z0-9]+$/i, '');
-    return candidate;
-  } catch {
-    return '';
-  }
-}
-
-// Helpers: localStorage with TTL
 function lsGet(key) {
   try {
     const raw = localStorage.getItem(key);
@@ -47,36 +30,59 @@ function lsSet(key, data, ttl = CACHE_TTL_MS) {
   } catch {}
 }
 
-export default function EditLogoPanel({ open, onClose, onSelect }) {
-  const [all, setAll] = useState([]); // [{id,title,darkerUrl,darkerId}]
+function getPublicIdFromCloudinaryUrl(url) {
+  try {
+    const u = new URL(url);
+    const parts = u.pathname.split('/').filter(Boolean);
+    // find "v123456" segment and use everything after that
+    const vIdx = parts.findIndex(p => /^v\d+$/i.test(p));
+    const after = vIdx >= 0 ? parts.slice(vIdx + 1) : parts;
+    let last = after[after.length - 1] || '';
+    // strip extension if any
+    last = last.replace(/\.[a-z0-9]+$/i, '');
+    // if there are nested folders after vXXX, join them
+    const publicId = after
+      .map(seg => seg.replace(/\.[a-z0-9]+$/i, ''))
+      .join('/');
+    return publicId || last || '';
+  } catch {
+    return '';
+  }
+}
+
+export default function EditLogoPanel({ open, onClose, onSelect, wpUrl }) {
+  const [all, setAll] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [q, setQ] = useState('');
 
   const filtered = q
-    ? all.filter(it => (it.title || '').toLowerCase().includes(q.toLowerCase()))
+    ? all.filter(p => {
+        const term = q.toLowerCase();
+        return (
+          (p.title || '').toLowerCase().includes(term) ||
+          (p.slug || '').toLowerCase().includes(term) ||
+          String(p.id || '').includes(term)
+        );
+      })
     : all;
 
   const load = useCallback(async () => {
-    // 1) local cache first
+    // cache-first (browser)
     const cached = lsGet(LS_KEY);
-    if (cached && Array.isArray(cached?.pages)) {
+    if (cached && Array.isArray(cached.pages)) {
       setAll(cached.pages);
       return;
     }
-    // 2) server cache (shared) — one call returns ALL filtered pages aggregated
+
     setLoading(true);
     setErr('');
     try {
       const res = await fetch(`${API_ROOT}/pages`, { cache: 'no-store' });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
-      const pages = Array.isArray(json?.pages)
-        ? json.pages.map(p => ({
-            ...p,
-            darkerId: p.darkerId || getPublicIdFromCloudinaryUrl(p.darkerUrl),
-          }))
-        : [];
+
+      const pages = Array.isArray(json?.pages) ? json.pages : [];
       setAll(pages);
       lsSet(LS_KEY, { pages });
     } catch (e) {
@@ -86,7 +92,7 @@ export default function EditLogoPanel({ open, onClose, onSelect }) {
     }
   }, []);
 
-  // React to Clear Cache global event
+  // react to global "Clear Cache"
   useEffect(() => {
     const onClear = () => {
       localStorage.removeItem(LS_KEY);
@@ -96,7 +102,6 @@ export default function EditLogoPanel({ open, onClose, onSelect }) {
     return () => window.removeEventListener('ms-clear-cache', onClear);
   }, []);
 
-  // Open -> load once (cache-first)
   useEffect(() => {
     if (open) load();
   }, [open, load]);
@@ -109,7 +114,7 @@ export default function EditLogoPanel({ open, onClose, onSelect }) {
     >
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b">
-        <h2 className="text-lg font-semibold">Select Logo</h2>
+        <h2 className="text-lg font-semibold">Select Logo / Page</h2>
         <button onClick={onClose} className="cursor-pointer">
           <X size={20} />
         </button>
@@ -117,7 +122,11 @@ export default function EditLogoPanel({ open, onClose, onSelect }) {
 
       {/* Search */}
       <div className="p-4">
-        <Input placeholder="Filter by title" value={q} onChange={e => setQ(e.target.value)} />
+        <Input
+          placeholder="Search by title, slug, or ID"
+          value={q}
+          onChange={e => setQ(e.target.value)}
+        />
       </div>
 
       {/* Body */}
@@ -131,26 +140,46 @@ export default function EditLogoPanel({ open, onClose, onSelect }) {
         ) : filtered.length === 0 ? (
           <div className="text-sm text-muted-foreground">No pages found.</div>
         ) : (
-          filtered.map(it => (
-            <div
-              key={it.id}
-              className="cursor-pointer border rounded hover:bg-muted transition"
-              onClick={() => {
-                onSelect(it.darkerId); // keep returning public ID
-                onClose();
-              }}
-            >
-              <img
-                src={it.darkerUrl}
-                alt={`${it.title} logo`}
-                className="w-full h-auto rounded bg-gray-50"
-                loading="lazy"
-              />
-              <div className="px-2 py-2">
-                <div className="text-sm font-medium truncate">{it.title}</div>
+          filtered.map(p => {
+            const darkerUrl = p?.acf?.logo_darker?.url || '';
+            return (
+              <div
+                key={p.id}
+                className="cursor-pointer border rounded hover:bg-muted transition"
+                onClick={() => {
+                  const darkerId = getPublicIdFromCloudinaryUrl(darkerUrl);
+                  // Pass publicId and a compact page object (id, title, slug, acf logos)
+                  onSelect(darkerId, {
+                    id: p.id,
+                    title: p.title,
+                    slug: p.slug,
+                    acf: {
+                      logo_darker: p?.acf?.logo_darker || null,
+                      logo_lighter: p?.acf?.logo_lighter || null,
+                      back_lighter: p?.acf?.back_lighter || null,
+                      back_darker: p?.acf?.back_darker || null,
+                    },
+                  });
+                  onClose();
+                }}
+              >
+                {darkerUrl ? (
+                  <img
+                    src={darkerUrl}
+                    alt={`${p.title} logo`}
+                    className="w-full h-auto rounded bg-gray-50"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="w-full aspect-[16/9] rounded bg-gray-100" />
+                )}
+                <div className="px-2 py-2">
+                  <div className="text-sm font-medium truncate">{p.title}</div>
+                  <div className="text-[11px] text-gray-500 truncate">{p.slug}</div>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 

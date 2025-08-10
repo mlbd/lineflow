@@ -1,84 +1,61 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
-  Image,
+  Image as IconImage,
   Plus,
   Trash2,
   ArrowsUpFromLine,
   Upload,
   Grid3X3,
-  CheckCircle,
+  Map,
+  Images,
+  CheckCircle2,
   XCircle,
-  Loader2,
 } from 'lucide-react';
 
 import ImageCanvas from '@/components/ImageCanvas';
 import MappingList from '@/components/MappingList';
 import OutputPanel from '@/components/OutputPanel';
 import EditMappingModal from '@/components/EditMappingModal';
-import EditImagePanel from '@/components/EditImagePanel'; // <-- now used for Select Product
+import EditImagePanel from '@/components/EditImagePanel';
 import EditLogoPanel from '@/components/EditLogoPanel';
 import UploadImageModal from '@/components/UploadImageModal';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { generateProductImageUrl } from '@/utils/cloudinaryMockup';
 
 const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
 const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
 
-// local cache keys this page clears
-const LS_KEYS = ['ms_cache_products_all_v1', 'ms_cache_pages_all_v1'];
-
-function ToolButton({ icon: Icon, label, onClick, className = '' }) {
+function ToolButton({ icon: Icon, label, onClick, className = '', title }) {
   return (
     <button
       onClick={onClick}
+      title={title || label}
       className={`flex items-center gap-2 px-3 py-2 rounded hover:bg-[#eee] transition cursor-pointer ${className}`}
+      type="button"
     >
       <Icon size={18} />
-      <span>{label}</span>
+      <span className="hidden sm:inline">{label}</span>
     </button>
   );
 }
 
-function ResultModal({ open, type = 'success', title, message, onClose }) {
-  if (!open) return null;
-  const isSuccess = type === 'success';
-  const Icon = isSuccess ? CheckCircle : XCircle;
-  const colorWrap = isSuccess ? 'text-green-600' : 'text-red-600';
-  const bgRing = isSuccess ? 'bg-green-50 ring-green-200' : 'bg-red-50 ring-red-200';
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className={`w-full max-w-md rounded-2xl ring-1 ${bgRing} bg-white p-6 shadow-xl`}>
-        <div className="flex items-start gap-3">
-          <Icon className={`mt-0.5 ${colorWrap}`} size={28} />
-          <div className="flex-1">
-            <h3 className="text-lg font-semibold">{title}</h3>
-            {message && <p className="text-sm text-gray-600 mt-1">{message}</p>}
-          </div>
-        </div>
-        <div className="mt-6 flex justify-end">
-          <button
-            onClick={onClose}
-            className="cursor-pointer inline-flex items-center rounded-md bg-gray-900 px-4 py-2 text-white hover:bg-black transition"
-          >
-            OK
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+// Build a minimal Cloudinary URL from a public id (no extension needed)
+function cldUrlFromPublicId(publicId) {
+  if (!publicId) return '';
+  return `https://res.cloudinary.com/${cloudName}/image/upload/${publicId}`;
 }
 
-function SavingOverlay({ visible, label = 'Updating placements…' }) {
-  if (!visible) return null;
-  return (
-    <div className="fixed inset-0 z-[90] bg-black/40 backdrop-blur-sm flex items-center justify-center">
-      <div className="rounded-xl bg-white shadow-lg px-5 py-4 flex items-center gap-3">
-        <Loader2 className="animate-spin" size={20} />
-        <span className="text-sm font-medium">{label}</span>
-      </div>
-    </div>
-  );
+// Simple helper for contrasting text on color dots
+function isDark(hex = '') {
+  const h = hex.replace('#', '');
+  if (!/^[0-9a-f]{6}$/i.test(h)) return false;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const y = (r * 299 + g * 587 + b * 114) / 1000;
+  return y < 128;
 }
 
 export default function HomePage() {
@@ -87,19 +64,34 @@ export default function HomePage() {
   );
   const [mappings, setMappings] = useState([]);
   const [selectedMapping, setSelectedMapping] = useState(null);
+
   const [editOpen, setEditOpen] = useState(false);
   const [showProductPanel, setShowProductPanel] = useState(false);
   const [showLogoPanel, setShowLogoPanel] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
+
   const [logoId, setLogoId] = useState('square');
   const [selectedProductId, setSelectedProductId] = useState(null);
+  const [selectedProduct, setSelectedProduct] = useState(null); // full product
+  const [selectedPage, setSelectedPage] = useState(null); // full page (if provided)
+  const [companyLogos, setCompanyLogos] = useState({}); // logos to feed cloudinary builder
+
   const [hasFuturePlan, setHasFuturePlan] = useState(false);
 
-  const [isSaving, setIsSaving] = useState(false);
+  // Save modal (result)
   const [resultOpen, setResultOpen] = useState(false);
-  const [resultType, setResultType] = useState('success');
-  const [resultTitle, setResultTitle] = useState('');
-  const [resultMessage, setResultMessage] = useState('');
+  const [resultOk, setResultOk] = useState(false);
+  const [resultMsg, setResultMsg] = useState('');
+  // Freeze overlay
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Mapping popups
+  const [placementMapOpen, setPlacementMapOpen] = useState(false);
+  const [logosMapOpen, setLogosMapOpen] = useState(false);
+  const [logosSliderIdx, setLogosSliderIdx] = useState(0);
+
+  // Update-only-for-page checkbox
+  const [onlyThisPage, setOnlyThisPage] = useState(false);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -130,8 +122,11 @@ export default function HomePage() {
   };
 
   const handleUploadSelect = (value, type) => {
-    if (type === 'background') setImageUrl(value);
-    else if (type === 'logo') setLogoId(value);
+    if (type === 'background') {
+      setImageUrl(value);
+    } else if (type === 'logo') {
+      setLogoId(value);
+    }
   };
 
   const handleViewWithAllLogos = () => {
@@ -142,8 +137,14 @@ export default function HomePage() {
     window.open('/logos', '_blank');
   };
 
+  // Persist to localStorage for logos page
   useEffect(() => {
-    const dataToPass = { imageUrl, mappings, logoId, selectedProductId };
+    const dataToPass = {
+      imageUrl,
+      mappings,
+      logoId,
+      selectedProductId,
+    };
     localStorage.setItem('logo_page_data', JSON.stringify(dataToPass));
   }, [imageUrl, mappings, logoId, selectedProductId]);
 
@@ -157,60 +158,81 @@ export default function HomePage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedMapping]);
 
+  // === Update Placement API ===
   const handleSavePlacement = async () => {
-    if (!selectedProductId) {
-      setResultType('error');
-      setResultTitle('Product not selected');
-      setResultMessage('Please select a product before updating placements.');
-      setResultOpen(true);
-      return;
-    }
-    setIsSaving(true);
+    if (!selectedProductId || mappings.length === 0) return;
+
+    setIsSaving(true); // freeze everything
+    setResultMsg('');
+    setResultOk(false);
+    setResultOpen(false);
+
     try {
       const res = await fetch(`${WP_URL}/wp-json/mini-sites/v1/update=placement`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ product_id: selectedProductId, placements: mappings }),
+        body: JSON.stringify({
+          product_id: selectedProductId,
+          placements: mappings,
+          // only include page_id if user checked the checkbox
+          ...(onlyThisPage && selectedPage?.id ? { page_id: selectedPage.id } : {}),
+        }),
       });
+
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.message || `HTTP ${res.status}`);
-      setResultType('success');
-      setResultTitle('Placements updated');
-      setResultMessage(data?.message || 'Your placements were saved successfully.');
-      setResultOpen(true);
+
+      setResultOk(true);
+      setResultMsg(data?.message || 'Placements saved!');
     } catch (err) {
-      setResultType('error');
-      setResultTitle('Update failed');
-      setResultMessage(err?.message || 'Something went wrong while saving placements.');
-      setResultOpen(true);
+      setResultOk(false);
+      setResultMsg(err.message || 'Failed to update placements.');
     } finally {
       setIsSaving(false);
+      setResultOpen(true);
     }
   };
 
-  // Clear both client + server caches
-  const handleClearAllCaches = async () => {
-    try {
-      // client caches
-      LS_KEYS.forEach(k => localStorage.removeItem(k));
-      // notify panels to drop in-memory too
-      window.dispatchEvent(new CustomEvent('ms-clear-cache'));
+  // Build logos map images list (Cloudinary) for slider
+  const logosSliderImages = useMemo(() => {
+    const p = selectedProduct;
+    const logos = companyLogos && Object.keys(companyLogos).length ? companyLogos : null;
+    if (!p || !logos) return [];
 
-      // server caches
-      await fetch('/api/ms/revalidate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tags: ['ms:products', 'ms:pages'] }),
-      });
-      alert('Cache cleared!');
-    } catch {
-      alert('Tried to clear cache, but something went wrong.');
+    const isGroup = p?.acf?.group_type === 'Group';
+    const colors = isGroup && Array.isArray(p?.acf?.color) ? p.acf.color : [];
+
+    // If not a group with colors, still show one image
+    if (!colors.length) {
+      return [
+        {
+          src: generateProductImageUrl(p, logos, { max: 1400 }),
+          title: p?.name || 'Preview',
+          color_hex_code: p?.thumbnail_meta?.thumbnail_color || '#ffffff',
+        },
+      ];
     }
-  };
+
+    return colors.map((c, i) => ({
+      src: generateProductImageUrl(p, logos, { colorIndex: i, max: 1400 }),
+      title: c?.title || `Color ${i + 1}`,
+      color_hex_code: c?.color_hex_code || '#ffffff',
+    }));
+  }, [selectedProduct, companyLogos]);
+
+  const updateButtonDisabled = isSaving || !selectedProductId || mappings.length === 0;
 
   return (
     <main className="w-full flex justify-center bg-muted min-h-screen relative">
-      <SavingOverlay visible={isSaving} />
+      {/* Freeze overlay while saving */}
+      {isSaving && (
+        <div className="fixed inset-0 z-[70] bg-black/30 backdrop-blur-[1px] pointer-events-auto flex items-center justify-center">
+          <div className="bg-white rounded-xl px-6 py-5 shadow-lg flex items-center gap-3">
+            <div className="w-6 h-6 rounded-full border-4 border-blue-200 border-t-blue-600 animate-spin" />
+            <div className="text-sm text-gray-700">Updating placement… please wait</div>
+          </div>
+        </div>
+      )}
 
       <div className="w-full max-w-[1920px] flex h-screen overflow-hidden">
         {/* Sidebar */}
@@ -237,26 +259,40 @@ export default function HomePage() {
             setLogoId={setLogoId}
           />
 
-          {/* Save placement */}
-          <button
-            className={`mt-4 w-full py-2 cursor-pointer rounded font-semibold transition
-              ${
-                mappings.length === 0 || isSaving
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
-              }`}
-            onClick={handleSavePlacement}
-            disabled={mappings.length === 0 || isSaving}
-          >
-            {isSaving ? (
-              <span className="inline-flex items-center gap-2">
-                <Loader2 className="animate-spin" size={18} />
-                Saving…
-              </span>
-            ) : (
-              'Update Placement'
-            )}
-          </button>
+          {/* Update-only-for checkbox (appears if a page with title is selected) */}
+          {selectedPage?.title && (
+            <div className="px-6 -mt-4">
+              <label className="flex items-center gap-2 text-sm select-none">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 cursor-pointer"
+                  checked={onlyThisPage}
+                  onChange={e => setOnlyThisPage(e.target.checked)}
+                />
+                <span>
+                  Update only for <b>&apos;{selectedPage.title}&apos;</b>
+                </span>
+              </label>
+            </div>
+          )}
+
+          {/* Update Placement (wrapped with px-6) */}
+          <div className="px-6">
+            <button
+              className={`mt-4 w-full py-2 cursor-pointer rounded font-semibold transition
+                ${
+                  updateButtonDisabled
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              onClick={handleSavePlacement}
+              disabled={updateButtonDisabled}
+            >
+              {onlyThisPage && selectedPage?.title
+                ? `Update for ${selectedPage.title}`
+                : 'Update Placement'}
+            </button>
+          </div>
         </div>
 
         {/* Canvas Section */}
@@ -266,9 +302,14 @@ export default function HomePage() {
             className="h-[55px] bg-white border-b flex items-center px-6 gap-4 text-sm"
           >
             <ToolButton
-              icon={Image}
+              icon={IconImage}
               label="Select Product"
+              title="Select Product"
               onClick={() => {
+                // Clear placements immediately when switching product
+                setMappings([]);
+                setSelectedMapping(null);
+
                 setShowLogoPanel(false);
                 setShowUploadModal(false);
                 setShowProductPanel(!showProductPanel);
@@ -277,6 +318,7 @@ export default function HomePage() {
             <ToolButton
               icon={Plus}
               label="Select Logo"
+              title="Select Logo / Page"
               onClick={() => {
                 setShowProductPanel(false);
                 setShowUploadModal(false);
@@ -286,31 +328,58 @@ export default function HomePage() {
             <ToolButton
               icon={Upload}
               label="Upload Image"
+              title="Upload Background"
               onClick={() => {
                 setShowProductPanel(false);
                 setShowLogoPanel(false);
                 setShowUploadModal(true);
               }}
             />
+
             <ToolButton
               icon={Grid3X3}
               label="View With All Logos"
+              title="Open all logos view"
               onClick={handleViewWithAllLogos}
               className="bg-blue-50 text-blue-600 hover:bg-blue-100"
             />
+
+            {/* NEW icon buttons */}
+            <ToolButton
+              icon={Map}
+              label="Placement Mapping"
+              title="Placement Mapping"
+              onClick={() => setPlacementMapOpen(true)}
+            />
+            <ToolButton
+              icon={Images}
+              label="Logos Mapping"
+              title="Logos Mapping"
+              onClick={() => {
+                setLogosSliderIdx(0);
+                setLogosMapOpen(true);
+              }}
+            />
+
             {hasFuturePlan && (
               <ToolButton icon={ArrowsUpFromLine} label="Update meta" onClick={handleUpdateMeta} />
             )}
             <ToolButton
               icon={Trash2}
               label="Clear All"
+              title="Clear All Placements"
               onClick={handleClearAll}
               className="text-red-600 hover:bg-red-50"
             />
             <ToolButton
               icon={Trash2}
               label="Clear Cache"
-              onClick={handleClearAllCaches}
+              title="Clear local caches"
+              onClick={() => {
+                // clear products/pages caches in panels
+                window.dispatchEvent(new Event('ms-clear-cache'));
+                alert('Cache cleared!');
+              }}
               className="text-yellow-600 hover:bg-yellow-100"
             />
           </div>
@@ -333,7 +402,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Edit Mapping */}
+      {/* Edit mapping modal */}
       <EditMappingModal
         mapping={selectedMapping}
         open={editOpen}
@@ -344,42 +413,234 @@ export default function HomePage() {
         }}
       />
 
-      {/* Panels */}
+      {/* Product selector */}
       <EditImagePanel
         open={showProductPanel}
         onClose={() => setShowProductPanel(false)}
-        onSelect={(url, productId) => {
+        onSelect={(url, productId, product) => {
           setImageUrl(url);
           setSelectedProductId(productId);
+          setSelectedProduct(product || null);
+
+          // Build placements immediately if present
+          const raw = product?.placement_coordinates;
+
+          // Some backends return "" or stringified JSON; make it an array
+          let coords = Array.isArray(raw) ? raw : [];
+          if (!coords.length && typeof raw === 'string') {
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) coords = parsed;
+            } catch {}
+          }
+
+          const baseW = Number(product?.thumbnail_meta?.width) || 0;
+          const baseH = Number(product?.thumbnail_meta?.height) || 0;
+
+          const normalized = coords.map((c, idx) => {
+            // Prefer provided percents; otherwise derive from px using base dims
+            const xP = c.xPercent != null ? c.xPercent : baseW ? (c.x || 0) / baseW : 0;
+            const yP = c.yPercent != null ? c.yPercent : baseH ? (c.y || 0) / baseH : 0;
+            const wP = c.wPercent != null ? c.wPercent : baseW ? (c.w || 0) / baseW : 0;
+            const hP = c.hPercent != null ? c.hPercent : baseH ? (c.h || 0) / baseH : 0;
+
+            return {
+              id: c.id || Date.now() + idx,
+              name: c.name || `area_${idx + 1}`,
+              xPercent: xP,
+              yPercent: yP,
+              wPercent: wP,
+              hPercent: hP,
+              ...c,
+            };
+          });
+
+          if (normalized.length > 0) {
+            setMappings(normalized);
+            setSelectedMapping(normalized[0]);
+          } else {
+            // Keep empty if none were saved
+            setMappings([]);
+            setSelectedMapping(null);
+          }
+
           setShowProductPanel(false);
         }}
       />
 
+
+      {/* Logo/page selector */}
       <EditLogoPanel
         open={showLogoPanel}
         onClose={() => setShowLogoPanel(false)}
-        onSelect={publicId => {
+        onSelect={(publicId, page) => {
           setLogoId(publicId);
+
+          // If the panel returns the full page, keep it
+          if (page && page.acf) {
+            setSelectedPage({ id: page.id, title: page.title, slug: page.slug });
+            setCompanyLogos({
+              logo_darker: page.acf.logo_darker || null,
+              logo_lighter: page.acf.logo_lighter || null,
+              back_lighter: page.acf.back_lighter || null,
+              back_darker: page.acf.back_darker || null,
+            });
+          } else {
+            // Fallback: synthesize logos object from public ID (darker only)
+            setSelectedPage(prev => prev || null);
+            setCompanyLogos({
+              logo_darker: { url: cldUrlFromPublicId(publicId) },
+            });
+          }
+
           setShowLogoPanel(false);
         }}
+        folder="Experiment"
+        wpUrl={WP_URL}
       />
 
       <UploadImageModal
         open={showUploadModal}
         onClose={() => setShowUploadModal(false)}
-        onSelect={(value, type) => {
-          if (type === 'background') setImageUrl(value);
-          if (type === 'logo') setLogoId(value);
-        }}
+        onSelect={handleUploadSelect}
       />
 
-      <ResultModal
-        open={resultOpen}
-        type={resultType}
-        title={resultTitle}
-        message={resultMessage}
-        onClose={() => setResultOpen(false)}
-      />
+      {/* Result Modal */}
+      <Dialog open={resultOpen} onOpenChange={setResultOpen}>
+        <DialogContent className="!max-w-[520px]">
+          <div className="w-full flex flex-col items-center justify-center text-center py-4">
+            {resultOk ? (
+              <CheckCircle2 className="w-12 h-12 text-green-600 mb-2" />
+            ) : (
+              <XCircle className="w-12 h-12 text-red-600 mb-2" />
+            )}
+            <DialogTitle className="text-xl font-semibold mb-2">
+              {resultOk ? 'Update Successful' : 'Update Failed'}
+            </DialogTitle>
+            <p className="text-gray-600">{resultMsg}</p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Placement Mapping Modal: big image with placement boxes */}
+<Dialog open={placementMapOpen} onOpenChange={setPlacementMapOpen}>
+  <DialogContent className="!max-w-[1100px] p-0 overflow-hidden">
+    {/* Required for accessibility (can be visually hidden) */}
+    <DialogTitle className="sr-only">Placement Mapping</DialogTitle>
+
+    <div className="w-full h-full p-6 flex items-center justify-center bg-white">
+      <div className="relative max-w-[1000px] max-h-[80vh]">
+        <img
+          src={imageUrl}
+          alt="Placement mapping"
+          className="max-w-full max-h-[80vh] object-contain rounded"
+          draggable={false}
+        />
+        {/* Non-interactive mapping boxes (percent-based) */}
+        <div className="absolute inset-0 pointer-events-none">
+          {mappings.map(b => (
+            <div
+              key={b.id}
+              className="absolute border-2 border-blue-600/80 bg-blue-300/20"
+              style={{
+                left: `${(b.xPercent || 0) * 100}%`,
+                top: `${(b.yPercent || 0) * 100}%`,
+                width: `${(b.wPercent || 0) * 100}%`,
+                height: `${(b.hPercent || 0) * 100}%`,
+              }}
+            >
+              <div className="absolute -top-5 left-0 text-[11px] bg-blue-600 text-white px-1 py-0.5 rounded">
+                {b.name}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </DialogContent>
+</Dialog>
+
+
+      {/* Logos Mapping Modal: cloudinary-generated slider */}
+      <Dialog open={logosMapOpen} onOpenChange={setLogosMapOpen}>
+        <DialogContent className="!max-w-[1200px] p-0 overflow-hidden">
+          <div className="bg-white">
+            <div className="px-6 pt-6">
+              <DialogTitle className="text-2xl font-semibold">
+                Logos Mapping Preview
+              </DialogTitle>
+            </div>
+            <div className="w-full flex flex-col items-center justify-center px-6 pb-6">
+              {/* Image area */}
+              <div className="w-full h-[70vh] max-h-[780px] flex items-center justify-center bg-gray-50 rounded-xl mt-4 overflow-hidden">
+                {logosSliderImages.length > 0 ? (
+                  <img
+                    key={logosSliderIdx}
+                    src={logosSliderImages[logosSliderIdx].src}
+                    alt={logosSliderImages[logosSliderIdx].title}
+                    className="max-h-[70vh] max-w-full object-contain"
+                    draggable={false}
+                  />
+                ) : (
+                  <div className="text-gray-500">Select a product & a logo/page to preview.</div>
+                )}
+              </div>
+
+              {/* Controls */}
+              {logosSliderImages.length > 1 && (
+                <div className="mt-4 flex items-center justify-center gap-3">
+                  <button
+                    className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 cursor-pointer"
+                    onClick={() =>
+                      setLogosSliderIdx((p) => (p - 1 + logosSliderImages.length) % logosSliderImages.length)
+                    }
+                    type="button"
+                    title="Previous"
+                  >
+                    Prev
+                  </button>
+                  <button
+                    className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 cursor-pointer"
+                    onClick={() => setLogosSliderIdx((p) => (p + 1) % logosSliderImages.length)}
+                    type="button"
+                    title="Next"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+
+              {/* Dots built from color titles & hex */}
+              {logosSliderImages.length > 1 && selectedProduct?.acf?.group_type === 'Group' && Array.isArray(selectedProduct?.acf?.color) && (
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                  {selectedProduct.acf.color.map((c, i) => {
+                    const active = i === logosSliderIdx;
+                    const dark = isDark(c?.color_hex_code || '#ffffff');
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => setLogosSliderIdx(i)}
+                        title={c?.title || `Color ${i + 1}`}
+                        className={`px-3 py-1 rounded-full border text-xs font-medium shadow-sm transition cursor-pointer ${
+                          active ? 'ring-2 ring-sky-500' : ''
+                        }`}
+                        style={{
+                          background: c?.color_hex_code || '#ffffff',
+                          color: dark ? '#ffffff' : '#111111',
+                          borderColor: dark ? '#ffffff66' : '#00000022',
+                        }}
+                        type="button"
+                      >
+                        {c?.title || `Color ${i + 1}`}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

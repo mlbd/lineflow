@@ -4,14 +4,10 @@ import { useEffect, useState, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { X } from 'lucide-react';
 
-// =================== Config / Globals ===================
-const LS_KEY = 'ms_cache_products_all_v1';
-const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days (change here)
-
-// =================== API ===================
 const API_ROOT = '/api/ms';
+const LS_KEY = 'ms_cache_products_all_v2';
+const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-// Helpers: localStorage with TTL
 function lsGet(key) {
   try {
     const raw = localStorage.getItem(key);
@@ -34,30 +30,36 @@ function lsSet(key, data, ttl = CACHE_TTL_MS) {
 }
 
 export default function EditImagePanel({ open, onClose, onSelect }) {
-  const [all, setAll] = useState([]); // aggregated products
+  const [all, setAll] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [q, setQ] = useState('');
 
-  // derived filtered list
   const filtered = q
-    ? all.filter(p => (p.name || '').toLowerCase().includes(q.toLowerCase()))
+    ? all.filter(p => {
+        const term = q.toLowerCase();
+        return (
+          (p.name || '').toLowerCase().includes(term) ||
+          String(p.id || '').includes(term)
+        );
+      })
     : all;
 
   const load = useCallback(async () => {
-    // 1) local cache first
+    // cache-first (browser)
     const cached = lsGet(LS_KEY);
-    if (cached && Array.isArray(cached?.products)) {
+    if (cached && Array.isArray(cached.products)) {
       setAll(cached.products);
       return;
     }
-    // 2) server cache (shared) — one call returns ALL products aggregated
+
     setLoading(true);
     setErr('');
     try {
       const res = await fetch(`${API_ROOT}/products`, { cache: 'no-store' });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
+
       const products = Array.isArray(json?.products) ? json.products : [];
       setAll(products);
       lsSet(LS_KEY, { products });
@@ -68,7 +70,7 @@ export default function EditImagePanel({ open, onClose, onSelect }) {
     }
   }, []);
 
-  // React to Clear Cache global event from page.jsx
+  // react to global "Clear Cache"
   useEffect(() => {
     const onClear = () => {
       localStorage.removeItem(LS_KEY);
@@ -78,7 +80,6 @@ export default function EditImagePanel({ open, onClose, onSelect }) {
     return () => window.removeEventListener('ms-clear-cache', onClear);
   }, []);
 
-  // Open -> load once (cache-first)
   useEffect(() => {
     if (open) load();
   }, [open, load]);
@@ -99,7 +100,11 @@ export default function EditImagePanel({ open, onClose, onSelect }) {
 
       {/* Search */}
       <div className="p-4">
-        <Input placeholder="Search products" value={q} onChange={e => setQ(e.target.value)} />
+        <Input
+          placeholder="Search by name or ID"
+          value={q}
+          onChange={e => setQ(e.target.value)}
+        />
       </div>
 
       {/* Body */}
@@ -114,14 +119,18 @@ export default function EditImagePanel({ open, onClose, onSelect }) {
           <div className="text-sm text-muted-foreground">No products found.</div>
         ) : (
           filtered.map(p => {
-            const img = p?.thumbnail_meta?.url || p?.thumbnail || '';
+            const img =
+              p?.thumbnail_meta?.url ||
+              p?.thumbnail ||
+              '';
             return (
               <div
                 key={p.id}
                 className="flex items-center gap-3 p-2 border rounded hover:bg-muted transition cursor-pointer"
                 onClick={() => {
                   if (!img) return;
-                  onSelect(img, p.id); // Keep existing expectation: (url, productId)
+                  // Pass url, productId and full product (for placement_coordinates)
+                  onSelect(img, p.id, p);
                   onClose();
                 }}
               >
@@ -131,7 +140,9 @@ export default function EditImagePanel({ open, onClose, onSelect }) {
                   <div className="w-12 h-12 rounded bg-gray-100" />
                 )}
                 <div className="min-w-0">
-                  <div className="text-sm font-medium truncate">{p.name}</div>
+                  <div className="text-sm font-medium truncate">
+                    #{p.id} — {p.name}
+                  </div>
                 </div>
               </div>
             );
