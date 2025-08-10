@@ -26,7 +26,7 @@ export default function EditMappingModal({ mapping, open, onClose, onSave }) {
     setForm(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleBackLogoChange = (enabled) => {
+  const handleBackLogoChange = enabled => {
     setForm(prev => {
       // Add 'back: true' if enabled, else remove 'back'
       if (enabled) {

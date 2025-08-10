@@ -10,7 +10,12 @@ import { generateProductImageUrl } from '@/utils/cloudinaryMockup';
 
 const PRODUCT_PER_PAGE = 12;
 
-export default function ProductListSection({ products = [], bumpPrice, onCartAddSuccess, companyLogos = {}  }) {
+export default function ProductListSection({
+  products = [],
+  bumpPrice,
+  onCartAddSuccess,
+  companyLogos = {},
+}) {
   const [page, setPage] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [modalProduct, setModalProduct] = useState(null);

@@ -7,7 +7,7 @@ import ImageCanvas from '@/components/ImageCanvas';
 import MappingList from '@/components/MappingList';
 import OutputPanel from '@/components/OutputPanel';
 import EditMappingModal from '@/components/EditMappingModal';
-import ProductPanel from '@/components/ProductPanel';   // NEW!
+import ProductPanel from '@/components/ProductPanel'; // NEW!
 import EditLogoPanel from '@/components/EditLogoPanel';
 import UploadImageModal from '@/components/UploadImageModal';
 
@@ -107,7 +107,7 @@ export default function HomePage() {
 
   // NEW: Save Placement API
   const handleSavePlacement = async () => {
-    if (!selectedProductId) return alert("Select a product first!");
+    if (!selectedProductId) return alert('Select a product first!');
     const res = await fetch(`${WP_URL}/wp-json/mini-sites/v1/update=placement`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -117,7 +117,7 @@ export default function HomePage() {
       }),
     });
     const data = await res.json();
-    alert(data.message || "Placements saved!");
+    alert(data.message || 'Placements saved!');
   };
 
   return (
@@ -149,9 +149,11 @@ export default function HomePage() {
           {/* NEW: Save placement button */}
           <button
             className={`mt-4 w-full py-2 cursor-pointer rounded font-semibold transition
-              ${mappings.length === 0
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+              ${
+                mappings.length === 0
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
             onClick={handleSavePlacement}
             disabled={mappings.length === 0}
           >
@@ -268,7 +270,6 @@ export default function HomePage() {
         folder="Experiment"
         wpUrl={WP_URL}
       />
-      
 
       <UploadImageModal
         open={showUploadModal}

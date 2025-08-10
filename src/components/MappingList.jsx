@@ -59,7 +59,9 @@ export default function MappingList({ mappings, selectedId, onSelect, onDelete, 
                       )}
                     </div>
                     {m.back && (
-                      <div className="text-xs my-2 text-blue-600 font-semibold">Back Logo Enabled</div>
+                      <div className="text-xs my-2 text-blue-600 font-semibold">
+                        Back Logo Enabled
+                      </div>
                     )}
                   </div>
                   <div className="flex gap-2 opacity-0 group-hover:opacity-100">

@@ -202,11 +202,11 @@ export default function LandingPage({
             />
           )}
           <div className="w-full" ref={cartSectionRef}>
-            <CartPage 
-              shippingOptions={shippingOptions} 
-              shippingLoading={false} 
-              meta={meta} 
-              companyLogos={companyLogos} 
+            <CartPage
+              shippingOptions={shippingOptions}
+              shippingLoading={false}
+              meta={meta}
+              companyLogos={companyLogos}
             />
           </div>
           <Footer />

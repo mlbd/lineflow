@@ -46,7 +46,7 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
       naturalW,
       naturalH,
       displayW,
-      displayH
+      displayH,
     });
 
     try {
@@ -77,7 +77,7 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
           calcX: x,
           calcY: y,
           calcW: w,
-          calcH: h
+          calcH: h,
         });
 
         return [
@@ -123,7 +123,7 @@ export default function OutputPanel({ imageUrl, mappings, logoId, setLogoId }) {
             calcW: w,
             calcH: h,
             logoNaturalW: logoSize.width,
-            logoNaturalH: logoSize.height
+            logoNaturalH: logoSize.height,
           });
 
           const logoAspect = logoSize.width / logoSize.height;

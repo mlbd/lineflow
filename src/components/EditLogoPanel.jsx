@@ -271,7 +271,9 @@ export default function EditLogoPanel({
         ) : error ? (
           <div className="text-sm text-red-600 bg-red-50 p-3 rounded">Error: {error}</div>
         ) : items.length === 0 ? (
-          <div className="text-sm text-muted-foreground">No pages found (with Cloudinary profile & logo).</div>
+          <div className="text-sm text-muted-foreground">
+            No pages found (with Cloudinary profile & logo).
+          </div>
         ) : (
           <>
             {items.map((it, idx) => (
@@ -315,7 +317,9 @@ export default function EditLogoPanel({
 
       {items.length > 0 && (
         <div className="absolute bottom-0 left-0 right-0 bg-gray-50 px-4 py-2 border-t">
-          <div className="text-xs text-muted-foreground text-center">Showing {items.length} pages</div>
+          <div className="text-xs text-muted-foreground text-center">
+            Showing {items.length} pages
+          </div>
         </div>
       )}
     </div>

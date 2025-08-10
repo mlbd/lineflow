@@ -12,11 +12,11 @@ import {
 
 // ---- Global promise cache so each URL preloads once per session ----
 const preloadCache = new Map(); // url -> Promise<string>
-const preloadImage = (url) => {
+const preloadImage = url => {
   if (!url) return Promise.resolve('');
   if (preloadCache.has(url)) return preloadCache.get(url);
 
-  const p = new Promise((resolve) => {
+  const p = new Promise(resolve => {
     if (typeof window === 'undefined') return resolve(url);
     const img = new window.Image(); // ✅ native constructor
     img.onload = () => resolve(url);
@@ -76,7 +76,7 @@ export default function CartItem({ item, idx, companyLogos = {} }) {
 
     if ('IntersectionObserver' in window && rowRef.current) {
       const io = new IntersectionObserver(
-        (entries) => {
+        entries => {
           for (const entry of entries) {
             if (entry.isIntersecting) {
               kick();
@@ -124,7 +124,7 @@ export default function CartItem({ item, idx, companyLogos = {} }) {
   };
   const onThumbLeave = () => setHovering(false);
 
-  const onThumbMove = (e) => {
+  const onThumbMove = e => {
     const OFFSET = 18;
     const maxW = 400;
     const maxH = 400;
@@ -146,14 +146,20 @@ export default function CartItem({ item, idx, companyLogos = {} }) {
   const minQuantity = 1;
   const maxQuantity = 999;
 
-  const handleQuantityChange = (value) => {
+  const handleQuantityChange = value => {
     let cleanValue = value.replace(/[^0-9]/g, '');
     if (cleanValue.length > 1 && cleanValue[0] === '0') cleanValue = cleanValue.replace(/^0+/, '');
     setLocalQuantity(cleanValue);
 
     const numValue = parseInt(cleanValue) || 0;
-    if (!cleanValue) { setError(''); return; }
-    if (numValue < minQuantity) { setError(`כמות מינימלית: ${minQuantity}`); return; }
+    if (!cleanValue) {
+      setError('');
+      return;
+    }
+    if (numValue < minQuantity) {
+      setError(`כמות מינימלית: ${minQuantity}`);
+      return;
+    }
     if (numValue > maxQuantity) {
       setError(`כמות מקסימלית: ${maxQuantity}`);
       setLocalQuantity(maxQuantity.toString());
@@ -199,15 +205,17 @@ export default function CartItem({ item, idx, companyLogos = {} }) {
         </div>
       )}
 
-      {item.options && item.options.group_type !== 'Group' && Object.keys(item.options).length > 0 && (
-        <div className="text-sm text-gray-600">
-          {Object.entries(item.options).map(([k, v]) => (
-            <div key={k}>
-              {k}: <span className="font-medium">{String(v)}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      {item.options &&
+        item.options.group_type !== 'Group' &&
+        Object.keys(item.options).length > 0 && (
+          <div className="text-sm text-gray-600">
+            {Object.entries(item.options).map(([k, v]) => (
+              <div key={k}>
+                {k}: <span className="font-medium">{String(v)}</span>
+              </div>
+            ))}
+          </div>
+        )}
     </div>
   );
 
@@ -247,7 +255,7 @@ export default function CartItem({ item, idx, companyLogos = {} }) {
             }}
           >
             <img
-              src={hoverReady ? hoverUrl : (hoverUrl || thumbUrl)}
+              src={hoverReady ? hoverUrl : hoverUrl || thumbUrl}
               alt={`${item.name} preview`}
               style={{
                 display: 'block',
@@ -277,7 +285,7 @@ export default function CartItem({ item, idx, companyLogos = {} }) {
             inputMode="numeric"
             pattern="[0-9]*"
             value={localQuantity}
-            onChange={(e) => handleQuantityChange(e.target.value)}
+            onChange={e => handleQuantityChange(e.target.value)}
             onBlur={handleQuantityBlur}
             className={`w-16 px-2 py-1 text-center border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
               error ? 'border-red-400 focus:ring-red-500 focus:border-red-500' : 'border-gray-300'

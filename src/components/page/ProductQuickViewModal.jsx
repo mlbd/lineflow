@@ -1,15 +1,21 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from "react";
-import { Dialog, DialogContent, DialogTitle, DialogClose, DialogDescription } from "@/components/ui/dialog";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
-import ImageGalleryOverlay from "@/components/page/ImageGalleryOverlay";
-import { generateProductImageUrl } from "@/utils/cloudinaryMockup";
+import { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogClose,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import ImageGalleryOverlay from '@/components/page/ImageGalleryOverlay';
+import { generateProductImageUrl } from '@/utils/cloudinaryMockup';
 
 function PriceChart({ steps }) {
   if (!Array.isArray(steps) || steps.length === 0) return null;
 
-  const getRange = (i) => {
+  const getRange = i => {
     const thisQty = Number(steps[i]?.quantity);
     const nextQty = steps[i + 1] ? Number(steps[i + 1].quantity) : null;
     if (i === 0 && nextQty !== null) {
@@ -29,14 +35,16 @@ function PriceChart({ steps }) {
           {steps.map((step, i) => {
             const rowIdx = Math.floor(i / 2);
             const colIdx = i % 2;
-            const checkerBg = rowIdx % 2 === colIdx % 2 ? "bg-bglight" : "";
+            const checkerBg = rowIdx % 2 === colIdx % 2 ? 'bg-bglight' : '';
 
             return (
               <div
                 key={i}
                 className={`flex flex-col items-center border-b last:border-b-0 sm:border-r px-4 py-3 ${checkerBg}`}
               >
-                <div className="text-lg font-bold text-primary">{Number(step.amount).toFixed(2)}₪</div>
+                <div className="text-lg font-bold text-primary">
+                  {Number(step.amount).toFixed(2)}₪
+                </div>
                 <div className="text-xs text-gray-500 mt-1">{getRange(i)}</div>
               </div>
             );
@@ -53,12 +61,12 @@ export default function ProductQuickViewModal({
   product,
   onAddToCart,
   bumpPrice,
-  companyLogos = {}
+  companyLogos = {},
 }) {
   // ALL hooks must be called unconditionally on every render
   const [sliderIdx, setSliderIdx] = useState(0);
   const [slideLoading, setSlideLoading] = useState(false);
-  const [slideSrc, setSlideSrc] = useState("");
+  const [slideSrc, setSlideSrc] = useState('');
   const [ready, setReady] = useState({});
   const [preloading, setPreloading] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
@@ -66,30 +74,30 @@ export default function ProductQuickViewModal({
 
   // Get product data (or defaults if product is null)
   const acf = product?.acf || {};
-  
+
   // Steps (unchanged logic—adapt if you use a different source)
   let steps = [];
-  if (acf.group_type === "Group" && Array.isArray(acf.discount_steps)) {
+  if (acf.group_type === 'Group' && Array.isArray(acf.discount_steps)) {
     steps = acf.discount_steps;
-  } else if (acf.group_type === "Quantity" && Array.isArray(acf.quantity_steps)) {
+  } else if (acf.group_type === 'Quantity' && Array.isArray(acf.quantity_steps)) {
     steps = acf.quantity_steps;
   }
 
   // Slider presence
-  const hasSlider = acf.group_type === "Group" && Array.isArray(acf.color) && acf.color.length > 0;
+  const hasSlider = acf.group_type === 'Group' && Array.isArray(acf.color) && acf.color.length > 0;
   const colors = useMemo(() => (hasSlider ? acf.color : []), [hasSlider, acf.color]);
 
   // In-memory promise cache for preloads
-  const preloadImage = (url) => {
+  const preloadImage = url => {
     if (!url) return Promise.resolve();
     const cache = preloadCacheRef.current;
     if (cache.has(url)) return cache.get(url);
 
     const p = new Promise((resolve, reject) => {
-      if (typeof window === "undefined") return resolve(url);
+      if (typeof window === 'undefined') return resolve(url);
       const img = new Image();
       img.onload = () => resolve(url);
-      img.onerror = () => reject(new Error("Image failed: " + url));
+      img.onerror = () => reject(new Error('Image failed: ' + url));
       img.src = url;
     });
     cache.set(url, p);
@@ -105,10 +113,12 @@ export default function ProductQuickViewModal({
         alt: c?.title || product?.name || `Image ${i + 1}`,
       }));
     }
-    return [{
-      src: generateProductImageUrl(product, companyLogos),
-      alt: product?.name || "Image"
-    }];
+    return [
+      {
+        src: generateProductImageUrl(product, companyLogos),
+        alt: product?.name || 'Image',
+      },
+    ];
   }, [product, hasSlider, colors, companyLogos]);
 
   // Build **modal** slide URLs (900px fast preview inside quick view)
@@ -128,7 +138,7 @@ export default function ProductQuickViewModal({
     setSliderIdx(0);
     setReady({});
     setGalleryOpen(false);
-    setSlideSrc("");
+    setSlideSrc('');
     setSlideLoading(false);
   }, [product]);
 
@@ -151,9 +161,9 @@ export default function ProductQuickViewModal({
     setSlideLoading(true);
     let cancelled = false;
     preloadImage(url)
-      .then((u) => {
+      .then(u => {
         if (cancelled) return;
-        setReady((prev) => ({ ...prev, [hasSlider ? sliderIdx : 0]: u }));
+        setReady(prev => ({ ...prev, [hasSlider ? sliderIdx : 0]: u }));
         setSlideSrc(u);
         setSlideLoading(false);
       })
@@ -162,7 +172,9 @@ export default function ProductQuickViewModal({
         setSlideLoading(false);
       });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [open, sliderIdx, hasSlider, modalSlideUrls, ready, product]);
 
   // NEW: Preload **all** modal slides on open and keep nav/dots disabled until done
@@ -174,12 +186,14 @@ export default function ProductQuickViewModal({
     setPreloading(true);
 
     Promise.all(modalSlideUrls.map(preloadImage))
-      .then((loaded) => {
+      .then(loaded => {
         if (cancelled) return;
         // Mark all as ready
-        setReady((prev) => {
+        setReady(prev => {
           const next = { ...prev };
-          loaded.forEach((u, i) => { if (u) next[i] = u; });
+          loaded.forEach((u, i) => {
+            if (u) next[i] = u;
+          });
           return next;
         });
       })
@@ -187,14 +201,16 @@ export default function ProductQuickViewModal({
         if (!cancelled) setPreloading(false);
       });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [open, modalSlideUrls, product]);
 
   // Return null AFTER all hooks have been called
   if (!product) return null;
 
   // Nav handlers
-  const handleDotClick = (idx) => {
+  const handleDotClick = idx => {
     if (idx === sliderIdx) return;
     setSliderIdx(idx);
   };
@@ -226,28 +242,34 @@ export default function ProductQuickViewModal({
 
           <div className="flex flex-row w-full pb-8" style={{ minHeight: 360 }}>
             {/* Left column */}
-            <div className="flex flex-col justify-start px-[35px] pt-2 pb-8" style={{ flexBasis: "38%" }}>
+            <div
+              className="flex flex-col justify-start px-[35px] pt-2 pb-8"
+              style={{ flexBasis: '38%' }}
+            >
               <DialogDescription className="prose prose-sm max-w-none mb-4 text-primary">
-                  {product?.acf?.pricing_description
+                {product?.acf?.pricing_description
                   ? product.acf.pricing_description.replace(/<[^>]+>/g, '')
-                  : "פרטי מוצר"}
+                  : 'פרטי מוצר'}
               </DialogDescription>
               <PriceChart steps={steps} />
               <div>
-                  <button
+                <button
                   className="alarnd-btn mt-5 bg-primary text-white"
                   onClick={() => {
-                      if (onClose) onClose(); // Close product quick view modal
-                      if (onAddToCart) onAddToCart(); // Open add to cart modal
+                    if (onClose) onClose(); // Close product quick view modal
+                    if (onAddToCart) onAddToCart(); // Open add to cart modal
                   }}
-                  >
+                >
                   הוסיפו לעגלה
-                  </button>
+                </button>
               </div>
             </div>
 
             {/* Right column */}
-            <div className="flex flex-col justify-center items-center relative" style={{ flexBasis: "62%" }}>
+            <div
+              className="flex flex-col justify-center items-center relative"
+              style={{ flexBasis: '62%' }}
+            >
               <div
                 className="flex items-center justify-center w-full relative"
                 style={{ height: 310 }}
@@ -256,7 +278,7 @@ export default function ProductQuickViewModal({
                 {slideSrc ? (
                   <img
                     src={slideSrc}
-                    alt={hasSlider ? (acf.color[sliderIdx]?.title || product.name) : product.name}
+                    alt={hasSlider ? acf.color[sliderIdx]?.title || product.name : product.name}
                     className={`max-h-[300px] max-w-full object-contain rounded-xl shadow transition-opacity duration-200 ${
                       slideLoading ? 'opacity-70' : 'opacity-100'
                     } cursor-zoom-in`}
@@ -310,8 +332,11 @@ export default function ProductQuickViewModal({
                       onClick={() => handleDotClick(idx)}
                       disabled={navDisabled && idx !== sliderIdx}
                       className={`w-[20px] h-[20px] rounded-[7px] border-2 shadow-[0_0_0_2px_white,0_0_0_3px_#cccccc] transition-all duration-150
-                        ${sliderIdx === idx ? "ring-2 ring-skyblue" : ""} ${navDisabled ? 'opacity-60' : ''}`}
-                      style={{ background: clr.color_hex_code, cursor: navDisabled ? 'not-allowed' : 'pointer' }}
+                        ${sliderIdx === idx ? 'ring-2 ring-skyblue' : ''} ${navDisabled ? 'opacity-60' : ''}`}
+                      style={{
+                        background: clr.color_hex_code,
+                        cursor: navDisabled ? 'not-allowed' : 'pointer',
+                      }}
                       title={clr.title}
                       aria-label={clr.title}
                       type="button"
@@ -322,9 +347,7 @@ export default function ProductQuickViewModal({
 
               {/* Small helper note (optional) */}
               {preloading && hasSlider && colors.length > 1 && (
-                <div className="mt-3 text-xs text-gray-500">
-                  טוען תמונות מקדימות…
-                </div>
+                <div className="mt-3 text-xs text-gray-500">טוען תמונות מקדימות…</div>
               )}
             </div>
           </div>

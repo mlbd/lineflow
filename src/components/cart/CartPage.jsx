@@ -8,7 +8,12 @@ import ShippingOptions from './ShippingOptions';
 import CouponField from './CouponField';
 import CartShimmer from './CartShimmer';
 
-export default function CartPage({ shippingOptions = [], shippingLoading = false, meta = {}, companyLogos = {} }) {
+export default function CartPage({
+  shippingOptions = [],
+  shippingLoading = false,
+  meta = {},
+  companyLogos = {},
+}) {
   const items = useCartItems();
   const [selectedShipping, setSelectedShipping] = useState(null);
 
@@ -79,12 +84,12 @@ export default function CartPage({ shippingOptions = [], shippingLoading = false
                   {/* Cart Items */}
                   <div className="space-y-4">
                     {items.map((item, idx) => (
-                      <CartItem 
-                        key={`${item.product_id}-${idx}`} 
-                        item={item} 
+                      <CartItem
+                        key={`${item.product_id}-${idx}`}
+                        item={item}
                         idx={idx}
                         companyLogos={companyLogos}
-                       />
+                      />
                     ))}
                   </div>
                   {validating && (

@@ -24,7 +24,9 @@ export default function ImageGalleryOverlay({
     if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
+    return () => {
+      document.body.style.overflow = prev;
+    };
   }, [open]);
 
   // 🔒 Block Radix Dialog "outside pointer down" while overlay is open
@@ -32,7 +34,7 @@ export default function ImageGalleryOverlay({
     if (!open) return;
 
     // Use capture so we win before Radix catches it
-    const block = (e) => {
+    const block = e => {
       // Don't preventDefault so buttons still work; just stop propagation
       e.stopPropagation();
     };
@@ -50,10 +52,13 @@ export default function ImageGalleryOverlay({
   // Keyboard controls
   useEffect(() => {
     if (!open) return;
-    const onKey = (e) => {
-      if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
-      if (e.key === 'ArrowRight') setIdx((i) => (i + 1) % images.length);
-      if (e.key === 'ArrowLeft')  setIdx((i) => (i - 1 + images.length) % images.length);
+    const onKey = e => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+      if (e.key === 'ArrowRight') setIdx(i => (i + 1) % images.length);
+      if (e.key === 'ArrowLeft') setIdx(i => (i - 1 + images.length) % images.length);
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
@@ -76,7 +81,7 @@ export default function ImageGalleryOverlay({
 
   if (!open) return null;
 
-  const stopAll = (e) => {
+  const stopAll = e => {
     // Extra guard to avoid bubbling to document listeners
     e.stopPropagation();
   };
@@ -95,7 +100,7 @@ export default function ImageGalleryOverlay({
       {/* Content wrapper: prevent backdrop close when clicking inside */}
       <div
         className="relative w-full h-full flex items-center justify-center"
-        onClick={(e) => e.stopPropagation()}
+        onClick={e => e.stopPropagation()}
         onPointerDownCapture={stopAll}
         onMouseDownCapture={stopAll}
         onTouchStartCapture={stopAll}
@@ -116,7 +121,7 @@ export default function ImageGalleryOverlay({
             type="button"
             aria-label="Previous"
             className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/90 hover:bg-white shadow"
-            onClick={() => setIdx((i) => (i - 1 + images.length) % images.length)}
+            onClick={() => setIdx(i => (i - 1 + images.length) % images.length)}
           >
             <ChevronLeft className="w-6 h-6" />
           </button>
@@ -128,7 +133,7 @@ export default function ImageGalleryOverlay({
             type="button"
             aria-label="Next"
             className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/90 hover:bg-white shadow"
-            onClick={() => setIdx((i) => (i + 1) % images.length)}
+            onClick={() => setIdx(i => (i + 1) % images.length)}
           >
             <ChevronRight className="w-6 h-6" />
           </button>

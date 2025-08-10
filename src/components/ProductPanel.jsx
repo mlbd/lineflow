@@ -9,10 +9,15 @@ export default function ProductPanel({ open, onClose, onSelect, wpUrl }) {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [progress, setProgress] = useState({ page: 1, totalPages: 1, totalTried: 0, totalFound: 0 });
+  const [progress, setProgress] = useState({
+    page: 1,
+    totalPages: 1,
+    totalTried: 0,
+    totalFound: 0,
+  });
 
   // Helper for filtering/normalizing product list
-  const processProducts = (list) =>
+  const processProducts = list =>
     list
       .filter(prod => {
         const thumb = prod.thumbnail || prod.thumbnail_meta?.url;
@@ -23,11 +28,13 @@ export default function ProductPanel({ open, onClose, onSelect, wpUrl }) {
         if (prod.acf?.group_type === 'Group' && Array.isArray(prod.acf.color)) {
           images = [
             ...(prod.thumbnail && prod.thumbnail.includes('cloudinary.com')
-              ? [{
-                url: prod.thumbnail,
-                width: prod.thumbnail_meta?.width,
-                height: prod.thumbnail_meta?.height,
-              }]
+              ? [
+                  {
+                    url: prod.thumbnail,
+                    width: prod.thumbnail_meta?.width,
+                    height: prod.thumbnail_meta?.height,
+                  },
+                ]
               : []),
             ...prod.acf.color
               .filter(col => col.thumbnail?.url && col.thumbnail.url.includes('cloudinary.com'))
@@ -40,11 +47,13 @@ export default function ProductPanel({ open, onClose, onSelect, wpUrl }) {
               })),
           ];
         } else if (prod.thumbnail && prod.thumbnail.includes('cloudinary.com')) {
-          images = [{
-            url: prod.thumbnail,
-            width: prod.thumbnail_meta?.width,
-            height: prod.thumbnail_meta?.height,
-          }];
+          images = [
+            {
+              url: prod.thumbnail,
+              width: prod.thumbnail_meta?.width,
+              height: prod.thumbnail_meta?.height,
+            },
+          ];
         }
         return {
           id: prod.id,
@@ -105,9 +114,7 @@ export default function ProductPanel({ open, onClose, onSelect, wpUrl }) {
           productsArr = data.products;
           pagination = data.pagination || {};
         } else {
-          throw new Error(
-            (data && (data.message || data.error)) || 'Unexpected API response'
-          );
+          throw new Error((data && (data.message || data.error)) || 'Unexpected API response');
         }
 
         totalPages = pagination.total_pages || totalPages;
@@ -115,8 +122,8 @@ export default function ProductPanel({ open, onClose, onSelect, wpUrl }) {
           ...p,
           page,
           totalPages,
-          totalTried: ((p.totalTried || 0) + productsArr.length),
-          totalFound: ((allProducts.length) + 0),
+          totalTried: (p.totalTried || 0) + productsArr.length,
+          totalFound: allProducts.length + 0,
         }));
 
         const filtered = processProducts(productsArr);
@@ -153,17 +160,17 @@ export default function ProductPanel({ open, onClose, onSelect, wpUrl }) {
     }
   };
 
-    useEffect(() => {
+  useEffect(() => {
     const interval = setInterval(async () => {
-        const res = await fetch('/api/clear-products-cache');
-        const data = await res.json();
-        if (data.cacheClearedAt !== localStorage.getItem('cacheClearedAt')) {
+      const res = await fetch('/api/clear-products-cache');
+      const data = await res.json();
+      if (data.cacheClearedAt !== localStorage.getItem('cacheClearedAt')) {
         localStorage.removeItem(CACHE_KEY);
         localStorage.setItem('cacheClearedAt', data.cacheClearedAt);
-        }
+      }
     }, 60000); // check every 60s
     return () => clearInterval(interval);
-    }, []);
+  }, []);
 
   // Only fetch or load cache when panel is opened
   useEffect(() => {
@@ -173,7 +180,7 @@ export default function ProductPanel({ open, onClose, onSelect, wpUrl }) {
   }, [open, wpUrl]);
 
   // Optionally: Manual refresh button (for debugging)
-//   <button onClick={()=>{localStorage.removeItem(CACHE_KEY); fetchAllPages(true);}}>Force Refresh</button>
+  //   <button onClick={()=>{localStorage.removeItem(CACHE_KEY); fetchAllPages(true);}}>Force Refresh</button>
 
   return (
     <div
@@ -194,31 +201,30 @@ export default function ProductPanel({ open, onClose, onSelect, wpUrl }) {
           <div className="mb-2 text-sm text-blue-600">
             {progress.totalFound > 0 && (
               <div>
-                <span className="font-semibold">{progress.totalFound}</span> product{progress.totalFound !== 1 && 's'} found so far.
+                <span className="font-semibold">{progress.totalFound}</span> product
+                {progress.totalFound !== 1 && 's'} found so far.
               </div>
             )}
             <div>
-              Fetching page <span className="font-semibold">{progress.page}</span> of <span className="font-semibold">{progress.totalPages}</span>
-              {progress.totalTried > 0 && (
-                <> ({progress.totalTried} products checked...)</>
-              )}
+              Fetching page <span className="font-semibold">{progress.page}</span> of{' '}
+              <span className="font-semibold">{progress.totalPages}</span>
+              {progress.totalTried > 0 && <> ({progress.totalTried} products checked...)</>}
             </div>
           </div>
         )}
-        {!loading && error && (
-          <div className="text-red-600 text-sm mb-2">{error}</div>
-        )}
+        {!loading && error && <div className="text-red-600 text-sm mb-2">{error}</div>}
         {!loading && !error && products.length > 0 && (
           <div className="mb-2 text-green-700 text-xs">
-            Finished. Found <span className="font-semibold">{products.length}</span> matching product{products.length !== 1 && 's'} in {progress.totalPages} page{progress.totalPages !== 1 && 's'}.
+            Finished. Found <span className="font-semibold">{products.length}</span> matching
+            product{products.length !== 1 && 's'} in {progress.totalPages} page
+            {progress.totalPages !== 1 && 's'}.
           </div>
         )}
         {!loading && !error && products.length === 0 && (
-          <div className="text-gray-500 text-sm mb-2">
-            No products found matching criteria.
-          </div>
+          <div className="text-gray-500 text-sm mb-2">No products found matching criteria.</div>
         )}
-        {!error && products.length > 0 && (
+        {!error &&
+          products.length > 0 &&
           products.map(prod => (
             <div key={prod.id} className="mb-4">
               <div className="font-bold text-sm mb-1">
@@ -243,7 +249,10 @@ export default function ProductPanel({ open, onClose, onSelect, wpUrl }) {
                       style={img.colorHex ? { border: `2px solid ${img.colorHex}` } : {}}
                     />
                     {img.colorTitle && (
-                      <div className="text-xs text-center" style={img.colorHex ? { color: img.colorHex } : {}}>
+                      <div
+                        className="text-xs text-center"
+                        style={img.colorHex ? { color: img.colorHex } : {}}
+                      >
                         {img.colorTitle}
                       </div>
                     )}
@@ -251,8 +260,7 @@ export default function ProductPanel({ open, onClose, onSelect, wpUrl }) {
                 ))}
               </div>
             </div>
-          ))
-        )}
+          ))}
       </div>
     </div>
   );

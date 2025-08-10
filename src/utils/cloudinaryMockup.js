@@ -7,10 +7,10 @@ const ENV_CLOUD =
 
 /* --------------------- shared helpers --------------------- */
 
-export const isCloudinaryUrl = (url) =>
+export const isCloudinaryUrl = url =>
   !!url && typeof url === 'string' && url.includes('res.cloudinary.com');
 
-export const parseCloudinaryIds = (url) => {
+export const parseCloudinaryIds = url => {
   try {
     const u = new URL(url);
     const path = u.pathname.replace(/^\/+/, '');
@@ -35,14 +35,16 @@ export const parseCloudinaryIds = (url) => {
 
     const last = rest.pop();
     const fileId = last.replace(/\.[^.]+$/i, '');
-    const ext = (last.match(/\.([^.]+)$/i) || [,''])[1];
+    const ext = (last.match(/\.([^.]+)$/i) || [, ''])[1];
     const folderParts = rest;
     const looksSeoShort =
       delivery === 'images' || (folderParts.length === 1 && folderParts[0] === fileId);
 
     const overlayId = looksSeoShort
       ? fileId
-      : (folderParts.length ? `${folderParts.join(':')}:${fileId}` : fileId);
+      : folderParts.length
+        ? `${folderParts.join(':')}:${fileId}`
+        : fileId;
 
     const baseAsset = ext ? `${fileId}.${ext}` : fileId;
 
@@ -52,7 +54,7 @@ export const parseCloudinaryIds = (url) => {
   }
 };
 
-const brightnessFromHex = (hex) => {
+const brightnessFromHex = hex => {
   if (!hex || typeof hex !== 'string') return 128;
   const h = hex.replace('#', '').trim();
   if (!/^[0-9a-f]{6}$/i.test(h)) return 128;
@@ -61,15 +63,19 @@ const brightnessFromHex = (hex) => {
   const b = parseInt(h.slice(4, 6), 16);
   return Math.round((r * 299 + g * 587 + b * 114) / 1000);
 };
-const isDarkHex = (hex) => brightnessFromHex(hex) < 128;
+const isDarkHex = hex => brightnessFromHex(hex) < 128;
 
-const validLogo = (obj) => !!obj?.url && isCloudinaryUrl(obj.url);
+const validLogo = obj => !!obj?.url && isCloudinaryUrl(obj.url);
 
 const pickLogoVariant = (logos, useBack, bgIsDark) => {
-  const get = (k) => logos?.[k] || null;
+  const get = k => logos?.[k] || null;
   const want = useBack
-    ? (bgIsDark ? get('back_lighter') : get('back_darker'))
-    : (bgIsDark ? get('logo_lighter') : get('logo_darker'));
+    ? bgIsDark
+      ? get('back_lighter')
+      : get('back_darker')
+    : bgIsDark
+      ? get('logo_lighter')
+      : get('logo_darker');
 
   if (validLogo(want)) return want;
 
@@ -134,11 +140,18 @@ export const buildCloudinaryMockupUrl = ({
 
     const lw = Number(chosen.width) || 0;
     const lh = Number(chosen.height) || 0;
-    let logoW = w, logoH = h;
+    let logoW = w,
+      logoH = h;
     if (lw > 0 && lh > 0) {
-      const la = lw / lh, ba = w / h;
-      if (la > ba) { logoW = w; logoH = Math.round(w / la); }
-      else { logoH = h; logoW = Math.round(h * la); }
+      const la = lw / lh,
+        ba = w / h;
+      if (la > ba) {
+        logoW = w;
+        logoH = Math.round(w / la);
+      } else {
+        logoH = h;
+        logoW = Math.round(h * la);
+      }
     }
 
     const finalX = x + Math.round((w - logoW) / 2);
@@ -163,8 +176,8 @@ export const buildRelativeMockupUrl = ({
   placements = [],
   logos = {},
   baseHex = '#ffffff',
-  max = 900,      // if falsy => caller should not use this builder
-  maxH = null,    // optional
+  max = 900, // if falsy => caller should not use this builder
+  maxH = null, // optional
   productId = null,
   debugLabel = 'relative',
 }) => {
@@ -202,10 +215,7 @@ export const buildRelativeMockupUrl = ({
 
   // Step 2: overlay each placement using relative percentages
   placements.forEach((p, idx) => {
-    if (
-      p.xPercent == null || p.yPercent == null ||
-      p.wPercent == null || p.hPercent == null
-    ) {
+    if (p.xPercent == null || p.yPercent == null || p.wPercent == null || p.hPercent == null) {
       console.debug(`[cld][skip]${pid} rel_placement_missing_percent idx=${idx}`, p);
       return;
     }
@@ -218,7 +228,10 @@ export const buildRelativeMockupUrl = ({
 
     const parsedLogo = parseCloudinaryIds(chosen.url);
     if (!parsedLogo.overlayId) {
-      console.debug(`[cld][skip]${pid} rel_bad_logo_public_id idx=${idx}`, { url: chosen.url, parsedLogo });
+      console.debug(`[cld][skip]${pid} rel_bad_logo_public_id idx=${idx}`, {
+        url: chosen.url,
+        parsedLogo,
+      });
       return;
     }
 
@@ -318,7 +331,7 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
 /* ---------------------- Cart thumbs (relative) ---------------------- */
 
 /** Resolve the best base image for a cart item (handles Group color) */
-const resolveCartBaseFromItem = (item) => {
+const resolveCartBaseFromItem = item => {
   if (item?.options?.group_type === 'Group') {
     if (item?.options?.color_thumbnail_url) {
       return {
@@ -329,7 +342,9 @@ const resolveCartBaseFromItem = (item) => {
     const colorTitle = item?.options?.color;
     const colors = item?.product?.acf?.color;
     if (colorTitle && Array.isArray(colors)) {
-      const match = colors.find(c => (c?.title || '').toLowerCase() === (colorTitle || '').toLowerCase());
+      const match = colors.find(
+        c => (c?.title || '').toLowerCase() === (colorTitle || '').toLowerCase()
+      );
       if (match?.thumbnail?.url) {
         return { url: match.thumbnail.url, hex: match.color_hex_code || '#ffffff' };
       }
@@ -349,7 +364,9 @@ export const generateCartThumbUrlFromItem = (item, logos, { max = 200 } = {}) =>
 
   const placements = Array.isArray(item?.placement_coordinates)
     ? item.placement_coordinates
-    : (Array.isArray(item?.product?.placement_coordinates) ? item.product.placement_coordinates : []);
+    : Array.isArray(item?.product?.placement_coordinates)
+      ? item.product.placement_coordinates
+      : [];
 
   if (!Array.isArray(placements) || placements.length === 0) return base.url;
   if (!logos?.logo_darker?.url || !isCloudinaryUrl(logos.logo_darker.url)) return base.url;
@@ -363,10 +380,8 @@ export const generateCartThumbUrlFromItem = (item, logos, { max = 200 } = {}) =>
   const transforms = [`f_auto,q_auto,c_fit,w_${max},h_${max}`];
 
   placements.forEach((p, idx) => {
-    if (
-      p.xPercent == null || p.yPercent == null ||
-      p.wPercent == null || p.hPercent == null
-    ) return;
+    if (p.xPercent == null || p.yPercent == null || p.wPercent == null || p.hPercent == null)
+      return;
 
     const chosen = pickLogoVariant(logos, !!p.back, bgIsDark);
     if (!chosen || !isCloudinaryUrl(chosen.url)) return;
@@ -382,8 +397,13 @@ export const generateCartThumbUrlFromItem = (item, logos, { max = 200 } = {}) =>
     if (lw > 0 && lh > 0) {
       const la = lw / lh;
       const ba = p.wPercent / p.hPercent;
-      if (la > ba) { relW = p.wPercent; relH = p.wPercent / la; }
-      else { relH = p.hPercent; relW = p.hPercent * la; }
+      if (la > ba) {
+        relW = p.wPercent;
+        relH = p.wPercent / la;
+      } else {
+        relH = p.hPercent;
+        relW = p.hPercent * la;
+      }
     }
 
     const relX = p.xPercent + (p.wPercent - relW) / 2;
