@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { X } from 'lucide-react';
 
 const API_ROOT = '/api/ms';
-const LS_KEY = 'ms_cache_pages_all_v3';
+const LS_KEY = 'ms_cache_pages_all_v5';
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 function lsGet(key) {
@@ -24,40 +24,42 @@ function lsGet(key) {
     return null;
   }
 }
+
 function lsSet(key, data, ttl = CACHE_TTL_MS) {
   try {
     localStorage.setItem(key, JSON.stringify({ data, __ts: Date.now(), __ttl: ttl }));
   } catch {}
 }
 
+function isCloudinary(url = '') {
+  return typeof url === 'string' && url.includes('cloudinary.com');
+}
+
 function getPublicIdFromCloudinaryUrl(url) {
   try {
     const u = new URL(url);
     const parts = u.pathname.split('/').filter(Boolean);
-    // find "v123456" segment and use everything after that
-    const vIdx = parts.findIndex(p => /^v\d+$/i.test(p));
+    const vIdx = parts.findIndex((p) => /^v\d+$/i.test(p));
     const after = vIdx >= 0 ? parts.slice(vIdx + 1) : parts;
-    let last = after[after.length - 1] || '';
-    // strip extension if any
-    last = last.replace(/\.[a-z0-9]+$/i, '');
-    // if there are nested folders after vXXX, join them
-    const publicId = after
-      .map(seg => seg.replace(/\.[a-z0-9]+$/i, ''))
-      .join('/');
-    return publicId || last || '';
+    return after.map((seg) => seg.replace(/\.[a-z0-9]+$/i, '')).join('/');
   } catch {
     return '';
   }
 }
 
-export default function EditLogoPanel({ open, onClose, onSelect, wpUrl }) {
-  const [all, setAll] = useState([]);
+export default function EditLogoPanel({
+  open,
+  onClose,
+  onSelect,
+  // wpUrl, folder  // accepted for compatibility; not used anymore
+}) {
+  const [list, setList] = useState([]); // full pages after filtering by logo_darker
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [q, setQ] = useState('');
 
   const filtered = q
-    ? all.filter(p => {
+    ? list.filter((p) => {
         const term = q.toLowerCase();
         return (
           (p.title || '').toLowerCase().includes(term) ||
@@ -65,13 +67,13 @@ export default function EditLogoPanel({ open, onClose, onSelect, wpUrl }) {
           String(p.id || '').includes(term)
         );
       })
-    : all;
+    : list;
 
   const load = useCallback(async () => {
-    // cache-first (browser)
+    // cache-first
     const cached = lsGet(LS_KEY);
     if (cached && Array.isArray(cached.pages)) {
-      setAll(cached.pages);
+      setList(cached.pages);
       return;
     }
 
@@ -82,8 +84,12 @@ export default function EditLogoPanel({ open, onClose, onSelect, wpUrl }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
 
-      const pages = Array.isArray(json?.pages) ? json.pages : [];
-      setAll(pages);
+      // expected: { pages: [ { id, title, slug, acf: { logo_darker, logo_lighter, back_* } } ] }
+      const pages = (Array.isArray(json?.pages) ? json.pages : []).filter((p) =>
+        isCloudinary(p?.acf?.logo_darker?.url || '')
+      );
+
+      setList(pages);
       lsSet(LS_KEY, { pages });
     } catch (e) {
       setErr(e.message || 'Failed to load pages');
@@ -92,11 +98,11 @@ export default function EditLogoPanel({ open, onClose, onSelect, wpUrl }) {
     }
   }, []);
 
-  // react to global "Clear Cache"
+  // respond to global "Clear Cache" button in page.jsx
   useEffect(() => {
     const onClear = () => {
       localStorage.removeItem(LS_KEY);
-      setAll([]);
+      setList([]);
     };
     window.addEventListener('ms-clear-cache', onClear);
     return () => window.removeEventListener('ms-clear-cache', onClear);
@@ -115,7 +121,7 @@ export default function EditLogoPanel({ open, onClose, onSelect, wpUrl }) {
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b">
         <h2 className="text-lg font-semibold">Select Logo / Page</h2>
-        <button onClick={onClose} className="cursor-pointer">
+        <button onClick={onClose} className="cursor-pointer" aria-label="Close">
           <X size={20} />
         </button>
       </div>
@@ -125,7 +131,7 @@ export default function EditLogoPanel({ open, onClose, onSelect, wpUrl }) {
         <Input
           placeholder="Search by title, slug, or ID"
           value={q}
-          onChange={e => setQ(e.target.value)}
+          onChange={(e) => setQ(e.target.value)}
         />
       </div>
 
@@ -140,26 +146,17 @@ export default function EditLogoPanel({ open, onClose, onSelect, wpUrl }) {
         ) : filtered.length === 0 ? (
           <div className="text-sm text-muted-foreground">No pages found.</div>
         ) : (
-          filtered.map(p => {
+          filtered.map((p) => {
             const darkerUrl = p?.acf?.logo_darker?.url || '';
+            const darkerId = getPublicIdFromCloudinaryUrl(darkerUrl);
+
             return (
               <div
                 key={p.id}
                 className="cursor-pointer border rounded hover:bg-muted transition"
                 onClick={() => {
-                  const darkerId = getPublicIdFromCloudinaryUrl(darkerUrl);
-                  // Pass publicId and a compact page object (id, title, slug, acf logos)
-                  onSelect(darkerId, {
-                    id: p.id,
-                    title: p.title,
-                    slug: p.slug,
-                    acf: {
-                      logo_darker: p?.acf?.logo_darker || null,
-                      logo_lighter: p?.acf?.logo_lighter || null,
-                      back_lighter: p?.acf?.back_lighter || null,
-                      back_darker: p?.acf?.back_darker || null,
-                    },
-                  });
+                  // match current page.jsx usage: onSelect(publicId, page)
+                  onSelect(darkerId, p);
                   onClose();
                 }}
               >

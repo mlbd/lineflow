@@ -426,3 +426,126 @@ export const generateCartThumbUrlFromItem = (item, logos, { max = 200 } = {}) =>
 export const generateHoverThumbUrlFromItem = (item, logos, { max = 400 } = {}) => {
   return generateCartThumbUrlFromItem(item, logos, { max });
 };
+
+// --- NEW: relative mockup with translucent placement rectangles ---
+export const generateProductImageUrlWithOverlay = (
+  product,
+  logos,
+  {
+    max = 1400,
+    colorIndex = 0,
+    overlayHex = '#000000', // default black
+    overlayOpacity = 20,     // 0..100 (≈20% opacity)
+  } = {}
+) => {
+  if (!product) return '';
+
+  // Resolve base/hex/dimensions for Group color or single product
+  let baseUrl = product.thumbnail;
+  let baseHex = product?.thumbnail_meta?.thumbnail_color || '#ffffff';
+
+  if (product?.acf?.group_type === 'Group' && Array.isArray(product?.acf?.color)) {
+    const clr = product.acf.color[Number(colorIndex) || 0] || product.acf.color[0];
+    if (clr?.thumbnail?.url) {
+      baseUrl = clr.thumbnail.url;
+      baseHex = clr?.color_hex_code || baseHex;
+    }
+  }
+
+  const placements = Array.isArray(product?.placement_coordinates)
+    ? product.placement_coordinates
+    : [];
+
+  // fallbacks
+  if (!placements.length) return baseUrl;
+
+  // Parse/validate cloud + public id for base (reuse existing helper)
+  const parsedBase = parseCloudinaryIds(baseUrl);
+  const cloud = ENV_CLOUD || parsedBase.cloud;
+  if (!cloud || !parsedBase.baseAsset) return baseUrl;
+
+  // 1) Resize base small
+  const transforms = [`f_auto,q_auto,c_fit,w_${Number(max) || 900}`];
+
+  // 2) For each placement: paint translucent box, then place logo (both relative)
+  const hex = (overlayHex || '#000000').replace('#', '');
+  const op = Math.max(0, Math.min(overlayOpacity, 100));
+
+  placements.forEach((p) => {
+    const { xPercent, yPercent, wPercent, hPercent } = p || {};
+    if (
+      xPercent == null ||
+      yPercent == null ||
+      wPercent == null ||
+      hPercent == null
+    ) {
+      return;
+    }
+
+    // translucent rectangle covering the whole placement box
+    transforms.push(
+      `l_one_pixel_s4c3vt,fl_relative,w_${wPercent.toFixed(6)},h_${hPercent.toFixed(6)}`,
+      `co_rgb:${hex},e_colorize:100,o_${op},fl_layer_apply,fl_relative,x_${xPercent.toFixed(6)},y_${yPercent.toFixed(6)},g_north_west`
+    );
+  });
+
+  // 3) Now overlay the actual logo(s) using your existing relative logic
+  //    (same aspect-fit logic as buildRelativeMockupUrl)
+  const bgIsDark = (c => {
+    const h = c.replace('#', '');
+    if (!/^[0-9a-f]{6}$/i.test(h)) return false;
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    const y = (r * 299 + g * 587 + b * 114) / 1000;
+    return y < 128;
+  })(baseHex);
+
+  placements.forEach((p) => {
+    const choose = (logosObj, useBack, dark) => {
+      const get = k => logosObj?.[k] || null;
+      const want = useBack
+        ? (dark ? get('back_lighter') : get('back_darker'))
+        : (dark ? get('logo_lighter') : get('logo_darker'));
+      const ok = v => !!v?.url && isCloudinaryUrl(v.url);
+      if (ok(want)) return want;
+      if (ok(get('logo_darker'))) return get('logo_darker');
+      if (ok(get('logo_lighter'))) return get('logo_lighter');
+      return null;
+    };
+
+    const chosen = choose(logos, !!p.back, bgIsDark);
+    if (!chosen || !isCloudinaryUrl(chosen.url)) return;
+
+    const parsedLogo = parseCloudinaryIds(chosen.url);
+    if (!parsedLogo.overlayId) return;
+
+    // aspect-fit inside the placement rect (relative)
+    const lw = Number(chosen.width) || 0;
+    const lh = Number(chosen.height) || 0;
+
+    let relW = p.wPercent, relH = p.hPercent;
+    if (lw > 0 && lh > 0) {
+      const la = lw / lh;
+      const ba = p.wPercent / p.hPercent;
+      if (la > ba) {
+        relW = p.wPercent;
+        relH = p.wPercent / la;
+      } else {
+        relH = p.hPercent;
+        relW = p.hPercent * la;
+      }
+    }
+
+    const relX = p.xPercent + (p.wPercent - relW) / 2;
+    const relY = p.yPercent + (p.hPercent - relH) / 2;
+    const angle = p.angle ? Math.round((p.angle * 180) / Math.PI) : 0;
+
+    transforms.push(
+      `l_${parsedLogo.overlayId},c_pad,fl_relative,w_${relW.toFixed(6)},h_${relH.toFixed(6)},g_center,b_auto${angle ? `,a_${angle}` : ''}`,
+      `fl_layer_apply,fl_relative,x_${relX.toFixed(6)},y_${relY.toFixed(6)},g_north_west`
+    );
+  });
+
+  return `https://res.cloudinary.com/${cloud}/image/upload/${transforms.join('/')}/${parsedBase.baseAsset}`;
+};
