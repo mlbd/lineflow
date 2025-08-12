@@ -1,7 +1,5 @@
 // /src/utils/cloudinaryMockup.js
-// Generate Cloudinary mockup URLs by overlaying company logos onto product images.
-// Adds a RELATIVE builder (for fast modal/cart) and keeps the FULL builder for legacy/full-res.
-
+// ↓↓↓ REPLACE THE WHOLE FILE WITH THIS VERSION ↓↓↓
 const ENV_CLOUD =
   process.env.NEXT_PUBLIC_CLD_CLOUD || process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
 
@@ -85,7 +83,37 @@ const pickLogoVariant = (logos, useBack, bgIsDark) => {
   return validLogo(get('logo_darker')) ? get('logo_darker') : null;
 };
 
-/* ------------------------ FULL builder (unchanged) ------------------------ */
+/* --------------------- NEW: placement + back gating helpers --------------------- */
+
+// Resolve placements with page-level override priority
+const resolvePlacements = (product, opts = {}) => {
+  const pid = String(product?.id ?? '');
+  const overrideMap = opts.pagePlacementMap || null; // { [productId]: Placement[] }
+  if (overrideMap && pid && Array.isArray(overrideMap[pid]) && overrideMap[pid].length) {
+    return overrideMap[pid];
+  }
+  return Array.isArray(product?.placement_coordinates) ? product.placement_coordinates : [];
+};
+
+// Should “back” be allowed for this product?
+const isBackAllowedForProduct = (productId, opts = {}) => {
+  const id = String(productId);
+  const set = opts.customBackAllowedSet;
+  const arr = opts.customBackAllowedIds;
+
+  if (set && typeof set.has === 'function') {
+    return set.has(id);
+  }
+  if (Array.isArray(set)) { // 👈 handle arrays passed in by mistake
+    return set.map(String).includes(id);
+  }
+  if (Array.isArray(arr)) {
+    return arr.map(String).includes(id);
+  }
+  return false;
+};
+
+/* ------------------------ FULL builder ------------------------ */
 
 export const buildCloudinaryMockupUrl = ({
   baseUrl,
@@ -127,10 +155,10 @@ export const buildCloudinaryMockupUrl = ({
   const transforms = [];
 
   placements.forEach((p, idx) => {
-    const chosen = pickLogoVariant(logos, !!p.back, bgIsDark);
-    if (!chosen) return;
+    const parsedLogoObj = pickLogoVariant(logos, !!p.__useBack, bgIsDark);
+    if (!parsedLogoObj) return;
 
-    const parsedLogo = parseCloudinaryIds(chosen.url);
+    const parsedLogo = parseCloudinaryIds(parsedLogoObj.url);
     if (!parsedLogo.overlayId) return;
 
     const x = Math.round((p.xPercent != null ? p.xPercent : p.x / baseW) * baseW);
@@ -138,8 +166,8 @@ export const buildCloudinaryMockupUrl = ({
     const w = Math.max(1, Math.round((p.wPercent != null ? p.wPercent : p.w / baseW) * baseW));
     const h = Math.max(1, Math.round((p.hPercent != null ? p.hPercent : p.h / baseH) * baseH));
 
-    const lw = Number(chosen.width) || 0;
-    const lh = Number(chosen.height) || 0;
+    const lw = Number(parsedLogoObj.width) || 0;
+    const lh = Number(parsedLogoObj.height) || 0;
     let logoW = w,
       logoH = h;
     if (lw > 0 && lh > 0) {
@@ -169,15 +197,14 @@ export const buildCloudinaryMockupUrl = ({
   return final;
 };
 
-/* ------------------------ RELATIVE builder (new) ------------------------ */
-/** Builds a smaller mockup using fl_relative so overlays scale after resize. */
+/* ------------------------ RELATIVE builder ------------------------ */
 export const buildRelativeMockupUrl = ({
   baseUrl,
   placements = [],
   logos = {},
   baseHex = '#ffffff',
-  max = 900, // if falsy => caller should not use this builder
-  maxH = null, // optional
+  max = 900,
+  maxH = null,
   productId = null,
   debugLabel = 'relative',
 }) => {
@@ -195,10 +222,7 @@ export const buildRelativeMockupUrl = ({
     console.debug(`[cld][skip]${pid} rel_logo_darker_invalid`, { logos });
     return baseUrl;
   }
-  if (!max) {
-    // guard: if no max, let caller use full builder instead
-    return baseUrl;
-  }
+  if (!max) return baseUrl;
 
   const parsedBase = parseCloudinaryIds(baseUrl);
   const cloud = ENV_CLOUD || parsedBase.cloud;
@@ -210,32 +234,22 @@ export const buildRelativeMockupUrl = ({
   const bgIsDark = isDarkHex(baseHex);
   const transforms = [];
 
-  // Step 1: resize base small (use smart formats/quality)
+  // 1) resize base
   transforms.push(`f_auto,q_auto,c_fit,w_${max}${maxH ? `,h_${maxH}` : ''}`);
 
-  // Step 2: overlay each placement using relative percentages
+  // 2) overlays relative
   placements.forEach((p, idx) => {
+    const chosen = pickLogoVariant(logos, !!p.__useBack, bgIsDark);
+    if (!chosen || !isCloudinaryUrl(chosen.url)) return;
+
+    const parsedLogo = parseCloudinaryIds(chosen.url);
+    if (!parsedLogo.overlayId) return;
+
     if (p.xPercent == null || p.yPercent == null || p.wPercent == null || p.hPercent == null) {
       console.debug(`[cld][skip]${pid} rel_placement_missing_percent idx=${idx}`, p);
       return;
     }
 
-    const chosen = pickLogoVariant(logos, !!p.back, bgIsDark);
-    if (!chosen || !isCloudinaryUrl(chosen.url)) {
-      console.debug(`[cld][skip]${pid} rel_no_logo idx=${idx}`);
-      return;
-    }
-
-    const parsedLogo = parseCloudinaryIds(chosen.url);
-    if (!parsedLogo.overlayId) {
-      console.debug(`[cld][skip]${pid} rel_bad_logo_public_id idx=${idx}`, {
-        url: chosen.url,
-        parsedLogo,
-      });
-      return;
-    }
-
-    // Aspect-fit inside relative box
     const lw = Number(chosen.width) || 0;
     const lh = Number(chosen.height) || 0;
 
@@ -274,13 +288,15 @@ export const buildRelativeMockupUrl = ({
 
 /**
  * Generates a mockup for product cards & quick-view.
- * - If opts.max is provided: uses RELATIVE builder (fast, scaled).
- * - If opts.max is empty/undefined: uses FULL builder (original behavior).
+ * Now supports:
+ *  - opts.pagePlacementMap: { [productId:string]: Placement[] }
+ *  - opts.customBackAllowedSet: Set<string> (product IDs allowed to use "back" placement)
+ *  - opts.max: number (if present => relative builder; else full)
  */
 export const generateProductImageUrl = (product, logos, opts = {}) => {
   if (!product) return '';
 
-  // Resolve base by color (for Group)
+  // base by color
   let baseUrl = product.thumbnail;
   let baseW = Number(product?.thumbnail_meta?.width) || 0;
   let baseH = Number(product?.thumbnail_meta?.height) || 0;
@@ -299,24 +315,42 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
     }
   }
 
-  const placements = product?.placement_coordinates || [];
+  // placements with page override + back gating
+  const rawPlacements = resolvePlacements(product, opts);
+  const allowBack = isBackAllowedForProduct(product?.id, opts);
+  const placements = rawPlacements.map(p => ({
+    ...p,
+    __useBack: !!(p?.back && allowBack),
+  }));
 
-  // If no max provided -> keep legacy FULL builder (absolute px)
+  console.debug(`[cld][REQUEST] [product] ${product?.id}`, { baseUrl, placements , logos, opts});
+
+  // If caller didn't request relative, but we don't have base dimensions,
+  // auto-fallback to a relative build so overlays still render.
   if (!opts?.max) {
-    if (!baseW || !baseH) return baseUrl;
-    return buildCloudinaryMockupUrl({
-      baseUrl,
-      baseW,
-      baseH,
-      baseHex,
-      placements,
-      logos,
-      productId: product?.id || null,
-      debugLabel,
-    });
+      if (!baseW || !baseH) {
+          return buildRelativeMockupUrl({
+          baseUrl,
+          placements,
+          logos,
+          baseHex,
+          max: 900, // sensible default for grid cards
+          productId: product?.id || null,
+          debugLabel: `${debugLabel}_autoRel`,
+          });
+      }
+      return buildCloudinaryMockupUrl({
+          baseUrl,
+          baseW,
+          baseH,
+          baseHex,
+          placements,
+          logos,
+          productId: product?.id || null,
+          debugLabel,
+      });
   }
 
-  // With max -> RELATIVE builder (fast & accurate after resize)
   return buildRelativeMockupUrl({
     baseUrl,
     placements,
@@ -330,7 +364,6 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
 
 /* ---------------------- Cart thumbs (relative) ---------------------- */
 
-/** Resolve the best base image for a cart item (handles Group color) */
 const resolveCartBaseFromItem = item => {
   if (item?.options?.group_type === 'Group') {
     if (item?.options?.color_thumbnail_url) {
@@ -353,22 +386,27 @@ const resolveCartBaseFromItem = item => {
   return { url: item?.thumbnail || '', hex: item?.thumbnail_meta?.thumbnail_color || '#ffffff' };
 };
 
-/** Small cart thumbnail with relative overlays */
-export const generateCartThumbUrlFromItem = (item, logos, { max = 200 } = {}) => {
+/** Small cart thumbnail with relative overlays, honoring page overrides + back gating */
+export const generateCartThumbUrlFromItem = (item, logos, { max = 200, pagePlacementMap, customBackAllowedSet } = {}) => {
   if (!item) return '';
 
-  const pid = item.product_id ? `[${item.product_id}]` : '';
+  const pidStr = String(item?.product_id ?? '');
+  const pidTag = pidStr ? `[${pidStr}]` : '';
   const base = resolveCartBaseFromItem(item);
 
   if (!isCloudinaryUrl(base.url)) return base.url || item.thumbnail || '';
 
-  const placements = Array.isArray(item?.placement_coordinates)
-    ? item.placement_coordinates
-    : Array.isArray(item?.product?.placement_coordinates)
-      ? item.product.placement_coordinates
-      : [];
+  // placements: prefer page override > item > product
+  let rawPlacements = [];
+  if (pagePlacementMap && pidStr && Array.isArray(pagePlacementMap[pidStr])) {
+    rawPlacements = pagePlacementMap[pidStr];
+  } else if (Array.isArray(item?.placement_coordinates)) {
+    rawPlacements = item.placement_coordinates;
+  } else if (Array.isArray(item?.product?.placement_coordinates)) {
+    rawPlacements = item.product.placement_coordinates;
+  }
 
-  if (!Array.isArray(placements) || placements.length === 0) return base.url;
+  if (!rawPlacements.length) return base.url;
   if (!logos?.logo_darker?.url || !isCloudinaryUrl(logos.logo_darker.url)) return base.url;
 
   const parsedBase = parseCloudinaryIds(base.url);
@@ -376,6 +414,10 @@ export const generateCartThumbUrlFromItem = (item, logos, { max = 200 } = {}) =>
   if (!cloud || !parsedBase.baseAsset) return base.url;
 
   const bgIsDark = isDarkHex(base.hex);
+  const allowBack = Array.isArray(customBackAllowedSet)
+  ? customBackAllowedSet.map(String).includes(pidStr)
+  : !!(customBackAllowedSet && typeof customBackAllowedSet.has === 'function' && customBackAllowedSet.has(pidStr));
+  const placements = rawPlacements.map(p => ({ ...p, __useBack: !!(p?.back && allowBack) }));
 
   const transforms = [`f_auto,q_auto,c_fit,w_${max},h_${max}`];
 
@@ -383,7 +425,7 @@ export const generateCartThumbUrlFromItem = (item, logos, { max = 200 } = {}) =>
     if (p.xPercent == null || p.yPercent == null || p.wPercent == null || p.hPercent == null)
       return;
 
-    const chosen = pickLogoVariant(logos, !!p.back, bgIsDark);
+    const chosen = pickLogoVariant(logos, !!p.__useBack, bgIsDark);
     if (!chosen || !isCloudinaryUrl(chosen.url)) return;
 
     const parsedLogo = parseCloudinaryIds(chosen.url);
@@ -419,28 +461,29 @@ export const generateCartThumbUrlFromItem = (item, logos, { max = 200 } = {}) =>
   if (transforms.length <= 1) return base.url;
 
   const final = `https://res.cloudinary.com/${cloud}/image/upload/${transforms.join('/')}/${parsedBase.baseAsset}`;
-  console.debug(`[cld][SUCCESS]${pid} [cart_thumb]`, { final });
+  console.debug(`[cld][SUCCESS]${pidTag} [cart_thumb]`, { final });
   return final;
 };
 
-export const generateHoverThumbUrlFromItem = (item, logos, { max = 400 } = {}) => {
-  return generateCartThumbUrlFromItem(item, logos, { max });
+export const generateHoverThumbUrlFromItem = (item, logos, { max = 400, pagePlacementMap, customBackAllowedSet } = {}) => {
+  return generateCartThumbUrlFromItem(item, logos, { max, pagePlacementMap, customBackAllowedSet });
 };
 
-// --- NEW: relative mockup with translucent placement rectangles ---
+// unchanged, but it will also inherit __useBack if placements come in that way
 export const generateProductImageUrlWithOverlay = (
   product,
   logos,
   {
     max = 1400,
     colorIndex = 0,
-    overlayHex = '#000000', // default black
-    overlayOpacity = 20,     // 0..100 (≈20% opacity)
+    overlayHex = '#000000',
+    overlayOpacity = 20,
+    pagePlacementMap,
+    customBackAllowedSet,
   } = {}
 ) => {
   if (!product) return '';
 
-  // Resolve base/hex/dimensions for Group color or single product
   let baseUrl = product.thumbnail;
   let baseHex = product?.thumbnail_meta?.thumbnail_color || '#ffffff';
 
@@ -452,61 +495,38 @@ export const generateProductImageUrlWithOverlay = (
     }
   }
 
-  const placements = Array.isArray(product?.placement_coordinates)
-    ? product.placement_coordinates
-    : [];
+  const rawPlacements = resolvePlacements(product, { pagePlacementMap });
+  const allowBack = isBackAllowedForProduct(product?.id, { customBackAllowedSet });
+  const placements = rawPlacements.map(p => ({ ...p, __useBack: !!(p?.back && allowBack) }));
 
-  // fallbacks
   if (!placements.length) return baseUrl;
 
-  // Parse/validate cloud + public id for base (reuse existing helper)
   const parsedBase = parseCloudinaryIds(baseUrl);
   const cloud = ENV_CLOUD || parsedBase.cloud;
   if (!cloud || !parsedBase.baseAsset) return baseUrl;
 
-  // 1) Resize base small
   const transforms = [`f_auto,q_auto,c_fit,w_${Number(max) || 900}`];
 
-  // 2) For each placement: paint translucent box, then place logo (both relative)
   const hex = (overlayHex || '#000000').replace('#', '');
   const op = Math.max(0, Math.min(overlayOpacity, 100));
 
   placements.forEach((p) => {
     const { xPercent, yPercent, wPercent, hPercent } = p || {};
-    if (
-      xPercent == null ||
-      yPercent == null ||
-      wPercent == null ||
-      hPercent == null
-    ) {
-      return;
-    }
+    if (xPercent == null || yPercent == null || wPercent == null || hPercent == null) return;
 
-    // translucent rectangle covering the whole placement box
     transforms.push(
       `l_one_pixel_s4c3vt,fl_relative,w_${wPercent.toFixed(6)},h_${hPercent.toFixed(6)}`,
       `co_rgb:${hex},e_colorize:100,o_${op},fl_layer_apply,fl_relative,x_${xPercent.toFixed(6)},y_${yPercent.toFixed(6)},g_north_west`
     );
   });
 
-  // 3) Now overlay the actual logo(s) using your existing relative logic
-  //    (same aspect-fit logic as buildRelativeMockupUrl)
-  const bgIsDark = (c => {
-    const h = c.replace('#', '');
-    if (!/^[0-9a-f]{6}$/i.test(h)) return false;
-    const r = parseInt(h.slice(0, 2), 16);
-    const g = parseInt(h.slice(2, 4), 16);
-    const b = parseInt(h.slice(4, 6), 16);
-    const y = (r * 299 + g * 587 + b * 114) / 1000;
-    return y < 128;
-  })(baseHex);
+  const bgIsDark = isDarkHex(baseHex);
 
   placements.forEach((p) => {
     const choose = (logosObj, useBack, dark) => {
       const get = k => logosObj?.[k] || null;
-      const want = useBack
-        ? (dark ? get('back_lighter') : get('back_darker'))
-        : (dark ? get('logo_lighter') : get('logo_darker'));
+      const want = useBack ? (dark ? get('back_lighter') : get('back_darker'))
+                           : (dark ? get('logo_lighter') : get('logo_darker'));
       const ok = v => !!v?.url && isCloudinaryUrl(v.url);
       if (ok(want)) return want;
       if (ok(get('logo_darker'))) return get('logo_darker');
@@ -514,13 +534,12 @@ export const generateProductImageUrlWithOverlay = (
       return null;
     };
 
-    const chosen = choose(logos, !!p.back, bgIsDark);
+    const chosen = choose(logos, !!p.__useBack, bgIsDark);
     if (!chosen || !isCloudinaryUrl(chosen.url)) return;
 
     const parsedLogo = parseCloudinaryIds(chosen.url);
     if (!parsedLogo.overlayId) return;
 
-    // aspect-fit inside the placement rect (relative)
     const lw = Number(chosen.width) || 0;
     const lh = Number(chosen.height) || 0;
 

@@ -27,7 +27,7 @@ const preloadImage = url => {
   return p;
 };
 
-export default function CartItem({ item, idx, companyLogos = {} }) {
+export default function CartItem({ item, idx, companyLogos = {}, pagePlacementMap = {}, customBackAllowedSet = {} }) {
   const removeItem = useRemoveItem();
   const updateItemQuantity = useUpdateItemQuantity();
 
@@ -52,7 +52,11 @@ export default function CartItem({ item, idx, companyLogos = {} }) {
 
   // Small cart thumb (<=300)
   useEffect(() => {
-    const url = generateCartThumbUrlFromItem(item, companyLogos, { max: 300 });
+    const url = generateCartThumbUrlFromItem(item, companyLogos, {
+      max: 200,
+      pagePlacementMap,
+      customBackAllowedSet,
+    });
     setThumbUrl(url || item.thumbnail || '');
   }, [item, companyLogos]);
 

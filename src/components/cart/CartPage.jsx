@@ -13,6 +13,8 @@ export default function CartPage({
   shippingLoading = false,
   meta = {},
   companyLogos = {},
+  pagePlacementMap = {},
+  customBackAllowedSet = {},
 }) {
   const items = useCartItems();
   const [selectedShipping, setSelectedShipping] = useState(null);
@@ -89,6 +91,8 @@ export default function CartPage({
                         item={item}
                         idx={idx}
                         companyLogos={companyLogos}
+                        pagePlacementMap={pagePlacementMap}
+                        customBackAllowedSet={customBackAllowedSet}
                       />
                     ))}
                   </div>

@@ -120,6 +120,28 @@ export default function HomePage() {
   // Update-only-for-page checkbox
   const [onlyThisPage, setOnlyThisPage] = useState(false);
 
+   // === Page-level overrides (derived from the selected page) ===
+  const pagePlacementMap = useMemo(() => {
+    const src = selectedPageFull?.meta?.placement_coordinates;
+    if (!src) return {};
+    // prefer keyed object: { "<productId>": Placement[] }
+    if (typeof src === 'object' && !Array.isArray(src)) return src;
+    // tolerate JSON string
+    if (typeof src === 'string') {
+      try {
+        const parsed = JSON.parse(src);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch {}
+    }
+    return {};
+  }, [selectedPageFull]);
+
+  // Allow-list of product IDs that can use "back" placements on this page
+  const customBackAllowedIds = useMemo(
+    () => (selectedPageFull?.acf?.custom_logo_products || []).map(String),
+    [selectedPageFull]
+  );
+
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const futurePlan = urlParams.get('future_plan');
@@ -309,7 +331,7 @@ const handleToggleOnlyThisPage = (checked) => {
     setResultOpen(false);
 
     try {
-      const res = await fetch(`${WP_URL}/wp-json/mini-sites/v1/update=placement`, {
+      const res = await fetch(`${WP_URL}/wp-json/mini-sites/v1/update-placement`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -354,7 +376,11 @@ const handleToggleOnlyThisPage = (checked) => {
     if (!colors.length) {
       return [
         {
-          src: generateProductImageUrl(p, logos, { max: 1400 }),
+          src: generateProductImageUrl(p, logos, { 
+            max: 1400,
+            pagePlacementMap,
+            customBackAllowedIds,
+          }),
           title: p?.name || 'Preview',
           color_hex_code: p?.thumbnail_meta?.thumbnail_color || '#ffffff',
         },
@@ -362,11 +388,16 @@ const handleToggleOnlyThisPage = (checked) => {
     }
 
     return colors.map((c, i) => ({
-      src: generateProductImageUrl(p, logos, { colorIndex: i, max: 1400 }),
+      src: generateProductImageUrl(p, logos, { 
+        colorIndex: i, 
+        max: 1400,
+        pagePlacementMap,
+        customBackAllowedIds,
+      }),
       title: c?.title || `Color ${i + 1}`,
       color_hex_code: c?.color_hex_code || '#ffffff',
     }));
-  }, [previewProduct, companyLogos]);
+  }, [previewProduct, companyLogos, pagePlacementMap, customBackAllowedIds]);
 
   const logosSliderImagesOverlay = useMemo(() => {
     const p = previewProduct;
@@ -381,18 +412,29 @@ const handleToggleOnlyThisPage = (checked) => {
 
     if (!colors.length) {
       return [{
-        src: generateProductImageUrlWithOverlay(p, logos, baseOpts),
+        src: generateProductImageUrlWithOverlay(p, companyLogos, {
+          ...baseOpts,
+          max: 1400,
+          pagePlacementMap,
+          customBackAllowedIds,
+        }),
         title: p?.name || 'Preview',
         color_hex_code: p?.thumbnail_meta?.thumbnail_color || '#ffffff',
       }];
     }
 
     return colors.map((c, i) => ({
-      src: generateProductImageUrlWithOverlay(p, logos, { ...baseOpts, colorIndex: i }),
+      src: generateProductImageUrlWithOverlay(p, companyLogos, {
+          ...baseOpts, 
+          colorIndex: i,
+          max: 1400,
+          pagePlacementMap,
+          customBackAllowedIds,
+        }),
       title: c?.title || `Color ${i + 1}`,
       color_hex_code: c?.color_hex_code || '#ffffff',
     }));
-  }, [previewProduct, companyLogos]);
+  }, [previewProduct, companyLogos, pagePlacementMap, customBackAllowedIds]);
 
   const updateButtonDisabled = isSaving || !selectedProductId || mappings.length === 0;
   const canUpdate = !!selectedProductId && mappings.length > 0 && !isSaving;

@@ -72,6 +72,12 @@ export async function getStaticProps({ params }) {
       back_lighter: data?.acf?.back_lighter || null,
     };
 
+    // Build page-level placement map: { [productId]: Placement[] }
+    const pagePlacementMap = data?.meta?.placement_coordinates || {};
+
+    // Build allow-list set for back logos
+    const customBackAllowedSet = (data?.acf?.custom_logo_products || []).map(String);
+
     let products = [];
 
     if (productIds.length) {
@@ -105,12 +111,14 @@ export async function getStaticProps({ params }) {
         },
         companyLogos,
         seo: {
-          title: data.meta.seo_title || '',
-          description: data.meta.seo_description || '',
-          image: data.meta.seo_image?.url || null,
+          title: data.meta.header_title || data.title || '',
+          description: data.meta.header_content || '',
+          image: data.acf?.logo_darker?.url || null,
         },
         meta: data?.meta || [],
         shippingOptions,
+        pagePlacementMap,
+        customBackAllowedSet,
       },
       revalidate: 60,
     };
@@ -141,6 +149,8 @@ export default function LandingPage({
   error = false,
   shippingOptions = [],
   companyLogos = [],
+  pagePlacementMap = {},
+  customBackAllowedSet = {},
 }) {
   const [animationDone, setAnimationDone] = useState(false);
   const cartSectionRef = useRef(null);
@@ -199,6 +209,8 @@ export default function LandingPage({
               bumpPrice={bumpPrice}
               onCartAddSuccess={handleScrollToCart}
               companyLogos={companyLogos}
+              pagePlacementMap={pagePlacementMap}
+              customBackAllowedSet={customBackAllowedSet}
             />
           )}
           <div className="w-full" ref={cartSectionRef}>
@@ -207,6 +219,8 @@ export default function LandingPage({
               shippingLoading={false}
               meta={meta}
               companyLogos={companyLogos}
+              pagePlacementMap={pagePlacementMap}
+              customBackAllowedSet={customBackAllowedSet}
             />
           </div>
           <Footer />

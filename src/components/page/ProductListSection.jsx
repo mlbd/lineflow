@@ -15,6 +15,8 @@ export default function ProductListSection({
   bumpPrice,
   onCartAddSuccess,
   companyLogos = {},
+  pagePlacementMap = {},
+  customBackAllowedSet = {},
 }) {
   const [page, setPage] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -85,7 +87,11 @@ export default function ProductListSection({
               >
                 <div className="relative w-full h-[200px] bg-bglighter mb-3">
                   <Image
-                    src={generateProductImageUrl(p, companyLogos)}
+                    src={generateProductImageUrl(p, companyLogos, {
+                      max: 500,
+                      pagePlacementMap,
+                      customBackAllowedSet,
+                    })}
                     alt={p.name}
                     fill
                     className="object-contain"
@@ -151,6 +157,8 @@ export default function ProductListSection({
         }}
         companyLogos={companyLogos}
         bumpPrice={bumpPrice}
+        pagePlacementMap={pagePlacementMap}
+        customBackAllowedSet={customBackAllowedSet}
       />
       <AddToCartModal
         open={!!cartModalProduct}

@@ -62,6 +62,8 @@ export default function ProductQuickViewModal({
   onAddToCart,
   bumpPrice,
   companyLogos = {},
+  pagePlacementMap = {},
+  customBackAllowedSet = {},
 }) {
   // ALL hooks must be called unconditionally on every render
   const [sliderIdx, setSliderIdx] = useState(0);
@@ -109,13 +111,22 @@ export default function ProductQuickViewModal({
     if (!product) return [];
     if (hasSlider) {
       return colors.map((c, i) => ({
-        src: generateProductImageUrl(product, companyLogos, { colorIndex: i }),
+        src: generateProductImageUrl(product, companyLogos, {
+         colorIndex: i,
+         pagePlacementMap,
+         customBackAllowedSet,
+         max: 2000
+       }),
         alt: c?.title || product?.name || `Image ${i + 1}`,
       }));
     }
     return [
       {
-        src: generateProductImageUrl(product, companyLogos),
+        src: generateProductImageUrl(product, companyLogos, {
+         pagePlacementMap,
+         customBackAllowedSet,
+         max: 2000
+       }),
         alt: product?.name || 'Image',
       },
     ];
@@ -126,11 +137,20 @@ export default function ProductQuickViewModal({
     if (!product) return [];
     if (hasSlider) {
       return colors.map((_, i) =>
-        generateProductImageUrl(product, companyLogos, { colorIndex: i, max: 900 })
+        generateProductImageUrl(product, companyLogos, {
+         colorIndex: i,
+         max: 500,
+         pagePlacementMap,
+         customBackAllowedSet,
+       })
       );
     }
-    return [generateProductImageUrl(product, companyLogos, { max: 900 })];
-  }, [product, hasSlider, colors, companyLogos]);
+    return [generateProductImageUrl(product, companyLogos, {
+     max: 500,
+     pagePlacementMap,
+     customBackAllowedSet,
+   })];
+  }, [product, hasSlider, colors, companyLogos, pagePlacementMap, customBackAllowedSet]);
 
   // Reset when product changes or modal re-opens
   useEffect(() => {
