@@ -12,20 +12,33 @@ import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import ImageGalleryOverlay from '@/components/page/ImageGalleryOverlay';
 import { generateProductImageUrl } from '@/utils/cloudinaryMockup';
 
-function PriceChart({ steps }) {
+/* ======= Config ======= */
+const DISPLAY_MAX = 640; // main slide quality
+const ZOOM_MAX = 2200; // high-res for magnify
+const LENS_DIAMETER = 180; // px (circle)
+const LENS_BORDER = '2px solid rgba(0,0,0,0.35)';
+
+/* Global toggles (env overrides are optional) */
+const ENABLE_MAGNIFY = false;
+const ENABLE_CLICK_TO_POPUP = true;
+
+function PriceChart({ steps, regularPrice, currency = '₪' }) {
   if (!Array.isArray(steps) || steps.length === 0) return null;
 
   const getRange = i => {
     const thisQty = Number(steps[i]?.quantity);
     const nextQty = steps[i + 1] ? Number(steps[i + 1].quantity) : null;
-    if (i === 0 && nextQty !== null) {
-      return `כמות: 1-${nextQty - 1}`;
-    }
-    if (i < steps.length - 1 && nextQty !== null) {
-      return `כמות: ${thisQty}-${nextQty - 1}`;
-    }
+    if (i === 0 && nextQty !== null) return `כמות: 1-${nextQty - 1}`;
+    if (i < steps.length - 1 && nextQty !== null) return `כמות: ${thisQty}-${nextQty - 1}`;
     return `כמות: ${thisQty}+`;
   };
+
+  const parseMoney = v => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const regular = parseMoney(regularPrice);
 
   return (
     <div className="w-full">
@@ -37,13 +50,18 @@ function PriceChart({ steps }) {
             const colIdx = i % 2;
             const checkerBg = rowIdx % 2 === colIdx % 2 ? 'bg-bglight' : '';
 
+            const stepAmt = parseMoney(step?.amount);
+            const useRegularForFirstTier = i === 0 && stepAmt === 0 && regular > 0;
+            const display = useRegularForFirstTier ? regular.toFixed(2) : stepAmt.toFixed(2);
+
             return (
               <div
                 key={i}
                 className={`flex flex-col items-center border-b last:border-b-0 sm:border-r px-4 py-3 ${checkerBg}`}
               >
                 <div className="text-lg font-bold text-primary">
-                  {Number(step.amount).toFixed(2)}₪
+                  {display}
+                  {currency}
                 </div>
                 <div className="text-xs text-gray-500 mt-1">{getRange(i)}</div>
               </div>
@@ -65,19 +83,41 @@ export default function ProductQuickViewModal({
   pagePlacementMap = {},
   customBackAllowedSet = {},
 }) {
-  // ALL hooks must be called unconditionally on every render
+  /* ===== Slider & image state ===== */
   const [sliderIdx, setSliderIdx] = useState(0);
   const [slideLoading, setSlideLoading] = useState(false);
   const [slideSrc, setSlideSrc] = useState('');
-  const [ready, setReady] = useState({});
+  const [ready, setReady] = useState({}); // display url ready map
   const [preloading, setPreloading] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const preloadCacheRef = useRef(new Map());
 
-  // Get product data (or defaults if product is null)
+  /* ====== Magnify lens state ====== */
+  const containerRef = useRef(null);
+  const imgRef = useRef(null);
+  const [lensVisible, setLensVisible] = useState(false);
+  const [lensPos, setLensPos] = useState({ x: 0, y: 0 });
+  const [imgDims, setImgDims] = useState({ w: 0, h: 0 });
+  const [zoomReady, setZoomReady] = useState({}); // zoom url ready map
+
+  /* ===== Area filter state (on/off overrides) ===== */
+  const [areaOn, setAreaOn] = useState(new Set());
+  const [areaOff, setAreaOff] = useState(new Set());
+
+  const parseMaybeArray = val => {
+    if (Array.isArray(val)) return val;
+    if (typeof val === 'string') {
+      try {
+        const parsed = JSON.parse(val);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {}
+    }
+    return [];
+  };
+
   const acf = product?.acf || {};
 
-  // Steps (unchanged logic—adapt if you use a different source)
+  // Steps
   let steps = [];
   if (acf.group_type === 'Group' && Array.isArray(acf.discount_steps)) {
     steps = acf.discount_steps;
@@ -88,6 +128,96 @@ export default function ProductQuickViewModal({
   // Slider presence
   const hasSlider = acf.group_type === 'Group' && Array.isArray(acf.color) && acf.color.length > 0;
   const colors = useMemo(() => (hasSlider ? acf.color : []), [hasSlider, acf.color]);
+
+  /* ====== SOURCE placements (page overrides win, else fallback to product) ====== */
+  const sourcePlacements = useMemo(() => {
+    if (!product) return [];
+    const key = String(product.id || '');
+
+    // 1) Try pagePlacementMap for this product; only use if non-empty
+    if (
+      pagePlacementMap &&
+      typeof pagePlacementMap === 'object' &&
+      !Array.isArray(pagePlacementMap)
+    ) {
+      const pageVal = pagePlacementMap[key];
+      const pageArr = parseMaybeArray(pageVal);
+      if (pageArr.length) return pageArr;
+    }
+
+    // 2) Fallback to product placement_coordinates (array | JSON string | keyed object)
+    const prodVal =
+      product.placement_coordinates ??
+      product.meta?.placement_coordinates ??
+      product.acf?.placement_coordinates;
+
+    const direct = parseMaybeArray(prodVal);
+    if (direct.length) return direct;
+
+    if (prodVal && typeof prodVal === 'object') {
+      if (Array.isArray(prodVal[key])) return prodVal[key];
+      if (Array.isArray(prodVal.placements)) return prodVal.placements;
+    }
+    return [];
+  }, [product, pagePlacementMap]);
+
+  // Original active flags by name
+  const originalActiveByName = useMemo(() => {
+    const map = new Map();
+    sourcePlacements.forEach(p => map.set(p?.name || '', !!p?.active));
+    return map;
+  }, [sourcePlacements]);
+
+  // Reset overrides when product changes or modal opens
+  useEffect(() => {
+    if (!product || !open) return;
+    setAreaOn(new Set());
+    setAreaOff(new Set());
+  }, [product?.id, open]);
+
+  // Toggle helper (supports turning OFF default-active and turning ON inactive)
+  const toggleArea = name => {
+    if (!name) return;
+    const wasActive = originalActiveByName.get(name);
+
+    const nextOn = new Set(areaOn);
+    const nextOff = new Set(areaOff);
+
+    if (wasActive) {
+      if (nextOff.has(name)) nextOff.delete(name);
+      else {
+        nextOff.add(name);
+        nextOn.delete(name);
+      }
+    } else {
+      if (nextOn.has(name)) nextOn.delete(name);
+      else {
+        nextOn.add(name);
+        nextOff.delete(name);
+      }
+    }
+
+    setAreaOn(nextOn);
+    setAreaOff(nextOff);
+    setSliderIdx(0);
+  };
+
+  // Apply overrides to placements for the preview product
+  const previewPlacements = useMemo(() => {
+    return sourcePlacements.map(p => {
+      const nm = p?.name || '';
+      const isAdded = areaOn.has(nm);
+      const isRemoved = areaOff.has(nm);
+      const effectiveActive = isRemoved ? false : isAdded ? true : !!p?.active;
+      return { ...p, active: effectiveActive };
+    });
+  }, [sourcePlacements, areaOn, areaOff]);
+
+  // Build the product used for generators (⚠️ do NOT pass pagePlacementMap later)
+  const previewProduct = useMemo(() => {
+    if (!product) return null;
+    return { ...product, placement_coordinates: previewPlacements };
+  }, [product, previewPlacements]);
 
   // In-memory promise cache for preloads
   const preloadImage = url => {
@@ -106,63 +236,84 @@ export default function ProductQuickViewModal({
     return p;
   };
 
-  // Build FULL-SIZE gallery URLs (no max)
+  /* === Build URLs === */
+
+  // Full gallery images (keep high-res)
   const galleryImages = useMemo(() => {
-    if (!product) return [];
+    if (!previewProduct) return [];
     if (hasSlider) {
       return colors.map((c, i) => ({
-        src: generateProductImageUrl(product, companyLogos, {
-         colorIndex: i,
-         pagePlacementMap,
-         customBackAllowedSet,
-         max: 2000
-       }),
-        alt: c?.title || product?.name || `Image ${i + 1}`,
+        src: generateProductImageUrl(previewProduct, companyLogos, {
+          colorIndex: i,
+          customBackAllowedSet,
+          max: 2000,
+        }),
+        alt: c?.title || previewProduct?.name || `Image ${i + 1}`,
       }));
     }
     return [
       {
-        src: generateProductImageUrl(product, companyLogos, {
-         pagePlacementMap,
-         customBackAllowedSet,
-         max: 2000
-       }),
-        alt: product?.name || 'Image',
+        src: generateProductImageUrl(previewProduct, companyLogos, {
+          customBackAllowedSet,
+          max: 2000,
+        }),
+        alt: previewProduct?.name || 'Image',
       },
     ];
-  }, [product, hasSlider, colors, companyLogos]);
+  }, [previewProduct, hasSlider, colors, companyLogos, customBackAllowedSet]);
 
-  // Build **modal** slide URLs (900px fast preview inside quick view)
+  // Modal main slide (display)
   const modalSlideUrls = useMemo(() => {
-    if (!product) return [];
+    if (!previewProduct) return [];
     if (hasSlider) {
       return colors.map((_, i) =>
-        generateProductImageUrl(product, companyLogos, {
-         colorIndex: i,
-         max: 500,
-         pagePlacementMap,
-         customBackAllowedSet,
-       })
+        generateProductImageUrl(previewProduct, companyLogos, {
+          colorIndex: i,
+          max: DISPLAY_MAX,
+          customBackAllowedSet,
+        })
       );
     }
-    return [generateProductImageUrl(product, companyLogos, {
-     max: 500,
-     pagePlacementMap,
-     customBackAllowedSet,
-   })];
-  }, [product, hasSlider, colors, companyLogos, pagePlacementMap, customBackAllowedSet]);
+    return [
+      generateProductImageUrl(previewProduct, companyLogos, {
+        max: DISPLAY_MAX,
+        customBackAllowedSet,
+      }),
+    ];
+  }, [previewProduct, hasSlider, colors, companyLogos, customBackAllowedSet]);
 
-  // Reset when product changes or modal re-opens
+  // Zoom (high-res) versions for the lens
+  const zoomSlideUrls = useMemo(() => {
+    if (!ENABLE_MAGNIFY || !previewProduct) return [];
+    if (hasSlider) {
+      return colors.map((_, i) =>
+        generateProductImageUrl(previewProduct, companyLogos, {
+          colorIndex: i,
+          max: ZOOM_MAX,
+          customBackAllowedSet,
+        })
+      );
+    }
+    return [
+      generateProductImageUrl(previewProduct, companyLogos, {
+        max: ZOOM_MAX,
+        customBackAllowedSet,
+      }),
+    ];
+  }, [previewProduct, hasSlider, colors, companyLogos, customBackAllowedSet]);
+
+  // Reset on product change
   useEffect(() => {
-    if (!product) return; // Guard clause but still call the hook
+    if (!product) return;
     setSliderIdx(0);
     setReady({});
+    setZoomReady({});
     setGalleryOpen(false);
     setSlideSrc('');
     setSlideLoading(false);
   }, [product]);
 
-  // Load the **currently displayed** slide image (uses preloaded URL if available)
+  // Load current display slide
   useEffect(() => {
     if (!open || !product) return;
     if (!modalSlideUrls.length) return;
@@ -170,14 +321,12 @@ export default function ProductQuickViewModal({
     const url = modalSlideUrls[hasSlider ? sliderIdx : 0];
     if (!url) return;
 
-    // If preloaded already, swap instantly
     if (ready[hasSlider ? sliderIdx : 0] === url) {
       setSlideSrc(url);
       setSlideLoading(false);
       return;
     }
 
-    // Otherwise, load it (spinner shown)
     setSlideLoading(true);
     let cancelled = false;
     preloadImage(url)
@@ -197,7 +346,7 @@ export default function ProductQuickViewModal({
     };
   }, [open, sliderIdx, hasSlider, modalSlideUrls, ready, product]);
 
-  // NEW: Preload **all** modal slides on open and keep nav/dots disabled until done
+  // Preload all display slides on open
   useEffect(() => {
     if (!open || !product) return;
     if (!modalSlideUrls.length) return;
@@ -208,7 +357,6 @@ export default function ProductQuickViewModal({
     Promise.all(modalSlideUrls.map(preloadImage))
       .then(loaded => {
         if (cancelled) return;
-        // Mark all as ready
         setReady(prev => {
           const next = { ...prev };
           loaded.forEach((u, i) => {
@@ -226,10 +374,48 @@ export default function ProductQuickViewModal({
     };
   }, [open, modalSlideUrls, product]);
 
-  // Return null AFTER all hooks have been called
+  // Preload the CURRENT zoom slide (so lens is instant)
+  useEffect(() => {
+    if (!ENABLE_MAGNIFY) return;
+    if (!open || !product) return;
+    if (!zoomSlideUrls.length) return;
+
+    const idx = hasSlider ? sliderIdx : 0;
+    const url = zoomSlideUrls[idx];
+    if (!url) return;
+
+    let cancelled = false;
+    preloadImage(url)
+      .then(u => {
+        if (cancelled) return;
+        setZoomReady(prev => ({ ...prev, [idx]: true }));
+      })
+      .catch(() => {
+        if (!cancelled) setZoomReady(prev => ({ ...prev, [idx]: false }));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, sliderIdx, hasSlider, zoomSlideUrls, product]);
+
+  // Track actual rendered image size (for object-contain)
+  const measureImg = () => {
+    const el = imgRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setImgDims({ w: rect.width, h: rect.height });
+  };
+  useEffect(() => {
+    measureImg();
+    const onResize = () => measureImg();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [slideSrc]);
+
   if (!product) return null;
 
-  // Nav handlers
+  /* ====== Nav handlers ====== */
   const handleDotClick = idx => {
     if (idx === sliderIdx) return;
     setSliderIdx(idx);
@@ -237,12 +423,29 @@ export default function ProductQuickViewModal({
   const handlePrev = () => setSliderIdx((sliderIdx - 1 + colors.length) % colors.length);
   const handleNext = () => setSliderIdx((sliderIdx + 1) % colors.length);
 
-  // Disable nav/dots while either: global preload, current slide loading, or closed
   const navDisabled = preloading || slideLoading || !open;
 
+  /* ====== Lens math ====== */
+  const lensRadius = LENS_DIAMETER / 2;
+  const zoomFactor = ZOOM_MAX / DISPLAY_MAX; // expected ratio of high-res to display
+  const lensBgSize = `${imgDims.w * zoomFactor}px ${imgDims.h * zoomFactor}px`;
+
+  const handleMouseMove = e => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
+    x = Math.max(0, Math.min(rect.width, x));
+    y = Math.max(0, Math.min(rect.height, y));
+    setLensPos({ x, y });
+  };
+
+  const currentZoomReady = zoomReady[hasSlider ? sliderIdx : 0] === true;
+  const currentZoomUrl = ENABLE_MAGNIFY ? zoomSlideUrls[hasSlider ? sliderIdx : 0] || '' : '';
+
+  /* ====== UI ====== */
   return (
     <>
-      {/* QuickView Modal stays as-is */}
       <Dialog open={open} onOpenChange={onClose}>
         <DialogContent className="!max-w-[900px] p-0 rounded-2xl overflow-hidden shadow-xl">
           <DialogClose asChild>
@@ -271,13 +474,58 @@ export default function ProductQuickViewModal({
                   ? product.acf.pricing_description.replace(/<[^>]+>/g, '')
                   : 'פרטי מוצר'}
               </DialogDescription>
-              <PriceChart steps={steps} />
+
+              {/* ===== AREA FILTER (above PriceChart) ===== */}
+              {sourcePlacements.length > 0 && (
+                <div className="mb-4">
+                  <div className="text-xs text-gray-500 mb-1">מיקומי לוגו</div>
+                  <div className="flex flex-wrap gap-2">
+                    {sourcePlacements.map(p => {
+                      const nm = p?.name || '';
+                      const orig = !!p?.active;
+                      const isAdded = areaOn.has(nm);
+                      const isRemoved = areaOff.has(nm);
+                      const effectiveActive = isRemoved ? false : isAdded ? true : orig;
+                      return (
+                        <button
+                          key={nm}
+                          type="button"
+                          onClick={() => toggleArea(nm)}
+                          className={`px-3 py-1 rounded-full border text-xs font-medium transition
+                            ${
+                              effectiveActive
+                                ? 'bg-emerald-600 text-white border-emerald-600'
+                                : isAdded
+                                  ? 'bg-sky-600 text-white border-sky-600'
+                                  : isRemoved
+                                    ? 'bg-gray-300 text-gray-700 border-gray-300'
+                                    : 'bg-white text-primary border-gray-300 hover:bg-gray-50'
+                            }`}
+                          title={nm}
+                        >
+                          {nm}{' '}
+                          {effectiveActive
+                            ? '• פעיל'
+                            : isAdded
+                              ? '• נבחר'
+                              : isRemoved
+                                ? '• כבוי'
+                                : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <PriceChart steps={steps} regularPrice={product?.regular_price ?? product?.price} />
+
               <div>
                 <button
                   className="alarnd-btn mt-5 bg-primary text-white"
                   onClick={() => {
-                    if (onClose) onClose(); // Close product quick view modal
-                    if (onAddToCart) onAddToCart(); // Open add to cart modal
+                    if (onClose) onClose();
+                    if (onAddToCart) onAddToCart();
                   }}
                 >
                   הוסיפו לעגלה
@@ -291,40 +539,72 @@ export default function ProductQuickViewModal({
               style={{ flexBasis: '62%' }}
             >
               <div
+                ref={containerRef}
                 className="flex items-center justify-center w-full relative"
                 style={{ height: 310 }}
+                onMouseEnter={ENABLE_MAGNIFY ? () => setLensVisible(true) : undefined}
+                onMouseLeave={ENABLE_MAGNIFY ? () => setLensVisible(false) : undefined}
+                onMouseMove={ENABLE_MAGNIFY ? handleMouseMove : undefined}
               >
                 {/* Click image to open FULL gallery (QuickView stays open) */}
                 {slideSrc ? (
                   <img
+                    ref={imgRef}
                     src={slideSrc}
                     alt={hasSlider ? acf.color[sliderIdx]?.title || product.name : product.name}
                     className={`max-h-[300px] max-w-full object-contain rounded-xl shadow transition-opacity duration-200 ${
                       slideLoading ? 'opacity-70' : 'opacity-100'
-                    } cursor-zoom-in`}
+                    } ${ENABLE_CLICK_TO_POPUP ? 'cursor-zoom-in' : 'cursor-default'}`}
                     loading="eager"
-                    onClick={() => setGalleryOpen(true)}
+                    onClick={ENABLE_CLICK_TO_POPUP ? () => setGalleryOpen(true) : undefined}
+                    onLoad={measureImg}
                     draggable={false}
                   />
                 ) : (
-                  // Placeholder skeleton while the very first image is being resolved
                   <div className="h-[300px] w-full max-w-[520px] rounded-xl bg-gray-100 animate-pulse" />
                 )}
 
-                {/* Spinners */}
                 {(slideLoading || preloading) && (
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="w-10 h-10 rounded-full border-4 border-blue-200 border-t-blue-600 animate-spin" />
                   </div>
                 )}
+
+                {/* ===== Magnify lens (circular) ===== */}
+                {ENABLE_MAGNIFY &&
+                  lensVisible &&
+                  currentZoomReady &&
+                  currentZoomUrl &&
+                  imgDims.w > 0 &&
+                  imgDims.h > 0 && (
+                    <div
+                      aria-hidden="true"
+                      style={{
+                        position: 'absolute',
+                        left: `${lensPos.x - LENS_DIAMETER / 2}px`,
+                        top: `${lensPos.y - LENS_DIAMETER / 2}px`,
+                        width: `${LENS_DIAMETER}px`,
+                        height: `${LENS_DIAMETER}px`,
+                        border: LENS_BORDER,
+                        borderRadius: '50%',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                        pointerEvents: 'none',
+                        backgroundImage: `url("${currentZoomUrl}")`,
+                        backgroundRepeat: 'no-repeat',
+                        backgroundSize: `${imgDims.w * (ZOOM_MAX / DISPLAY_MAX)}px ${imgDims.h * (ZOOM_MAX / DISPLAY_MAX)}px`,
+                        backgroundPosition: `-${lensPos.x * (ZOOM_MAX / DISPLAY_MAX) - LENS_DIAMETER / 2}px -${lensPos.y * (ZOOM_MAX / DISPLAY_MAX) - LENS_DIAMETER / 2}px`,
+                        zIndex: 5,
+                      }}
+                    />
+                  )}
               </div>
 
-              {/* Prev/Next (disabled until ALL preloads complete) */}
+              {/* Prev/Next */}
               {hasSlider && colors.length > 1 && (
                 <>
                   <button
                     className="absolute top-1/2 mt-[-11px] left-2 -translate-y-1/2 bg-white rounded-full p-2 shadow cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    onClick={handlePrev}
+                    onClick={() => setSliderIdx((sliderIdx - 1 + colors.length) % colors.length)}
                     aria-label="הקודם"
                     disabled={navDisabled}
                     type="button"
@@ -333,7 +613,7 @@ export default function ProductQuickViewModal({
                   </button>
                   <button
                     className="absolute top-1/2 mt-[-11px] right-2 -translate-y-1/2 bg-white rounded-full p-2 shadow cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    onClick={handleNext}
+                    onClick={() => setSliderIdx((sliderIdx + 1) % colors.length)}
                     aria-label="הבא"
                     disabled={navDisabled}
                     type="button"
@@ -343,13 +623,13 @@ export default function ProductQuickViewModal({
                 </>
               )}
 
-              {/* Color dots (disabled until ALL preloads complete) */}
+              {/* Color dots */}
               {hasSlider && (
                 <div className="flex justify-center mt-4 gap-2">
                   {colors.map((clr, idx) => (
                     <button
                       key={idx}
-                      onClick={() => handleDotClick(idx)}
+                      onClick={() => setSliderIdx(idx)}
                       disabled={navDisabled && idx !== sliderIdx}
                       className={`w-[20px] h-[20px] rounded-[7px] border-2 shadow-[0_0_0_2px_white,0_0_0_3px_#cccccc] transition-all duration-150
                         ${sliderIdx === idx ? 'ring-2 ring-skyblue' : ''} ${navDisabled ? 'opacity-60' : ''}`}
@@ -365,7 +645,7 @@ export default function ProductQuickViewModal({
                 </div>
               )}
 
-              {/* Small helper note (optional) */}
+              {/* Optional helper note */}
               {preloading && hasSlider && colors.length > 1 && (
                 <div className="mt-3 text-xs text-gray-500">טוען תמונות מקדימות…</div>
               )}

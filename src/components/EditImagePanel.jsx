@@ -38,10 +38,7 @@ export default function EditImagePanel({ open, onClose, onSelect }) {
   const filtered = q
     ? all.filter(p => {
         const term = q.toLowerCase();
-        return (
-          (p.name || '').toLowerCase().includes(term) ||
-          String(p.id || '').includes(term)
-        );
+        return (p.name || '').toLowerCase().includes(term) || String(p.id || '').includes(term);
       })
     : all;
 
@@ -100,11 +97,7 @@ export default function EditImagePanel({ open, onClose, onSelect }) {
 
       {/* Search */}
       <div className="p-4">
-        <Input
-          placeholder="Search by name or ID"
-          value={q}
-          onChange={e => setQ(e.target.value)}
-        />
+        <Input placeholder="Search by name or ID" value={q} onChange={e => setQ(e.target.value)} />
       </div>
 
       {/* Body */}
@@ -119,10 +112,7 @@ export default function EditImagePanel({ open, onClose, onSelect }) {
           <div className="text-sm text-muted-foreground">No products found.</div>
         ) : (
           filtered.map(p => {
-            const img =
-              p?.thumbnail_meta?.url ||
-              p?.thumbnail ||
-              '';
+            const img = p?.thumbnail_meta?.url || p?.thumbnail || '';
             return (
               <div
                 key={p.id}

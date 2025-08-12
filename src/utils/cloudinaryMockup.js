@@ -1,5 +1,4 @@
 // /src/utils/cloudinaryMockup.js
-// ↓↓↓ REPLACE THE WHOLE FILE WITH THIS VERSION ↓↓↓
 const ENV_CLOUD =
   process.env.NEXT_PUBLIC_CLD_CLOUD || process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
 
@@ -83,33 +82,24 @@ const pickLogoVariant = (logos, useBack, bgIsDark) => {
   return validLogo(get('logo_darker')) ? get('logo_darker') : null;
 };
 
-/* --------------------- NEW: placement + back gating helpers --------------------- */
-
-// Resolve placements with page-level override priority
+/* --------------------- helpers --------------------- */
 const resolvePlacements = (product, opts = {}) => {
   const pid = String(product?.id ?? '');
-  const overrideMap = opts.pagePlacementMap || null; // { [productId]: Placement[] }
+  const overrideMap = opts.pagePlacementMap || null;
   if (overrideMap && pid && Array.isArray(overrideMap[pid]) && overrideMap[pid].length) {
     return overrideMap[pid];
   }
   return Array.isArray(product?.placement_coordinates) ? product.placement_coordinates : [];
 };
 
-// Should “back” be allowed for this product?
 const isBackAllowedForProduct = (productId, opts = {}) => {
   const id = String(productId);
   const set = opts.customBackAllowedSet;
   const arr = opts.customBackAllowedIds;
 
-  if (set && typeof set.has === 'function') {
-    return set.has(id);
-  }
-  if (Array.isArray(set)) { // 👈 handle arrays passed in by mistake
-    return set.map(String).includes(id);
-  }
-  if (Array.isArray(arr)) {
-    return arr.map(String).includes(id);
-  }
+  if (set && typeof set.has === 'function') return set.has(id);
+  if (Array.isArray(set)) return set.map(String).includes(id);
+  if (Array.isArray(arr)) return arr.map(String).includes(id);
   return false;
 };
 
@@ -127,29 +117,14 @@ export const buildCloudinaryMockupUrl = ({
 }) => {
   const pid = productId ? `[${productId}]` : '';
 
-  if (!isCloudinaryUrl(baseUrl)) {
-    console.debug(`[cld][skip]${pid} base_not_cloudinary`, { baseUrl });
-    return baseUrl;
-  }
-  if (!Array.isArray(placements) || placements.length === 0) {
-    console.debug(`[cld][skip]${pid} no_placements`);
-    return baseUrl;
-  }
-  if (!validLogo(logos?.logo_darker)) {
-    console.debug(`[cld][skip]${pid} logo_darker_invalid`, { logos });
-    return baseUrl;
-  }
-  if (!baseW || !baseH) {
-    console.debug(`[cld][skip]${pid} missing_base_dimensions`, { baseW, baseH });
-    return baseUrl;
-  }
+  if (!isCloudinaryUrl(baseUrl)) return baseUrl;
+  if (!Array.isArray(placements) || placements.length === 0) return baseUrl;
+  if (!validLogo(logos?.logo_darker)) return baseUrl;
+  if (!baseW || !baseH) return baseUrl;
 
   const parsedBase = parseCloudinaryIds(baseUrl);
   const cloud = ENV_CLOUD || parsedBase.cloud;
-  if (!cloud || !parsedBase.baseAsset) {
-    console.debug(`[cld][skip]${pid} cloud_or_base_missing`, parsedBase);
-    return baseUrl;
-  }
+  if (!cloud || !parsedBase.baseAsset) return baseUrl;
 
   const bgIsDark = isDarkHex(baseHex);
   const transforms = [];
@@ -193,8 +168,7 @@ export const buildCloudinaryMockupUrl = ({
 
   if (!transforms.length) return baseUrl;
 
-  const final = `https://res.cloudinary.com/${cloud}/image/upload/${transforms.join('/')}/${parsedBase.baseAsset}`;
-  return final;
+  return `https://res.cloudinary.com/${cloud}/image/upload/${transforms.join('/')}/${parsedBase.baseAsset}`;
 };
 
 /* ------------------------ RELATIVE builder ------------------------ */
@@ -210,34 +184,20 @@ export const buildRelativeMockupUrl = ({
 }) => {
   const pid = productId ? `[${productId}]` : '';
 
-  if (!isCloudinaryUrl(baseUrl)) {
-    console.debug(`[cld][skip]${pid} rel_base_not_cloudinary`, { baseUrl });
-    return baseUrl;
-  }
-  if (!Array.isArray(placements) || placements.length === 0) {
-    console.debug(`[cld][skip]${pid} rel_no_placements`);
-    return baseUrl;
-  }
-  if (!validLogo(logos?.logo_darker)) {
-    console.debug(`[cld][skip]${pid} rel_logo_darker_invalid`, { logos });
-    return baseUrl;
-  }
+  if (!isCloudinaryUrl(baseUrl)) return baseUrl;
+  if (!Array.isArray(placements) || placements.length === 0) return baseUrl;
+  if (!validLogo(logos?.logo_darker)) return baseUrl;
   if (!max) return baseUrl;
 
   const parsedBase = parseCloudinaryIds(baseUrl);
   const cloud = ENV_CLOUD || parsedBase.cloud;
-  if (!cloud || !parsedBase.baseAsset) {
-    console.debug(`[cld][skip]${pid} rel_cloud_or_base_missing`, parsedBase);
-    return baseUrl;
-  }
+  if (!cloud || !parsedBase.baseAsset) return baseUrl;
 
   const bgIsDark = isDarkHex(baseHex);
   const transforms = [];
 
-  // 1) resize base
   transforms.push(`f_auto,q_auto,c_fit,w_${max}${maxH ? `,h_${maxH}` : ''}`);
 
-  // 2) overlays relative
   placements.forEach((p, idx) => {
     const chosen = pickLogoVariant(logos, !!p.__useBack, bgIsDark);
     if (!chosen || !isCloudinaryUrl(chosen.url)) return;
@@ -245,16 +205,14 @@ export const buildRelativeMockupUrl = ({
     const parsedLogo = parseCloudinaryIds(chosen.url);
     if (!parsedLogo.overlayId) return;
 
-    if (p.xPercent == null || p.yPercent == null || p.wPercent == null || p.hPercent == null) {
-      console.debug(`[cld][skip]${pid} rel_placement_missing_percent idx=${idx}`, p);
+    if (p.xPercent == null || p.yPercent == null || p.wPercent == null || p.hPercent == null)
       return;
-    }
 
     const lw = Number(chosen.width) || 0;
     const lh = Number(chosen.height) || 0;
 
-    let relW = p.wPercent;
-    let relH = p.hPercent;
+    let relW = p.wPercent,
+      relH = p.hPercent;
     if (lw > 0 && lh > 0) {
       const la = lw / lh;
       const ba = p.wPercent / p.hPercent;
@@ -280,23 +238,14 @@ export const buildRelativeMockupUrl = ({
   if (transforms.length <= 1) return baseUrl;
 
   const final = `https://res.cloudinary.com/${cloud}/image/upload/${transforms.join('/')}/${parsedBase.baseAsset}`;
-  console.debug(`[cld][SUCCESS]${pid} [${debugLabel}]`, { final });
   return final;
 };
 
 /* ---------------------- Public generators ---------------------- */
 
-/**
- * Generates a mockup for product cards & quick-view.
- * Now supports:
- *  - opts.pagePlacementMap: { [productId:string]: Placement[] }
- *  - opts.customBackAllowedSet: Set<string> (product IDs allowed to use "back" placement)
- *  - opts.max: number (if present => relative builder; else full)
- */
 export const generateProductImageUrl = (product, logos, opts = {}) => {
   if (!product) return '';
 
-  // base by color
   let baseUrl = product.thumbnail;
   let baseW = Number(product?.thumbnail_meta?.width) || 0;
   let baseH = Number(product?.thumbnail_meta?.height) || 0;
@@ -315,40 +264,39 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
     }
   }
 
-  // placements with page override + back gating
   const rawPlacements = resolvePlacements(product, opts);
   const allowBack = isBackAllowedForProduct(product?.id, opts);
-  const placements = rawPlacements.map(p => ({
+
+  // 🔹 active filter
+  const activePlacements = rawPlacements.filter(p => p?.active === true);
+
+  const placements = activePlacements.map(p => ({
     ...p,
     __useBack: !!(p?.back && allowBack),
   }));
 
-  console.debug(`[cld][REQUEST] [product] ${product?.id}`, { baseUrl, placements , logos, opts});
-
-  // If caller didn't request relative, but we don't have base dimensions,
-  // auto-fallback to a relative build so overlays still render.
   if (!opts?.max) {
-      if (!baseW || !baseH) {
-          return buildRelativeMockupUrl({
-          baseUrl,
-          placements,
-          logos,
-          baseHex,
-          max: 900, // sensible default for grid cards
-          productId: product?.id || null,
-          debugLabel: `${debugLabel}_autoRel`,
-          });
-      }
-      return buildCloudinaryMockupUrl({
-          baseUrl,
-          baseW,
-          baseH,
-          baseHex,
-          placements,
-          logos,
-          productId: product?.id || null,
-          debugLabel,
+    if (!baseW || !baseH) {
+      return buildRelativeMockupUrl({
+        baseUrl,
+        placements,
+        logos,
+        baseHex,
+        max: 900,
+        productId: product?.id || null,
+        debugLabel: `${debugLabel}_autoRel`,
       });
+    }
+    return buildCloudinaryMockupUrl({
+      baseUrl,
+      baseW,
+      baseH,
+      baseHex,
+      placements,
+      logos,
+      productId: product?.id || null,
+      debugLabel,
+    });
   }
 
   return buildRelativeMockupUrl({
@@ -386,17 +334,17 @@ const resolveCartBaseFromItem = item => {
   return { url: item?.thumbnail || '', hex: item?.thumbnail_meta?.thumbnail_color || '#ffffff' };
 };
 
-/** Small cart thumbnail with relative overlays, honoring page overrides + back gating */
-export const generateCartThumbUrlFromItem = (item, logos, { max = 200, pagePlacementMap, customBackAllowedSet } = {}) => {
+export const generateCartThumbUrlFromItem = (
+  item,
+  logos,
+  { max = 200, pagePlacementMap, customBackAllowedSet } = {}
+) => {
   if (!item) return '';
 
   const pidStr = String(item?.product_id ?? '');
-  const pidTag = pidStr ? `[${pidStr}]` : '';
   const base = resolveCartBaseFromItem(item);
-
   if (!isCloudinaryUrl(base.url)) return base.url || item.thumbnail || '';
 
-  // placements: prefer page override > item > product
   let rawPlacements = [];
   if (pagePlacementMap && pidStr && Array.isArray(pagePlacementMap[pidStr])) {
     rawPlacements = pagePlacementMap[pidStr];
@@ -405,6 +353,9 @@ export const generateCartThumbUrlFromItem = (item, logos, { max = 200, pagePlace
   } else if (Array.isArray(item?.product?.placement_coordinates)) {
     rawPlacements = item.product.placement_coordinates;
   }
+
+  // 🔹 active filter
+  rawPlacements = rawPlacements.filter(p => p?.active === true);
 
   if (!rawPlacements.length) return base.url;
   if (!logos?.logo_darker?.url || !isCloudinaryUrl(logos.logo_darker.url)) return base.url;
@@ -415,13 +366,17 @@ export const generateCartThumbUrlFromItem = (item, logos, { max = 200, pagePlace
 
   const bgIsDark = isDarkHex(base.hex);
   const allowBack = Array.isArray(customBackAllowedSet)
-  ? customBackAllowedSet.map(String).includes(pidStr)
-  : !!(customBackAllowedSet && typeof customBackAllowedSet.has === 'function' && customBackAllowedSet.has(pidStr));
-  const placements = rawPlacements.map(p => ({ ...p, __useBack: !!(p?.back && allowBack) }));
+    ? customBackAllowedSet.map(String).includes(pidStr)
+    : !!(
+        customBackAllowedSet &&
+        typeof customBackAllowedSet.has === 'function' &&
+        customBackAllowedSet.has(pidStr)
+      );
 
+  const placements = rawPlacements.map(p => ({ ...p, __useBack: !!(p?.back && allowBack) }));
   const transforms = [`f_auto,q_auto,c_fit,w_${max},h_${max}`];
 
-  placements.forEach((p, idx) => {
+  placements.forEach(p => {
     if (p.xPercent == null || p.yPercent == null || p.wPercent == null || p.hPercent == null)
       return;
 
@@ -434,8 +389,8 @@ export const generateCartThumbUrlFromItem = (item, logos, { max = 200, pagePlace
     const lw = Number(chosen.width) || 0;
     const lh = Number(chosen.height) || 0;
 
-    let relW = p.wPercent;
-    let relH = p.hPercent;
+    let relW = p.wPercent,
+      relH = p.hPercent;
     if (lw > 0 && lh > 0) {
       const la = lw / lh;
       const ba = p.wPercent / p.hPercent;
@@ -460,16 +415,15 @@ export const generateCartThumbUrlFromItem = (item, logos, { max = 200, pagePlace
 
   if (transforms.length <= 1) return base.url;
 
-  const final = `https://res.cloudinary.com/${cloud}/image/upload/${transforms.join('/')}/${parsedBase.baseAsset}`;
-  console.debug(`[cld][SUCCESS]${pidTag} [cart_thumb]`, { final });
-  return final;
+  return `https://res.cloudinary.com/${cloud}/image/upload/${transforms.join('/')}/${parsedBase.baseAsset}`;
 };
 
-export const generateHoverThumbUrlFromItem = (item, logos, { max = 400, pagePlacementMap, customBackAllowedSet } = {}) => {
-  return generateCartThumbUrlFromItem(item, logos, { max, pagePlacementMap, customBackAllowedSet });
-};
+export const generateHoverThumbUrlFromItem = (
+  item,
+  logos,
+  { max = 400, pagePlacementMap, customBackAllowedSet } = {}
+) => generateCartThumbUrlFromItem(item, logos, { max, pagePlacementMap, customBackAllowedSet });
 
-// unchanged, but it will also inherit __useBack if placements come in that way
 export const generateProductImageUrlWithOverlay = (
   product,
   logos,
@@ -496,8 +450,12 @@ export const generateProductImageUrlWithOverlay = (
   }
 
   const rawPlacements = resolvePlacements(product, { pagePlacementMap });
+
+  // 🔹 active filter
+  const activePlacements = rawPlacements.filter(p => p?.active === true);
+
   const allowBack = isBackAllowedForProduct(product?.id, { customBackAllowedSet });
-  const placements = rawPlacements.map(p => ({ ...p, __useBack: !!(p?.back && allowBack) }));
+  const placements = activePlacements.map(p => ({ ...p, __useBack: !!(p?.back && allowBack) }));
 
   if (!placements.length) return baseUrl;
 
@@ -510,7 +468,7 @@ export const generateProductImageUrlWithOverlay = (
   const hex = (overlayHex || '#000000').replace('#', '');
   const op = Math.max(0, Math.min(overlayOpacity, 100));
 
-  placements.forEach((p) => {
+  placements.forEach(p => {
     const { xPercent, yPercent, wPercent, hPercent } = p || {};
     if (xPercent == null || yPercent == null || wPercent == null || hPercent == null) return;
 
@@ -522,11 +480,16 @@ export const generateProductImageUrlWithOverlay = (
 
   const bgIsDark = isDarkHex(baseHex);
 
-  placements.forEach((p) => {
+  placements.forEach(p => {
     const choose = (logosObj, useBack, dark) => {
       const get = k => logosObj?.[k] || null;
-      const want = useBack ? (dark ? get('back_lighter') : get('back_darker'))
-                           : (dark ? get('logo_lighter') : get('logo_darker'));
+      const want = useBack
+        ? dark
+          ? get('back_lighter')
+          : get('back_darker')
+        : dark
+          ? get('logo_lighter')
+          : get('logo_darker');
       const ok = v => !!v?.url && isCloudinaryUrl(v.url);
       if (ok(want)) return want;
       if (ok(get('logo_darker'))) return get('logo_darker');
@@ -543,7 +506,8 @@ export const generateProductImageUrlWithOverlay = (
     const lw = Number(chosen.width) || 0;
     const lh = Number(chosen.height) || 0;
 
-    let relW = p.wPercent, relH = p.hPercent;
+    let relW = p.wPercent,
+      relH = p.hPercent;
     if (lw > 0 && lh > 0) {
       const la = lw / lh;
       const ba = p.wPercent / p.hPercent;

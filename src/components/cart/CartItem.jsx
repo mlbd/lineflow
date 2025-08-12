@@ -27,7 +27,13 @@ const preloadImage = url => {
   return p;
 };
 
-export default function CartItem({ item, idx, companyLogos = {}, pagePlacementMap = {}, customBackAllowedSet = {} }) {
+export default function CartItem({
+  item,
+  idx,
+  companyLogos = {},
+  pagePlacementMap = {},
+  customBackAllowedSet = {},
+}) {
   const removeItem = useRemoveItem();
   const updateItemQuantity = useUpdateItemQuantity();
 

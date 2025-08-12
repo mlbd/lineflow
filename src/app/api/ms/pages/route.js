@@ -59,13 +59,13 @@ export async function GET(req) {
     const pagesRaw = await fetchAllPagesFromWP();
 
     // Map to full shape the UI needs (keep *all* meta and *all* acf)
-    const pages = pagesRaw.map((p) => ({
+    const pages = pagesRaw.map(p => ({
       id: p.id,
       title: p.title,
       slug: p.slug,
       // WP sometimes returns acf as [] – coerce to object
-      acf: (p && p.acf && typeof p.acf === 'object' && !Array.isArray(p.acf)) ? p.acf : {},
-      meta: (p && p.meta && typeof p.meta === 'object' && !Array.isArray(p.meta)) ? p.meta : {},
+      acf: p && p.acf && typeof p.acf === 'object' && !Array.isArray(p.acf) ? p.acf : {},
+      meta: p && p.meta && typeof p.meta === 'object' && !Array.isArray(p.meta) ? p.meta : {},
     }));
 
     const payload = {

@@ -7,7 +7,7 @@ import {
   Trash2,
   ArrowsUpFromLine,
   Grid3X3,
-  Map,
+  MapPin,
   Images,
   CheckCircle2,
   XCircle,
@@ -21,7 +21,11 @@ import EditMappingModal from '@/components/EditMappingModal';
 import EditImagePanel from '@/components/EditImagePanel';
 import EditLogoPanel from '@/components/EditLogoPanel';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import { generateProductImageUrl, generateProductImageUrlWithOverlay } from '@/utils/cloudinaryMockup';
+import {
+  generateProductImageUrl,
+  generateProductImageUrlWithOverlay,
+} from '@/utils/cloudinaryMockup';
+import LogoutButton from '@/components/LogoutButton';
 
 const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
 const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
@@ -120,7 +124,22 @@ export default function HomePage() {
   // Update-only-for-page checkbox
   const [onlyThisPage, setOnlyThisPage] = useState(false);
 
-   // === Page-level overrides (derived from the selected page) ===
+  // add near other state
+  // ========= NEW: Active-only previews with manual add buttons =========
+  const [logosManualAreas, setLogosManualAreas] = useState(new Set()); // names added by user
+  const [logosManualOn, setLogosManualOn] = useState(new Set()); // names force-added
+  const [logosManualOff, setLogosManualOff] = useState(new Set()); // names force-removed
+  const [logosPreviewLoading, setLogosPreviewLoading] = useState(false);
+
+  // Reset overrides each time the modal opens
+  useEffect(() => {
+    if (logosMapOpen) {
+      setLogosManualOn(new Set());
+      setLogosManualOff(new Set());
+    }
+  }, [logosMapOpen]);
+
+  // === Page-level overrides (derived from the selected page) ===
   const pagePlacementMap = useMemo(() => {
     const src = selectedPageFull?.meta?.placement_coordinates;
     if (!src) return {};
@@ -135,6 +154,12 @@ export default function HomePage() {
     }
     return {};
   }, [selectedPageFull]);
+
+  const originalActiveByName = useMemo(() => {
+    const map = new Map();
+    (mappings || []).forEach(m => map.set(m?.name || '', !!m?.active));
+    return map;
+  }, [mappings]);
 
   // Allow-list of product IDs that can use "back" placements on this page
   const customBackAllowedIds = useMemo(
@@ -191,7 +216,9 @@ export default function HomePage() {
     setLogosOverlayMapOpen(false);
 
     // clear persisted preview payload for /logos page
-    try { localStorage.removeItem('logo_page_data'); } catch {}
+    try {
+      localStorage.removeItem('logo_page_data');
+    } catch {}
 
     // (optional) also reset the canvas image to your default
     // comment OUT the next line if you prefer to keep the current image
@@ -211,53 +238,53 @@ export default function HomePage() {
   };
 
   // checkbox guard: only allow "Update only for {page}" if product is allowed on that page
-const handleToggleOnlyThisPage = (checked) => {
-  if (!checked) {
-    setOnlyThisPage(false);
-    return;
-  }
+  const handleToggleOnlyThisPage = checked => {
+    if (!checked) {
+      setOnlyThisPage(false);
+      return;
+    }
 
-  // must have a selected product
-  if (!selectedProductId) {
-    setWarnTitle('Select a product first');
-    setWarnBody('You need to select a product before scoping updates to a page.');
-    setWarnOpen(true);
-    setOnlyThisPage(false);
-    return;
-  }
+    // must have a selected product
+    if (!selectedProductId) {
+      setWarnTitle('Select a product first');
+      setWarnBody('You need to select a product before scoping updates to a page.');
+      setWarnOpen(true);
+      setOnlyThisPage(false);
+      return;
+    }
 
-  // must have a full page object with selected_products
-  const allowed = Array.isArray(selectedPageFull?.acf?.selected_products)
-    ? selectedPageFull.acf.selected_products
-    : null;
+    // must have a full page object with selected_products
+    const allowed = Array.isArray(selectedPageFull?.acf?.selected_products)
+      ? selectedPageFull.acf.selected_products
+      : null;
 
-  if (!allowed) {
-    setWarnTitle('This page cannot be scoped');
-    setWarnBody(
-      `The selected page (#${selectedPage?.id} — ${selectedPage?.title}) has no selected_products list.\n` +
-      `You cannot restrict updates to this page.`
-    );
-    setWarnOpen(true);
-    setOnlyThisPage(false);
-    return;
-  }
+    if (!allowed) {
+      setWarnTitle('This page cannot be scoped');
+      setWarnBody(
+        `The selected page (#${selectedPage?.id} — ${selectedPage?.title}) has no selected_products list.\n` +
+          `You cannot restrict updates to this page.`
+      );
+      setWarnOpen(true);
+      setOnlyThisPage(false);
+      return;
+    }
 
-  // product must exist in that list
-  const ok = allowed.some(p => Number(p?.id) === Number(selectedProductId));
-  if (!ok) {
-    setWarnTitle('Product not allowed for this page');
-    setWarnBody(
-      `Product #${selectedProductId}${selectedProduct?.name ? ` — ${selectedProduct.name}` : ''} is not in\n` +
-      `the page’s allowed products.\n\nPage: #${selectedPage?.id} — ${selectedPage?.title}`
-    );
-    setWarnOpen(true);
-    setOnlyThisPage(false);
-    return;
-  }
+    // product must exist in that list
+    const ok = allowed.some(p => Number(p?.id) === Number(selectedProductId));
+    if (!ok) {
+      setWarnTitle('Product not allowed for this page');
+      setWarnBody(
+        `Product #${selectedProductId}${selectedProduct?.name ? ` — ${selectedProduct.name}` : ''} is not in\n` +
+          `the page’s allowed products.\n\nPage: #${selectedPage?.id} — ${selectedPage?.title}`
+      );
+      setWarnOpen(true);
+      setOnlyThisPage(false);
+      return;
+    }
 
-  // all good
-  setOnlyThisPage(true);
-};
+    // all good
+    setOnlyThisPage(true);
+  };
 
   // Persist to localStorage for logos page
   useEffect(() => {
@@ -286,15 +313,15 @@ const handleToggleOnlyThisPage = (checked) => {
   }, [selectedProduct, imageUrl]);
 
   // --- Gate for Logos Mapping buttons: require Cloudinary base image
-  const ensureCloudinaryForMapping = (openFn) => {
+  const ensureCloudinaryForMapping = openFn => {
     if (!selectedProductId) return; // disabled by canUpdate anyway
     if (!isCloudinaryUrl(currentThumbUrl)) {
       setWarnTitle('Cloudinary image required');
       setWarnBody(
         `The selected product’s thumbnail is not a Cloudinary URL, so we can’t resolve a public ID for logo mapping.\n\n` +
-        `• Product: #${selectedProductId}${selectedProduct?.name ? ` — ${selectedProduct.name}` : ''}\n` +
-        `• Current URL: ${currentThumbUrl || '(empty)'}\n\n` +
-        `Please choose a product whose thumbnail comes from Cloudinary (e.g. contains “res.cloudinary.com”).`
+          `• Product: #${selectedProductId}${selectedProduct?.name ? ` — ${selectedProduct.name}` : ''}\n` +
+          `• Current URL: ${currentThumbUrl || '(empty)'}\n\n` +
+          `Please choose a product whose thumbnail comes from Cloudinary (e.g. contains “res.cloudinary.com”).`
       );
       setWarnOpen(true);
       return;
@@ -310,10 +337,10 @@ const handleToggleOnlyThisPage = (checked) => {
       setConfirmTitle('Proceed without Cloudinary image?');
       setConfirmBody(
         `This product’s thumbnail is not a Cloudinary URL. Saving placements will still update the product meta, ` +
-        `but logo previews/overlays that depend on a Cloudinary public ID may fail.\n\n` +
-        `• Product: #${selectedProductId}${selectedProduct?.name ? ` — ${selectedProduct.name}` : ''}\n` +
-        `• Current URL: ${currentThumbUrl || '(empty)'}\n\n` +
-        `Do you want to continue?`
+          `but logo previews/overlays that depend on a Cloudinary public ID may fail.\n\n` +
+          `• Product: #${selectedProductId}${selectedProduct?.name ? ` — ${selectedProduct.name}` : ''}\n` +
+          `• Current URL: ${currentThumbUrl || '(empty)'}\n\n` +
+          `Do you want to continue?`
       );
       setConfirmAction(() => doSavePlacement);
       setConfirmOpen(true);
@@ -355,91 +382,7 @@ const handleToggleOnlyThisPage = (checked) => {
     }
   };
 
-  // Use the live rectangles drawn on the canvas for preview
-  const previewProduct = useMemo(() => {
-    if (!selectedProduct) return null;
-    return {
-      ...selectedProduct,
-      placement_coordinates: Array.isArray(mappings) ? mappings : [],
-    };
-  }, [selectedProduct, mappings]);
-
-  const logosSliderImages = useMemo(() => {
-    const p = previewProduct;
-    const logos =
-      companyLogos && Object.keys(companyLogos).length ? companyLogos : null;
-    if (!p || !logos) return [];
-
-    const isGroup = p?.acf?.group_type === 'Group';
-    const colors = isGroup && Array.isArray(p?.acf?.color) ? p.acf.color : [];
-
-    if (!colors.length) {
-      return [
-        {
-          src: generateProductImageUrl(p, logos, { 
-            max: 1400,
-            pagePlacementMap,
-            customBackAllowedIds,
-          }),
-          title: p?.name || 'Preview',
-          color_hex_code: p?.thumbnail_meta?.thumbnail_color || '#ffffff',
-        },
-      ];
-    }
-
-    return colors.map((c, i) => ({
-      src: generateProductImageUrl(p, logos, { 
-        colorIndex: i, 
-        max: 1400,
-        pagePlacementMap,
-        customBackAllowedIds,
-      }),
-      title: c?.title || `Color ${i + 1}`,
-      color_hex_code: c?.color_hex_code || '#ffffff',
-    }));
-  }, [previewProduct, companyLogos, pagePlacementMap, customBackAllowedIds]);
-
-  const logosSliderImagesOverlay = useMemo(() => {
-    const p = previewProduct;
-    const logos =
-      companyLogos && Object.keys(companyLogos).length ? companyLogos : null;
-    if (!p || !logos) return [];
-
-    const isGroup = p?.acf?.group_type === 'Group';
-    const colors = isGroup && Array.isArray(p?.acf?.color) ? p.acf.color : [];
-
-    const baseOpts = { max: 1400, overlayHex: '#000000', overlayOpacity: 20 };
-
-    if (!colors.length) {
-      return [{
-        src: generateProductImageUrlWithOverlay(p, companyLogos, {
-          ...baseOpts,
-          max: 1400,
-          pagePlacementMap,
-          customBackAllowedIds,
-        }),
-        title: p?.name || 'Preview',
-        color_hex_code: p?.thumbnail_meta?.thumbnail_color || '#ffffff',
-      }];
-    }
-
-    return colors.map((c, i) => ({
-      src: generateProductImageUrlWithOverlay(p, companyLogos, {
-          ...baseOpts, 
-          colorIndex: i,
-          max: 1400,
-          pagePlacementMap,
-          customBackAllowedIds,
-        }),
-      title: c?.title || `Color ${i + 1}`,
-      color_hex_code: c?.color_hex_code || '#ffffff',
-    }));
-  }, [previewProduct, companyLogos, pagePlacementMap, customBackAllowedIds]);
-
-  const updateButtonDisabled = isSaving || !selectedProductId || mappings.length === 0;
-  const canUpdate = !!selectedProductId && mappings.length > 0 && !isSaving;
-
-  // Helpers
+  // Normalize coords + DEFAULT active=false unless explicitly true
   const normalizeCoords = (coords, baseW = 0, baseH = 0) => {
     if (!Array.isArray(coords)) return [];
     return coords.map((c, idx) => {
@@ -454,10 +397,165 @@ const handleToggleOnlyThisPage = (checked) => {
         yPercent: yP,
         wPercent: wP,
         hPercent: hP,
+        active: c.active === true, // 👈 default off unless explicitly true
         ...c,
       };
     });
   };
+
+  // Use the live rectangles drawn on the canvas for previews (raw)
+  const previewProduct = useMemo(() => {
+    if (!selectedProduct) return null;
+    return {
+      ...selectedProduct,
+      placement_coordinates: Array.isArray(mappings) ? mappings : [],
+    };
+  }, [selectedProduct, mappings]);
+
+  useEffect(() => {
+    // Drop stale names if mapping list changed
+    setLogosManualAreas(prev => {
+      const next = new Set();
+      mappings.forEach(m => {
+        if (prev.has(m.name)) next.add(m.name);
+      });
+      return next;
+    });
+  }, [mappings]);
+
+  // effective list: active === true OR clicked by user
+  const effectiveMappingsForPreview = useMemo(() => {
+    if (!Array.isArray(mappings)) return [];
+    return mappings.filter(m => m?.active === true || (m?.name && logosManualAreas.has(m.name)));
+  }, [mappings, logosManualAreas]);
+
+  // product clone that uses only the effective placements
+  const previewProductActive = useMemo(() => {
+    if (!selectedProduct) return null;
+    return { ...selectedProduct, placement_coordinates: effectiveMappingsForPreview };
+  }, [selectedProduct, effectiveMappingsForPreview]);
+
+  // Toggle logic:
+  // - if originally active  -> first click = deactivate (goes to ManualOff)
+  // - if originally inactive -> first click = add (goes to ManualOn)
+  // Clicking again removes the manual override.
+  const toggleAreaForPreview = name => {
+    if (!name) return;
+    const wasActive = originalActiveByName.get(name);
+
+    setLogosManualOn(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) {
+        next.delete(name);
+        return next;
+      }
+      if (!wasActive && !logosManualOff.has(name)) next.add(name);
+      return next;
+    });
+    setLogosManualOff(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) {
+        next.delete(name);
+        return next;
+      }
+      if (wasActive && !logosManualOn.has(name)) next.add(name);
+      return next;
+    });
+  };
+
+  const previewPlacements = useMemo(() => {
+    return (mappings || []).map(m => {
+      const nm = m?.name || '';
+      const isAdded = logosManualOn.has(nm);
+      const isRemoved = logosManualOff.has(nm);
+      return { ...m, active: isAdded ? true : isRemoved ? false : !!m?.active };
+    });
+  }, [mappings, logosManualOn, logosManualOff]);
+
+  const previewProductForLogos = useMemo(() => {
+    if (!selectedProduct) return null;
+    return { ...selectedProduct, placement_coordinates: previewPlacements };
+  }, [selectedProduct, previewPlacements]);
+
+  // 6) Build URLs for the main logos preview (⚠️ do NOT pass pagePlacementMap here)
+  const logosSliderImages = useMemo(() => {
+    const p = previewProductForLogos;
+    const logos = companyLogos && Object.keys(companyLogos).length ? companyLogos : null;
+    if (!p || !logos) return [];
+
+    const isGroup = p?.acf?.group_type === 'Group';
+    const colors = isGroup && Array.isArray(p?.acf?.color) ? p.acf.color : [];
+
+    if (!colors.length) {
+      return [
+        {
+          src: generateProductImageUrl(p, logos, { max: 1400, customBackAllowedIds }),
+          title: p?.name || 'Preview',
+          color_hex_code: p?.thumbnail_meta?.thumbnail_color || '#ffffff',
+        },
+      ];
+    }
+
+    return colors.map((c, i) => ({
+      src: generateProductImageUrl(p, logos, { colorIndex: i, max: 1400, customBackAllowedIds }),
+      title: c?.title || `Color ${i + 1}`,
+      color_hex_code: c?.color_hex_code || '#ffffff',
+    }));
+  }, [previewProductForLogos, companyLogos, customBackAllowedIds]);
+
+  // ========== Existing overlay-preview (kept as-is) ==========
+  const logosSliderImagesOverlay = useMemo(() => {
+    const p = previewProductForLogos;
+    const logos = companyLogos && Object.keys(companyLogos).length ? companyLogos : null;
+    if (!p || !logos) return [];
+
+    const isGroup = p?.acf?.group_type === 'Group';
+    const colors = isGroup && Array.isArray(p?.acf?.color) ? p.acf.color : [];
+
+    const baseOpts = { max: 1400, overlayHex: '#000000', overlayOpacity: 20 };
+
+    if (!colors.length) {
+      return [
+        {
+          // ⛔ no pagePlacementMap here
+          src: generateProductImageUrlWithOverlay(p, companyLogos, {
+            ...baseOpts,
+            customBackAllowedIds,
+          }),
+          title: p?.name || 'Preview',
+          color_hex_code: p?.thumbnail_meta?.thumbnail_color || '#ffffff',
+        },
+      ];
+    }
+
+    return colors.map((c, i) => ({
+      src: generateProductImageUrlWithOverlay(p, companyLogos, {
+        ...baseOpts,
+        colorIndex: i,
+        customBackAllowedIds,
+      }),
+      title: c?.title || `Color ${i + 1}`,
+      color_hex_code: c?.color_hex_code || '#ffffff',
+    }));
+  }, [previewProductForLogos, companyLogos, customBackAllowedIds]);
+
+  // Preload current logos preview image to show overlay while regenerating
+  useEffect(() => {
+    if (!logosMapOpen) return;
+    const url = logosSliderImages[logosSliderIdx]?.src || '';
+    if (!url) {
+      setLogosPreviewLoading(false);
+      return;
+    }
+    setLogosPreviewLoading(true);
+    const img = new Image();
+    img.onload = () => setLogosPreviewLoading(false);
+    img.onerror = () => setLogosPreviewLoading(false);
+    img.src = url;
+  }, [logosMapOpen, logosSliderImages, logosSliderIdx]);
+
+  const updateButtonDisabled = isSaving || !selectedProductId || mappings.length === 0;
+  const canUpdate = !!selectedProductId && mappings.length > 0 && !isSaving;
 
   return (
     <main className="w-full flex justify-center bg-muted min-h-screen relative">
@@ -475,7 +573,10 @@ const handleToggleOnlyThisPage = (checked) => {
       {(showProductPanel || showLogoPanel) && (
         <div
           className="fixed inset-0 z-40 bg-black/20"
-          onClick={() => { setShowProductPanel(false); setShowLogoPanel(false); }}
+          onClick={() => {
+            setShowProductPanel(false);
+            setShowLogoPanel(false);
+          }}
           aria-hidden="true"
         />
       )}
@@ -483,8 +584,11 @@ const handleToggleOnlyThisPage = (checked) => {
       <div className="w-full max-w-[1920px] flex h-screen overflow-hidden">
         {/* Sidebar */}
         <div className="w-[300px] bg-white border-r overflow-y-auto space-y-6">
-          <h1 className="text-md bg-primary text-white font-bold border-b border-b-[#e6e8ea] h-[55px] flex items-center justify-center">
+          <h1 className="relative text-md bg-primary text-white font-bold border-b border-b-[#e6e8ea] h-[55px] flex items-center justify-center">
             Placement Editor
+            <span className="absolute top-3 right-3">
+              <LogoutButton />
+            </span>
           </h1>
 
           <MappingList
@@ -505,10 +609,15 @@ const handleToggleOnlyThisPage = (checked) => {
                 <Info className="mt-0.5 h-4 w-4" />
                 <div className="text-xs leading-5">
                   Placements are loaded from <b>page</b> meta:&nbsp;
-                  <b>#{mappingSource.pageId} — {mappingSource.pageTitle}</b>
+                  <b>
+                    #{mappingSource.pageId} — {mappingSource.pageTitle}
+                  </b>
                   <br />
                   (not from product meta:&nbsp;
-                  <b>#{selectedProductId} — {selectedProduct?.name || 'Product'}</b>)
+                  <b>
+                    #{selectedProductId} — {selectedProduct?.name || 'Product'}
+                  </b>
+                  )
                 </div>
               </div>
             </div>
@@ -561,7 +670,7 @@ const handleToggleOnlyThisPage = (checked) => {
                 ${!canUpdate ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-primary text-white hover:bg-blue-600'}
               `}
             >
-              <Map size={24} />
+              <MapPin size={24} />
             </button>
 
             {/* Logos Mapping */}
@@ -589,8 +698,14 @@ const handleToggleOnlyThisPage = (checked) => {
                 ${!canUpdate ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ' bg-primary text-white hover:bg-blue-600'}
               `}
             >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M12 2l9 5-9 5-9-5 9-5zm0 7l9 5-3 1.667-6-3.333-6 3.333L3 14l9-5zm0 7l6 3.333L12 22 6 19.333 12 16z"/>
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M12 2l9 5-9 5-9-5 9-5zm0 7l9 5-3 1.667-6-3.333-6 3.333L3 14l9-5zm0 7l6 3.333L12 22 6 19.333 12 16z" />
               </svg>
             </button>
           </div>
@@ -607,7 +722,7 @@ const handleToggleOnlyThisPage = (checked) => {
               icon={IconImage}
               label="Select Product"
               title="Select Product"
-              onClick={(e) => {
+              onClick={e => {
                 e.stopPropagation();
                 setSelectedMapping(null);
                 setShowLogoPanel(false);
@@ -670,16 +785,10 @@ const handleToggleOnlyThisPage = (checked) => {
                   });
                 } catch {}
 
-                // // Force-refresh the pages API (bypasses its in-memory cache and rebuilds it)
-                // try {
-                //   await fetch('/api/ms/pages?force=1', { cache: 'no-store' });
-                // } catch {}
-
                 alert('Cache cleared!');
               }}
               className="text-yellow-600 hover:bg-yellow-100"
             />
-
 
             {/* RIGHT SIDE: selected product + logo/page badges */}
             <div className="ml-auto flex items-center gap-3">
@@ -752,6 +861,9 @@ const handleToggleOnlyThisPage = (checked) => {
           setMappings(prev => prev.map(m => (m.id === updated.id ? updated : m)));
           setSelectedMapping(updated);
         }}
+        existingNames={(mappings || [])
+          .filter(m => m.id !== selectedMapping?.id)
+          .map(m => (m?.name || '').trim())}
       />
 
       {/* Product selector */}
@@ -806,14 +918,16 @@ const handleToggleOnlyThisPage = (checked) => {
           }
 
           // Validate selected product exists in this page's ACF selected_products
-          const allowedProducts = Array.isArray(page?.acf?.selected_products) ? page.acf.selected_products : [];
+          const allowedProducts = Array.isArray(page?.acf?.selected_products)
+            ? page.acf.selected_products
+            : [];
           const ok = allowedProducts.some(p => Number(p?.id) === Number(selectedProductId));
 
           if (!ok) {
             setWarnTitle('Product not allowed for this page');
             setWarnBody(
               `The selected page does not contain product #${selectedProductId} in its allowed product list.\n\n` +
-              `Page: #${page?.id} — ${page?.title}`
+                `Page: #${page?.id} — ${page?.title}`
             );
             setWarnOpen(true);
             // re-open panel after warning so user can pick another
@@ -843,7 +957,7 @@ const handleToggleOnlyThisPage = (checked) => {
           const key = String(selectedProductId);
           let chosen = [];
 
-          const parseMaybeJsonArray = (val) => {
+          const parseMaybeJsonArray = val => {
             if (Array.isArray(val)) return val;
             if (typeof val === 'string') {
               try {
@@ -860,16 +974,18 @@ const handleToggleOnlyThisPage = (checked) => {
             chosen = parseMaybeJsonArray(pagePC);
           }
 
-          console.log("chosen", chosen);
-          console.log("page", page);
-
           if (chosen.length) {
             const baseW = Number(selectedProduct?.thumbnail_meta?.width) || 0;
             const baseH = Number(selectedProduct?.thumbnail_meta?.height) || 0;
             const normalized = normalizeCoords(chosen, baseW, baseH);
             setMappings(normalized);
             setSelectedMapping(normalized[0] || null);
-            setMappingSource({ type: 'page', pageId: page.id, pageTitle: page.title, productId: selectedProductId });
+            setMappingSource({
+              type: 'page',
+              pageId: page.id,
+              pageTitle: page.title,
+              productId: selectedProductId,
+            });
           } else {
             setMappingSource(null);
           }
@@ -932,25 +1048,35 @@ const handleToggleOnlyThisPage = (checked) => {
         </DialogContent>
       </Dialog>
 
-      {/* Logos Mapping Modal */}
+      {/* Logos Mapping Modal (ACTIVE + manual add) */}
       <Dialog open={logosMapOpen} onOpenChange={setLogosMapOpen}>
-        <DialogContent className="!max-w-[1200px] p-0 overflow-hidden">
+        <DialogContent className="!max-w-[1200px] p-0 overflow-hidden" dir="ltr">
           <div className="bg-white">
-            <div className="px-6 pt-6">
+            <div className="px-6 pt-6 flex flex-col align-center text-center">
               <DialogTitle className="text-2xl font-semibold">Logos Mapping Preview</DialogTitle>
+              <div className="text-sm text-muted-foreground mt-1">
+                Showing <b>Active</b> placements by default. Click any area button below to
+                temporarily add inactive areas.
+              </div>
             </div>
             <div className="w-full flex flex-col items-center justify-center px-6 pb-6">
-              <div className="w-full h-[70vh] max-h-[780px] flex items-center justify-center bg-gray-50 rounded-xl mt-4 overflow-hidden">
+              <div className="relative w-full h-[70vh] max-h-[780px] flex items-center justify-center bg-gray-50 rounded-xl mt-4 overflow-hidden">
                 {logosSliderImages.length > 0 ? (
                   <img
                     key={logosSliderIdx}
                     src={logosSliderImages[logosSliderIdx].src}
                     alt={logosSliderImages[logosSliderIdx].title}
-                    className="max-h-[70vh] max-w-full object-contain"
+                    className={`max-h-[70vh] max-w-full object-contain transition-opacity duration-200 ${logosPreviewLoading ? 'opacity-60' : 'opacity-100'}`}
                     draggable={false}
                   />
                 ) : (
                   <div className="text-gray-500">Select a product & a logo/page to preview.</div>
+                )}
+
+                {logosPreviewLoading && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-12 h-12 border-4 border-black/20 border-t-black rounded-full animate-spin" />
+                  </div>
                 )}
               </div>
 
@@ -959,7 +1085,9 @@ const handleToggleOnlyThisPage = (checked) => {
                   <button
                     className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 cursor-pointer"
                     onClick={() =>
-                      setLogosSliderIdx((p) => (p - 1 + logosSliderImages.length) % logosSliderImages.length)
+                      setLogosSliderIdx(
+                        p => (p - 1 + logosSliderImages.length) % logosSliderImages.length
+                      )
                     }
                     type="button"
                     title="Previous"
@@ -968,7 +1096,7 @@ const handleToggleOnlyThisPage = (checked) => {
                   </button>
                   <button
                     className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 cursor-pointer"
-                    onClick={() => setLogosSliderIdx((p) => (p + 1) % logosSliderImages.length)}
+                    onClick={() => setLogosSliderIdx(p => (p + 1) % logosSliderImages.length)}
                     type="button"
                     title="Next"
                   >
@@ -977,28 +1105,74 @@ const handleToggleOnlyThisPage = (checked) => {
                 </div>
               )}
 
-              {logosSliderImages.length > 1 && selectedProduct?.acf?.group_type === 'Group' && Array.isArray(selectedProduct?.acf?.color) && (
-                <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                  {selectedProduct.acf.color.map((c, i) => {
-                    const active = i === logosSliderIdx;
-                    const dark = isDark(c?.color_hex_code || '#ffffff');
-                    return (
-                      <button
-                        key={i}
-                        onClick={() => setLogosSliderIdx(i)}
-                        title={c?.title || `Color ${i + 1}`}
-                        className={`px-3 py-1 rounded-full border text-xs font-medium shadow-sm transition cursor-pointer ${active ? 'ring-2 ring-sky-500' : ''}`}
-                        style={{
-                          background: c?.color_hex_code || '#ffffff',
-                          color: dark ? '#ffffff' : '#111111',
-                          borderColor: dark ? '#ffffff66' : '#00000022',
-                        }}
-                        type="button"
-                      >
-                        {c?.title || `Color ${i + 1}`}
-                      </button>
-                    );
-                  })}
+              {logosSliderImages.length > 1 &&
+                selectedProduct?.acf?.group_type === 'Group' &&
+                Array.isArray(selectedProduct?.acf?.color) && (
+                  <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                    {selectedProduct.acf.color.map((c, i) => {
+                      const active = i === logosSliderIdx;
+                      const dark = isDark(c?.color_hex_code || '#ffffff');
+                      return (
+                        <button
+                          key={i}
+                          onClick={() => setLogosSliderIdx(i)}
+                          title={c?.title || `Color ${i + 1}`}
+                          className={`px-3 py-1 rounded-full border text-xs font-medium shadow-sm transition cursor-pointer ${active ? 'ring-2 ring-sky-500' : ''}`}
+                          style={{
+                            background: c?.color_hex_code || '#ffffff',
+                            color: dark ? '#ffffff' : '#111111',
+                            borderColor: dark ? '#ffffff66' : '#00000022',
+                          }}
+                          type="button"
+                        >
+                          {c?.title || `Color ${i + 1}`}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+              {/* Area buttons: ALL mapped areas; active ones locked; inactive can be toggled */}
+              {mappings.length > 0 && (
+                <div className="mt-6 w-full max-w-[1000px]">
+                  <div className="text-sm text-muted-foreground mb-2 text-center">Areas</div>
+                  <div className="flex flex-wrap align-center justify-center gap-2">
+                    {mappings.map(m => {
+                      const nm = m?.name || '';
+                      const origActive = !!m?.active;
+                      const isAdded = logosManualOn.has(nm);
+                      const isRemoved = logosManualOff.has(nm);
+                      const effectiveActive = isRemoved ? false : isAdded ? true : origActive;
+
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => toggleAreaForPreview(nm)}
+                          className={`px-3 py-1 rounded-full border text-xs font-medium transition
+              ${
+                effectiveActive
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : isAdded
+                    ? 'bg-sky-600 text-white border-sky-600'
+                    : isRemoved
+                      ? 'bg-gray-300 text-gray-700 border-gray-300'
+                      : 'bg-white text-primary border-gray-300 hover:bg-gray-50'
+              }`}
+                          title={nm}
+                        >
+                          {nm}
+                          {effectiveActive
+                            ? ' • active'
+                            : isAdded
+                              ? ' • added'
+                              : isRemoved
+                                ? ' • off'
+                                : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
@@ -1006,12 +1180,14 @@ const handleToggleOnlyThisPage = (checked) => {
         </DialogContent>
       </Dialog>
 
-      {/* Logos Mapping (with overlay rectangles) */}
+      {/* Logos Mapping (with overlay rectangles) — unchanged behavior */}
       <Dialog open={logosOverlayMapOpen} onOpenChange={setLogosOverlayMapOpen}>
         <DialogContent className="!max-w-[1200px] p-0 overflow-hidden">
           <div className="bg-white">
             <div className="px-6 pt-6">
-              <DialogTitle className="text-2xl font-semibold">Logos Mapping Preview (with overlay)</DialogTitle>
+              <DialogTitle className="text-2xl font-semibold">
+                Logos Mapping Preview (with overlay)
+              </DialogTitle>
             </div>
 
             <div className="w-full flex flex-col items-center justify-center px-6 pb-6">
@@ -1034,7 +1210,11 @@ const handleToggleOnlyThisPage = (checked) => {
                   <button
                     className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 cursor-pointer"
                     onClick={() =>
-                      setLogosSliderIdx((p) => (p - 1 + logosSliderImagesOverlay.length) % logosSliderImagesOverlay.length)
+                      setLogosSliderIdx(
+                        p =>
+                          (p - 1 + logosSliderImagesOverlay.length) %
+                          logosSliderImagesOverlay.length
+                      )
                     }
                     type="button"
                     title="Previous"
@@ -1043,7 +1223,9 @@ const handleToggleOnlyThisPage = (checked) => {
                   </button>
                   <button
                     className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 cursor-pointer"
-                    onClick={() => setLogosSliderIdx((p) => (p + 1) % logosSliderImagesOverlay.length)}
+                    onClick={() =>
+                      setLogosSliderIdx(p => (p + 1) % logosSliderImagesOverlay.length)
+                    }
                     type="button"
                     title="Next"
                   >
@@ -1107,7 +1289,9 @@ const handleToggleOnlyThisPage = (checked) => {
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="!max-w-[560px]" dir="ltr">
           <DialogTitle className="text-xl font-semibold">Confirm</DialogTitle>
-          <div className="mt-2 text-gray-700 whitespace-pre-line">{confirmBody || 'Are you sure?'}</div>
+          <div className="mt-2 text-gray-700 whitespace-pre-line">
+            {confirmBody || 'Are you sure?'}
+          </div>
           <div className="mt-4 flex justify-end gap-2">
             <button
               className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 cursor-pointer"

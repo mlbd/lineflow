@@ -2,7 +2,7 @@
 
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { Trash2, SquarePen } from 'lucide-react';
+import { Trash2, SquarePen, Star } from 'lucide-react';
 
 export default function MappingList({ mappings, selectedId, onSelect, onDelete, onEdit }) {
   const formatCoordinate = value => {
@@ -37,14 +37,14 @@ export default function MappingList({ mappings, selectedId, onSelect, onDelete, 
                 <div
                   key={m.id}
                   className={cn(
-                    'px-3 py-1 rounded border flex items-center justify-between cursor-pointer hover:bg-muted group',
+                    'pr-3 pl-6 relative py-1 rounded border flex items-center justify-between cursor-pointer hover:bg-muted group',
                     m.id === selectedId ? 'bg-blue-100 border-blue-500' : 'border-border'
                   )}
                   onClick={() => onSelect(m.id)}
                 >
                   <div>
                     <div className="font-medium">{m.name}</div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-xs text-muted-foreground relative">
                       {/* Show percentage coordinates if available, otherwise show pixel coordinates */}
                       {m.xPercent !== undefined ? (
                         <>
@@ -58,12 +58,33 @@ export default function MappingList({ mappings, selectedId, onSelect, onDelete, 
                         </>
                       )}
                     </div>
+
                     {m.back && (
                       <div className="text-xs my-2 text-blue-600 font-semibold">
                         Back Logo Enabled
                       </div>
                     )}
                   </div>
+                  {m.active && (
+                    <div>
+                      {/* The main element you want the star on */}
+                      <div className="absolute top-[4px] left-[4px] z-10">
+                        <Star className="w-3 h-3 text-white relative">
+                          {/* Not directly supported — we overlay the triangle separately */}
+                        </Star>
+                      </div>
+
+                      {/* Triangle inside the top-left of the Star */}
+                      <div className="absolute top-0 left-0 w-12 h-12 pointer-events-none">
+                        {/* Triangle shape */}
+                        <div
+                          className="absolute top-0 left-0 w-0 h-0 
+                                        border-l-[32px] border-l-blue-600
+                                        border-b-[32px] border-b-transparent"
+                        ></div>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex gap-2 opacity-0 group-hover:opacity-100">
                     <SquarePen
                       size={16}

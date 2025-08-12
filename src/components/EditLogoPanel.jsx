@@ -39,9 +39,9 @@ function getPublicIdFromCloudinaryUrl(url) {
   try {
     const u = new URL(url);
     const parts = u.pathname.split('/').filter(Boolean);
-    const vIdx = parts.findIndex((p) => /^v\d+$/i.test(p));
+    const vIdx = parts.findIndex(p => /^v\d+$/i.test(p));
     const after = vIdx >= 0 ? parts.slice(vIdx + 1) : parts;
-    return after.map((seg) => seg.replace(/\.[a-z0-9]+$/i, '')).join('/');
+    return after.map(seg => seg.replace(/\.[a-z0-9]+$/i, '')).join('/');
   } catch {
     return '';
   }
@@ -59,7 +59,7 @@ export default function EditLogoPanel({
   const [q, setQ] = useState('');
 
   const filtered = q
-    ? list.filter((p) => {
+    ? list.filter(p => {
         const term = q.toLowerCase();
         return (
           (p.title || '').toLowerCase().includes(term) ||
@@ -85,7 +85,7 @@ export default function EditLogoPanel({
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
 
       // expected: { pages: [ { id, title, slug, acf: { logo_darker, logo_lighter, back_* } } ] }
-      const pages = (Array.isArray(json?.pages) ? json.pages : []).filter((p) =>
+      const pages = (Array.isArray(json?.pages) ? json.pages : []).filter(p =>
         isCloudinary(p?.acf?.logo_darker?.url || '')
       );
 
@@ -131,7 +131,7 @@ export default function EditLogoPanel({
         <Input
           placeholder="Search by title, slug, or ID"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={e => setQ(e.target.value)}
         />
       </div>
 
@@ -146,7 +146,7 @@ export default function EditLogoPanel({
         ) : filtered.length === 0 ? (
           <div className="text-sm text-muted-foreground">No pages found.</div>
         ) : (
-          filtered.map((p) => {
+          filtered.map(p => {
             const darkerUrl = p?.acf?.logo_darker?.url || '';
             const darkerId = getPublicIdFromCloudinaryUrl(darkerUrl);
 
