@@ -11,7 +11,8 @@ import CartShimmer from './CartShimmer';
 export default function CartPage({
   shippingOptions = [],
   shippingLoading = false,
-  meta = {},
+  acf = {},
+  companyData = {},
   companyLogos = {},
   pagePlacementMap = {},
   customBackAllowedSet = {},
@@ -41,7 +42,7 @@ export default function CartPage({
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ coupon_code: code, email: meta?.user_email || '' }),
+          body: JSON.stringify({ coupon_code: code, email: acf?.email_address || '' }),
         }
       );
       const data = await res.json();
@@ -62,7 +63,7 @@ export default function CartPage({
   if (!items.length) return <CartEmpty />;
 
   return (
-    <div className="relative">
+    <div className="relative bg-bglight">
       <div className="mt-16 max-w-[900px] mx-auto w-full">
         <div className="container mx-auto py-8 px-4">
           <h1 className="text-3xl font-bold mb-8 text-center">סל קניות</h1>
@@ -129,13 +130,14 @@ export default function CartPage({
           )}
         </div>
       </div>
-      <div className="py-[50px] mt-[50px] bg-bglight">
+      <div className="py-[50px] mt-[50px] bg-white">
         <div className="mt-16 flex justify-center max-w-[900px] mx-auto w-full">
           <div className="w-8/12">
             <CartSummary
               selectedShipping={selectedShipping}
               coupon={coupon && coupon.valid ? coupon : null}
-              userMeta={meta}
+              userMeta={acf}
+              companyData={companyData}
             />
           </div>
         </div>

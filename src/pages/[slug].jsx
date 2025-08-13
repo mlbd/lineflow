@@ -105,16 +105,17 @@ export async function getStaticProps({ params }) {
         bumpPrice,
         pageId: data?.id || null,
         companyData: {
-          name: data.meta.header_title || data.title || '',
-          description: data.meta.header_content || '',
+          name: data.acf?.user_header_title || data.title || '',
+          description: data.acf?.user_header_content || '',
           logo: data.acf?.logo_darker?.url || null,
         },
         companyLogos,
         seo: {
-          title: data.meta.header_title || data.title || '',
-          description: data.meta.header_content || '',
+          title: data.acf?.user_header_title || data.title || '',
+          description: data?.acf.user_header_content || '',
           image: data.acf?.logo_darker?.url || null,
         },
+        acf: data?.acf || [],
         meta: data?.meta || [],
         shippingOptions,
         pagePlacementMap,
@@ -146,6 +147,7 @@ export default function LandingPage({
   companyData = {},
   seo = {},
   meta = [],
+  acf = [],
   error = false,
   shippingOptions = [],
   companyLogos = [],
@@ -217,7 +219,8 @@ export default function LandingPage({
             <CartPage
               shippingOptions={shippingOptions}
               shippingLoading={false}
-              meta={meta}
+              acf={acf}
+              companyData={companyData}
               companyLogos={companyLogos}
               pagePlacementMap={pagePlacementMap}
               customBackAllowedSet={customBackAllowedSet}
