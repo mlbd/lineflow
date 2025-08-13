@@ -1,20 +1,44 @@
 // lib/shippingCache.js
-import fs from 'fs';
-import path from 'path';
+// Runtime-safe, read-only friendly cache (works on Vercel). No filesystem writes.
 
-const cacheFile = path.resolve('.next/shipping-cache.json');
+let _cache = {
+  data: null,
+  expiresAt: 0,
+};
 
 export function readShippingCache() {
-  if (fs.existsSync(cacheFile)) {
-    try {
-      return JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
-    } catch (e) {
-      return null;
-    }
+  if (_cache.data && Date.now() < _cache.expiresAt) {
+    return _cache.data;
   }
   return null;
 }
 
-export function writeShippingCache(data) {
-  fs.writeFileSync(cacheFile, JSON.stringify(data), 'utf8');
+/**
+ * @param {any} data
+ * @param {number} ttlSeconds Default 3600 (1 hour)
+ */
+export function writeShippingCache(data, ttlSeconds = 3600) {
+  _cache = {
+    data,
+    expiresAt: Date.now() + ttlSeconds * 1000,
+  };
+}
+
+/**
+ * Helper: fetch-and-cache with TTL
+ * @param {() => Promise<any>} fetcher
+ * @param {number} ttlSeconds
+ */
+export async function getOrFetchShipping(fetcher, ttlSeconds = 3600) {
+  const existing = readShippingCache();
+  if (existing) return existing;
+
+  const data = await fetcher();
+  writeShippingCache(data, ttlSeconds);
+  return data;
+}
+
+/** Force clear (e.g., from an API route) */
+export function clearShippingCache() {
+  _cache = { data: null, expiresAt: 0 };
 }

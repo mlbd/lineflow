@@ -10,7 +10,7 @@ import ProductListSection from '@/components/page/ProductListSection';
 import CartPage from '@/components/cart/CartPage';
 import Footer from '@/components/page/Footer';
 
-import { readShippingCache, writeShippingCache } from '@/lib/shippingCache';
+import { getOrFetchShipping } from '@/lib/shippingCache';
 
 const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
 
@@ -43,27 +43,23 @@ export async function getStaticProps({ params }) {
     const productIds = productIdsRaw.map(p => (typeof p === 'object' ? p.id : p)).filter(Boolean);
     console.log('🔢 Normalized product IDs:', productIds);
 
-    // SHIPPING CACHE LOGIC
-    let shippingOptions = readShippingCache();
-    if (!shippingOptions) {
+    // SHIPPING CACHE LOGIC (runtime-safe)
+    let shippingOptions = await getOrFetchShipping(async () => {
       const shippingRes = await fetch(`${WP_URL}/wp-json/mini-sites/v1/shipping`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          country: 'IL',
-          postcode: '',
-          cart: [],
-        }),
+        body: JSON.stringify({ country: 'IL', postcode: '', cart: [] }),
+        // Optional: if your WP supports it, consider a short server cache there too
       });
-      if (shippingRes.ok) {
-        const shippingData = await shippingRes.json();
-        shippingOptions = shippingData.shipping || [];
-        writeShippingCache(shippingOptions);
-      } else {
-        shippingOptions = [];
+
+      if (!shippingRes.ok) {
+        console.warn('Shipping fetch failed with status:', shippingRes.status);
+        return [];
       }
-    }
-    // END SHIPPING CACHE
+      const shippingData = await shippingRes.json();
+      return shippingData.shipping || [];
+    }, 3600);
+    // END SHIPPING CACHE LOGIC
 
     const companyLogos = {
       logo_darker: data?.acf?.logo_darker || null,
