@@ -51,9 +51,8 @@ export default function EditLogoPanel({
   open,
   onClose,
   onSelect,
-  // wpUrl, folder  // accepted for compatibility; not used anymore
 }) {
-  const [list, setList] = useState([]); // full pages after filtering by logo_darker
+  const [list, setList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [q, setQ] = useState('');
@@ -70,21 +69,30 @@ export default function EditLogoPanel({
     : list;
 
   const load = useCallback(async () => {
-    // cache-first
-    const cached = lsGet(LS_KEY);
-    if (cached && Array.isArray(cached.pages)) {
-      setList(cached.pages);
-      return;
+    const forceNoCache = localStorage.getItem('ms_force_noCache_pages') === '1';
+    if (forceNoCache) {
+      localStorage.removeItem('ms_force_noCache_pages');
+    }
+
+    // cache-first if not forcing
+    if (!forceNoCache) {
+      const cached = lsGet(LS_KEY);
+      if (cached && Array.isArray(cached.pages)) {
+        setList(cached.pages);
+        return;
+      }
     }
 
     setLoading(true);
     setErr('');
     try {
-      const res = await fetch(`${API_ROOT}/pages`, { cache: 'no-store' });
+      const res = await fetch(
+        `${API_ROOT}/pages${forceNoCache ? '?noCache=1' : ''}`,
+        { cache: 'no-store' }
+      );
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
 
-      // expected: { pages: [ { id, title, slug, acf: { logo_darker, logo_lighter, back_* } } ] }
       const pages = (Array.isArray(json?.pages) ? json.pages : []).filter(p =>
         isCloudinary(p?.acf?.logo_darker?.url || '')
       );
@@ -98,7 +106,6 @@ export default function EditLogoPanel({
     }
   }, []);
 
-  // respond to global "Clear Cache" button in page.jsx
   useEffect(() => {
     const onClear = () => {
       localStorage.removeItem(LS_KEY);
@@ -155,7 +162,6 @@ export default function EditLogoPanel({
                 key={p.id}
                 className="cursor-pointer border rounded hover:bg-muted transition"
                 onClick={() => {
-                  // match current page.jsx usage: onSelect(publicId, page)
                   onSelect(darkerId, p);
                   onClose();
                 }}

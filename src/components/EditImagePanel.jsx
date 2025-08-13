@@ -43,31 +43,39 @@ export default function EditImagePanel({ open, onClose, onSelect }) {
     : all;
 
   const load = useCallback(async () => {
-    // cache-first (browser)
+  const forceNoCache = localStorage.getItem('ms_force_noCache') === '1';
+  if (forceNoCache) {
+    localStorage.removeItem('ms_force_noCache'); // reset after one use
+  }
+
+  // cache-first (browser) — only if not forcing noCache
+  if (!forceNoCache) {
     const cached = lsGet(LS_KEY);
     if (cached && Array.isArray(cached.products)) {
       setAll(cached.products);
       return;
     }
+  }
 
-    setLoading(true);
-    setErr('');
-    try {
-      const bust = localStorage.getItem('ms_force_noCache') === '1';
-      const res = await fetch(`${API_ROOT}/products${bust ? '?noCache=1' : ''}`, { cache: 'no-store' });
-      localStorage.removeItem('ms_force_noCache');
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
+  setLoading(true);
+  setErr('');
+  try {
+    const res = await fetch(
+      `${API_ROOT}/products${forceNoCache ? '?noCache=1' : ''}`,
+      { cache: 'no-store' }
+    );
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
 
-      const products = Array.isArray(json?.products) ? json.products : [];
-      setAll(products);
-      lsSet(LS_KEY, { products });
-    } catch (e) {
-      setErr(e.message || 'Failed to load products');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    const products = Array.isArray(json?.products) ? json.products : [];
+    setAll(products);
+    lsSet(LS_KEY, { products });
+  } catch (e) {
+    setErr(e.message || 'Failed to load products');
+  } finally {
+    setLoading(false);
+  }
+}, []);
 
   // react to global "Clear Cache"
   useEffect(() => {

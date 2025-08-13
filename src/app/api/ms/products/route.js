@@ -9,7 +9,7 @@ const WP_URL = process.env.WP_SITE_URL || process.env.NEXT_PUBLIC_WP_SITE_URL;
 async function fetchProductsPage(page = 1) {
   const res = await fetch(
     `${WP_URL}/wp-json/mini-sites/v1/products?per_page=${PER_PAGE}&page=${page}`,
-    { next: { revalidate: REVALIDATE_SECONDS } }
+    { cache: 'no-store' } // always fetch fresh from WP
   );
   const json = await res.json();
   if (!res.ok) throw new Error(json?.message || `Products HTTP ${res.status}`);
@@ -34,8 +34,8 @@ export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const noCache = searchParams.get('noCache') === '1';
 
+  // 🚀 If noCache is set, skip unstable_cache completely
   if (noCache) {
-    // Skip unstable_cache — get direct fresh data
     const data = await loadAllProducts();
     return new Response(JSON.stringify(data), {
       headers: { 'content-type': 'application/json', 'Cache-Control': 'no-store' },
@@ -46,8 +46,15 @@ export async function GET(req) {
     revalidate: REVALIDATE_SECONDS,
     tags: ['ms:products'],
   });
-  const data = await cached();
-  return new Response(JSON.stringify(data), {
-    headers: { 'content-type': 'application/json' },
-  });
+  try {
+    const data = await cached();
+    return new Response(JSON.stringify(data), {
+      headers: {
+        'content-type': 'application/json',
+        'Cache-Control': `s-maxage=${REVALIDATE_SECONDS}, stale-while-revalidate=86400`,
+      },
+    });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: e.message || 'Failed' }), { status: 500 });
+  }
 }

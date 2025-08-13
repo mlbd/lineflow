@@ -45,13 +45,13 @@ export async function GET(req) {
     }
 
     const { searchParams } = new URL(req.url);
-    const force = searchParams.get('force') === '1';
+    const noCache = searchParams.get('noCache') === '1'; // NEW: bypass cache if true
 
     const cache = getCache();
     const hit = cache[CACHE_KEY];
 
-    // Serve cached unless forced or expired
-    if (!force && hit && Date.now() - hit.ts < TTL_MS) {
+    // Serve cached unless bypass requested or expired
+    if (!noCache && hit && Date.now() - hit.ts < TTL_MS) {
       return NextResponse.json(hit.payload, { status: 200 });
     }
 
@@ -70,18 +70,20 @@ export async function GET(req) {
 
     const payload = {
       pages,
-      // Compact pagination summary for consumers that expect it
       pagination: {
         total: pages.length,
         per_page: pages.length,
         current_page: 1,
         total_pages: 1,
       },
-      // diagnostic info
       meta: { source: 'wp', fetched_at: Date.now() },
     };
 
-    cache[CACHE_KEY] = { ts: Date.now(), payload };
+    // Only store in cache if not bypassing
+    if (!noCache) {
+      cache[CACHE_KEY] = { ts: Date.now(), payload };
+    }
+
     return NextResponse.json(payload, { status: 200 });
   } catch (e) {
     return NextResponse.json({ error: e.message || 'Failed to load pages' }, { status: 500 });

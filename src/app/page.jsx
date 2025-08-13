@@ -773,8 +773,10 @@ export default function HomePage() {
               label="Clear Cache"
               title="Clear local & server caches"
               onClick={async () => {
-                // Clear browser caches in both panels
+                 // Clear browser caches
                 window.dispatchEvent(new Event('ms-clear-cache'));
+                localStorage.setItem('ms_force_noCache', '1'); // 👈 next request will skip server cache
+                localStorage.setItem('ms_force_noCache_pages', '1');  // pages
 
                 // Revalidate product cache on the server (products route uses Next tag cache)
                 try {
@@ -783,10 +785,6 @@ export default function HomePage() {
                     headers: { 'content-type': 'application/json' },
                     body: JSON.stringify({ tags: ['ms:products', 'ms:pages'] }),
                   });
-
-                  // Store a flag for the panel
-                  localStorage.removeItem('ms_cache_products_all_v2');
-                  localStorage.setItem('ms_force_noCache', '1');
                 } catch {}
 
                 alert('Cache cleared!');
