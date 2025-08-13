@@ -26,7 +26,7 @@ export async function getStaticPaths() {
 
 export async function getStaticProps({ params }) {
   try {
-    console.log('⏳ Fetching company page data for slug:', params.slug);
+    console.log('⏳ Fetching company page data for slug:', WP_URL, params.slug);
 
     const res = await fetch(`${WP_URL}/wp-json/mini-sites/v1/company-page?slug=${params.slug}`);
     if (!res.ok) throw new Error('Failed to fetch company data');
