@@ -1,12 +1,18 @@
 // src/app/api/ms/revalidate/route.js
-import { revalidateTag } from 'next/cache';
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+import { NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
 
 export async function POST(req) {
-  const { tags } = await req.json().catch(() => ({ tags: [] }));
-  const list = Array.isArray(tags) && tags.length ? tags : ['ms:products', 'ms:pages'];
-  list.forEach(t => revalidateTag(t));
-  return new Response(JSON.stringify({ ok: true, revalidated: list }), {
-    headers: { 'content-type': 'application/json' },
-  });
+  const body = await req.json().catch(() => ({}));
+  const tags = body.tags ?? ['ms:products', 'ms:pages'];
+
+  await Promise.all(tags.map(t => revalidateTag(t)));
+
+  return NextResponse.json(
+    { ok: true, revalidated: tags },
+    { headers: { 'Cache-Control': 'no-store' } }
+  );
 }

@@ -1,3 +1,4 @@
+// src/pages/api/revalidate.js
 export default async function handler(req, res) {
   const { slug } = req.query;
   if (!slug) return res.status(400).json({ message: 'Missing slug' });
