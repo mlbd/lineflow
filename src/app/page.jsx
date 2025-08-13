@@ -371,6 +371,48 @@ export default function HomePage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.message || `HTTP ${res.status}`);
 
+      // Merge updated product/page into local cache
+      try {
+        if (data?.saved_on === 'product' && data?.product) {
+          // Update current state if this is the selected product
+          if (Number(data.product.id) === Number(selectedProductId)) {
+            setSelectedProduct(data.product);
+          }
+
+          // Update products LocalStorage cache
+          const LS_KEY = 'ms_cache_products_all_v2';
+          const raw = localStorage.getItem(LS_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed?.data?.products)) {
+              parsed.data.products = parsed.data.products.map(p =>
+                p.id === data.product.id ? data.product : p
+              );
+              parsed.__ts = Date.now();
+              localStorage.setItem(LS_KEY, JSON.stringify(parsed));
+            }
+          }
+        } 
+        else if (data?.saved_on === 'page' && data?.page) {
+          // Update pages LocalStorage cache
+          const LS_KEY_PAGES = 'ms_cache_pages_all_v5';
+          const raw = localStorage.getItem(LS_KEY_PAGES);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed?.data?.pages)) {
+              parsed.data.pages = parsed.data.pages.map(pg =>
+                pg.id === data.page.id ? data.page : pg
+              );
+              parsed.__ts = Date.now();
+              localStorage.setItem(LS_KEY_PAGES, JSON.stringify(parsed));
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to update local cache after placement save', err);
+      }
+
+
       setResultOk(true);
       setResultMsg(data?.message || 'Placements saved!');
     } catch (err) {
