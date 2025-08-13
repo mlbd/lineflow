@@ -16,7 +16,7 @@ const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
 
 export async function getStaticPaths() {
   // Hardcode the slugs you want to prebuild
-  const slugs = ['acumenrisk'];
+  const slugs = ['sabbir'];
 
   return {
     paths: slugs.map(slug => ({ params: { slug } })),
