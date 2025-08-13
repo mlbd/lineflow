@@ -43,39 +43,38 @@ export default function EditImagePanel({ open, onClose, onSelect }) {
     : all;
 
   const load = useCallback(async () => {
-  const forceNoCache = localStorage.getItem('ms_force_noCache') === '1';
-  if (forceNoCache) {
-    localStorage.removeItem('ms_force_noCache'); // reset after one use
-  }
-
-  // cache-first (browser) — only if not forcing noCache
-  if (!forceNoCache) {
-    const cached = lsGet(LS_KEY);
-    if (cached && Array.isArray(cached.products)) {
-      setAll(cached.products);
-      return;
+    const forceNoCache = localStorage.getItem('ms_force_noCache') === '1';
+    if (forceNoCache) {
+      localStorage.removeItem('ms_force_noCache'); // reset after one use
     }
-  }
 
-  setLoading(true);
-  setErr('');
-  try {
-    const res = await fetch(
-      `${API_ROOT}/products${forceNoCache ? '?noCache=1' : ''}`,
-      { cache: 'no-store' }
-    );
-    const json = await res.json();
-    if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
+    // cache-first (browser) — only if not forcing noCache
+    if (!forceNoCache) {
+      const cached = lsGet(LS_KEY);
+      if (cached && Array.isArray(cached.products)) {
+        setAll(cached.products);
+        return;
+      }
+    }
 
-    const products = Array.isArray(json?.products) ? json.products : [];
-    setAll(products);
-    lsSet(LS_KEY, { products });
-  } catch (e) {
-    setErr(e.message || 'Failed to load products');
-  } finally {
-    setLoading(false);
-  }
-}, []);
+    setLoading(true);
+    setErr('');
+    try {
+      const res = await fetch(`${API_ROOT}/products${forceNoCache ? '?noCache=1' : ''}`, {
+        cache: 'no-store',
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
+
+      const products = Array.isArray(json?.products) ? json.products : [];
+      setAll(products);
+      lsSet(LS_KEY, { products });
+    } catch (e) {
+      setErr(e.message || 'Failed to load products');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   // react to global "Clear Cache"
   useEffect(() => {

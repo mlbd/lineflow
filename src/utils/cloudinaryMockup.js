@@ -264,7 +264,7 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
     }
   }
 
-  console.log("📸 Generating mockup for product:", product);
+  console.log('📸 Generating mockup for product:', product);
   const rawPlacements = resolvePlacements(product, opts);
   const allowBack = isBackAllowedForProduct(product?.id, opts);
 

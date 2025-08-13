@@ -47,11 +47,7 @@ function getPublicIdFromCloudinaryUrl(url) {
   }
 }
 
-export default function EditLogoPanel({
-  open,
-  onClose,
-  onSelect,
-}) {
+export default function EditLogoPanel({ open, onClose, onSelect }) {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -86,10 +82,9 @@ export default function EditLogoPanel({
     setLoading(true);
     setErr('');
     try {
-      const res = await fetch(
-        `${API_ROOT}/pages${forceNoCache ? '?noCache=1' : ''}`,
-        { cache: 'no-store' }
-      );
+      const res = await fetch(`${API_ROOT}/pages${forceNoCache ? '?noCache=1' : ''}`, {
+        cache: 'no-store',
+      });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
 
