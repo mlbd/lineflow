@@ -53,7 +53,9 @@ export default function EditImagePanel({ open, onClose, onSelect }) {
     setLoading(true);
     setErr('');
     try {
-      const res = await fetch(`${API_ROOT}/products`, { cache: 'no-store' });
+      const bust = localStorage.getItem('ms_force_noCache') === '1';
+      const res = await fetch(`${API_ROOT}/products${bust ? '?noCache=1' : ''}`, { cache: 'no-store' });
+      localStorage.removeItem('ms_force_noCache');
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
 

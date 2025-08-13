@@ -783,6 +783,10 @@ export default function HomePage() {
                     headers: { 'content-type': 'application/json' },
                     body: JSON.stringify({ tags: ['ms:products', 'ms:pages'] }),
                   });
+
+                  // Store a flag for the panel
+                  localStorage.removeItem('ms_cache_products_all_v2');
+                  localStorage.setItem('ms_force_noCache', '1');
                 } catch {}
 
                 alert('Cache cleared!');

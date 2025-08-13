@@ -30,20 +30,24 @@ async function loadAllProducts() {
   };
 }
 
-export async function GET() {
+export async function GET(req) {
+  const { searchParams } = new URL(req.url);
+  const noCache = searchParams.get('noCache') === '1';
+
+  if (noCache) {
+    // Skip unstable_cache — get direct fresh data
+    const data = await loadAllProducts();
+    return new Response(JSON.stringify(data), {
+      headers: { 'content-type': 'application/json', 'Cache-Control': 'no-store' },
+    });
+  }
+
   const cached = unstable_cache(loadAllProducts, ['ms:products:all:v1'], {
     revalidate: REVALIDATE_SECONDS,
     tags: ['ms:products'],
   });
-  try {
-    const data = await cached();
-    return new Response(JSON.stringify(data), {
-      headers: {
-        'content-type': 'application/json',
-        'Cache-Control': `s-maxage=${REVALIDATE_SECONDS}, stale-while-revalidate=86400`,
-      },
-    });
-  } catch (e) {
-    return new Response(JSON.stringify({ error: e.message || 'Failed' }), { status: 500 });
-  }
+  const data = await cached();
+  return new Response(JSON.stringify(data), {
+    headers: { 'content-type': 'application/json' },
+  });
 }
