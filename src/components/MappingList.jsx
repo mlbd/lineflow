@@ -19,6 +19,8 @@ export default function MappingList({ mappings, selectedId, onSelect, onDelete, 
     return '0%';
   };
 
+  const formatRotation = v => (typeof v === 'number' && !Number.isNaN(v) ? Math.round(v) : 0); // NEW
+
   return (
     <div className="mb-10">
       <h2 className="text-lg font-semibold mb-4 px-4">Placement Areas</h2>
@@ -50,13 +52,17 @@ export default function MappingList({ mappings, selectedId, onSelect, onDelete, 
                         <>
                           x: {formatPercentage(m.xPercent)}, y: {formatPercentage(m.yPercent)} w:{' '}
                           {formatPercentage(m.wPercent)}, h: {formatPercentage(m.hPercent)}
+                          {/* */}
                         </>
                       ) : (
                         <>
                           x: {formatCoordinate(m.x)}, y: {formatCoordinate(m.y)} w:{' '}
                           {formatCoordinate(m.w)}, h: {formatCoordinate(m.h)}
+                          {/* */}
                         </>
                       )}
+                      {/* NEW: rotation display */} · rot: {formatRotation(m.rotation)}&deg;{' '}
+                      {/* NEW */}
                     </div>
 
                     {m.back && (

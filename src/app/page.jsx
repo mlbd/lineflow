@@ -392,8 +392,7 @@ export default function HomePage() {
               localStorage.setItem(LS_KEY, JSON.stringify(parsed));
             }
           }
-        } 
-        else if (data?.saved_on === 'page' && data?.page) {
+        } else if (data?.saved_on === 'page' && data?.page) {
           // Update pages LocalStorage cache
           const LS_KEY_PAGES = 'ms_cache_pages_all_v5';
           const raw = localStorage.getItem(LS_KEY_PAGES);
@@ -411,7 +410,6 @@ export default function HomePage() {
       } catch (err) {
         console.error('Failed to update local cache after placement save', err);
       }
-
 
       setResultOk(true);
       setResultMsg(data?.message || 'Placements saved!');
@@ -1079,6 +1077,7 @@ export default function HomePage() {
                       top: `${(b.yPercent || 0) * 100}%`,
                       width: `${(b.wPercent || 0) * 100}%`,
                       height: `${(b.hPercent || 0) * 100}%`,
+                      transform: `rotate(${Number(b.rotation) || 0}deg)`, // <-- changed
                     }}
                   >
                     <div className="absolute -top-5 left-0 text-[11px] bg-blue-600 text-white px-1 py-0.5 rounded">

@@ -265,7 +265,19 @@ export default function LogosPage() {
     if (aspect <= 0.8) return 'vertical';
     return 'square';
   }
+  // Add this helper function at the top of your logos.jsx file (after imports)
+  const getAngleDeg = mapping => {
+    if (!mapping) return 0;
+    if (typeof mapping.rotation === 'number' && !Number.isNaN(mapping.rotation))
+      return Math.round(mapping.rotation);
+    if (typeof mapping.angle_deg === 'number' && !Number.isNaN(mapping.angle_deg))
+      return Math.round(mapping.angle_deg);
+    if (typeof mapping.angle === 'number' && !Number.isNaN(mapping.angle))
+      return Math.round((mapping.angle * 180) / Math.PI);
+    return 0;
+  };
 
+  // Updated generateThumbnailUrl function with rotation support
   const generateThumbnailUrl = async (data, logo, overlayEnabled, color) => {
     if (!ENABLE_CLOUDINARY) return data.imageUrl;
 
@@ -308,8 +320,8 @@ export default function LogosPage() {
           fitH = Math.round(fitH * SCALE_UP_FACTOR);
         }
 
-        const logoX = x + Math.round((w - fitW) / 2);
-        const logoY = y + Math.round((h - fitH) / 2);
+        // Get rotation angle from mapping
+        const angleDeg = getAngleDeg(m);
 
         if (overlayEnabled) {
           const r = color.r.toString(16).padStart(2, '0');
@@ -319,17 +331,56 @@ export default function LogosPage() {
           const opacity = Math.round((color.a ?? 1) * 100);
           setOverayColor(hexColor);
 
-          return [
-            `l_one_pixel_s4c3vt,w_${w},h_${h}`,
-            `co_rgb:${hexColor},e_colorize:100,o_${opacity},fl_layer_apply,x_${x},y_${y},g_north_west`,
-            `l_${public_id},c_pad,w_${fitW},h_${fitH},g_center,b_auto`,
-            `fl_layer_apply,x_${logoX},y_${logoY},g_north_west`,
-          ].join('/');
+          if (!angleDeg) {
+            // No rotation: use original positioning
+            const logoX = x + Math.round((w - fitW) / 2);
+            const logoY = y + Math.round((h - fitH) / 2);
+
+            return [
+              `l_one_pixel_s4c3vt,w_${w},h_${h}`,
+              `co_rgb:${hexColor},e_colorize:100,o_${opacity},fl_layer_apply,x_${x},y_${y},g_north_west`,
+              `l_${public_id},c_pad,w_${fitW},h_${fitH},g_center,b_auto`,
+              `fl_layer_apply,x_${logoX},y_${logoY},g_north_west`,
+            ].join('/');
+          } else {
+            // With rotation: use center positioning to avoid drift
+            const cx = x + Math.round(w / 2);
+            const cy = y + Math.round(h / 2);
+            const offX = cx - Math.round(naturalW / 2);
+            const offY = cy - Math.round(naturalH / 2);
+
+            return [
+              // Rotated color overlay - rotation applied BEFORE fl_layer_apply
+              `l_one_pixel_s4c3vt,w_${w},h_${h}`,
+              `co_rgb:${hexColor},e_colorize:100,o_${opacity},a_${angleDeg},fl_layer_apply,g_center,x_${offX},y_${offY}`,
+              // Rotated logo overlay - rotation applied BEFORE fl_layer_apply
+              `l_${public_id},c_pad,w_${fitW},h_${fitH},g_center,b_auto,a_${angleDeg}`,
+              `fl_layer_apply,g_center,x_${offX},y_${offY}`,
+            ].join('/');
+          }
         } else {
-          return [
-            `l_${public_id},c_pad,w_${fitW},h_${fitH},g_center,b_auto`,
-            `fl_layer_apply,x_${logoX},y_${logoY},g_north_west`,
-          ].join('/');
+          // No overlay, just logo with optional rotation
+          if (!angleDeg) {
+            // No rotation: use original positioning
+            const logoX = x + Math.round((w - fitW) / 2);
+            const logoY = y + Math.round((h - fitH) / 2);
+
+            return [
+              `l_${public_id},c_pad,w_${fitW},h_${fitH},g_center,b_auto`,
+              `fl_layer_apply,x_${logoX},y_${logoY},g_north_west`,
+            ].join('/');
+          } else {
+            // With rotation: use center positioning
+            const cx = x + Math.round(w / 2);
+            const cy = y + Math.round(h / 2);
+            const offX = cx - Math.round(naturalW / 2);
+            const offY = cy - Math.round(naturalH / 2);
+
+            return [
+              `l_${public_id},c_pad,w_${fitW},h_${fitH},g_center,b_auto,a_${angleDeg}`,
+              `fl_layer_apply,g_center,x_${offX},y_${offY}`,
+            ].join('/');
+          }
         }
       });
 

@@ -1,4 +1,6 @@
 // /src/utils/cloudinaryMockup.js
+// Rotation-safe placement: WHEN rotated, position by CENTER; otherwise keep old top-left placement.
+
 const ENV_CLOUD =
   process.env.NEXT_PUBLIC_CLD_CLOUD || process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
 
@@ -82,6 +84,16 @@ const pickLogoVariant = (logos, useBack, bgIsDark) => {
   return validLogo(get('logo_darker')) ? get('logo_darker') : null;
 };
 
+/* --------------------- angle helper --------------------- */
+const getAngleDeg = p => {
+  if (!p) return 0;
+  if (typeof p.rotation === 'number' && !Number.isNaN(p.rotation)) return Math.round(p.rotation);
+  if (typeof p.angle_deg === 'number' && !Number.isNaN(p.angle_deg)) return Math.round(p.angle_deg);
+  if (typeof p.angle === 'number' && !Number.isNaN(p.angle))
+    return Math.round((p.angle * 180) / Math.PI);
+  return 0;
+};
+
 /* --------------------- helpers --------------------- */
 const resolvePlacements = (product, opts = {}) => {
   const pid = String(product?.id ?? '');
@@ -103,7 +115,7 @@ const isBackAllowedForProduct = (productId, opts = {}) => {
   return false;
 };
 
-/* ------------------------ FULL builder ------------------------ */
+/* ------------------------ FULL builder (absolute px) ------------------------ */
 
 export const buildCloudinaryMockupUrl = ({
   baseUrl,
@@ -113,10 +125,7 @@ export const buildCloudinaryMockupUrl = ({
   placements = [],
   logos = {},
   productId = null,
-  debugLabel = 'grid',
 }) => {
-  const pid = productId ? `[${productId}]` : '';
-
   if (!isCloudinaryUrl(baseUrl)) return baseUrl;
   if (!Array.isArray(placements) || placements.length === 0) return baseUrl;
   if (!validLogo(logos?.logo_darker)) return baseUrl;
@@ -129,7 +138,7 @@ export const buildCloudinaryMockupUrl = ({
   const bgIsDark = isDarkHex(baseHex);
   const transforms = [];
 
-  placements.forEach((p, idx) => {
+  placements.forEach(p => {
     const parsedLogoObj = pickLogoVariant(logos, !!p.__useBack, bgIsDark);
     if (!parsedLogoObj) return;
 
@@ -141,6 +150,7 @@ export const buildCloudinaryMockupUrl = ({
     const w = Math.max(1, Math.round((p.wPercent != null ? p.wPercent : p.w / baseW) * baseW));
     const h = Math.max(1, Math.round((p.hPercent != null ? p.hPercent : p.h / baseH) * baseH));
 
+    // Fit logo inside bbox (keep aspect)
     const lw = Number(parsedLogoObj.width) || 0;
     const lh = Number(parsedLogoObj.height) || 0;
     let logoW = w,
@@ -157,13 +167,29 @@ export const buildCloudinaryMockupUrl = ({
       }
     }
 
-    const finalX = x + Math.round((w - logoW) / 2);
-    const finalY = y + Math.round((h - logoH) / 2);
-    const angle = p.angle ? Math.round((p.angle * 180) / Math.PI) : 0;
+    const angleDeg = getAngleDeg(p);
 
-    transforms.push(
-      `l_${parsedLogo.overlayId},c_pad,w_${logoW},h_${logoH},g_center,b_auto${angle ? `,a_${angle}` : ''}/fl_layer_apply,x_${finalX},y_${finalY},g_north_west`
-    );
+    if (!angleDeg) {
+      // —— No rotation: keep OLD behavior (top-left anchor with centered fit) ——
+      const finalX = x + Math.round((w - logoW) / 2);
+      const finalY = y + Math.round((h - logoH) / 2);
+
+      transforms.push(
+        `l_${parsedLogo.overlayId},c_pad,w_${logoW},h_${logoH},g_center,b_auto`,
+        `fl_layer_apply,x_${finalX},y_${finalY},g_north_west`
+      );
+    } else {
+      // —— Rotated: position by CENTER to avoid drift ——
+      const cx = x + Math.round(w / 2);
+      const cy = y + Math.round(h / 2);
+      const offX = cx - Math.round(baseW / 2);
+      const offY = cy - Math.round(baseH / 2);
+
+      transforms.push(
+        `l_${parsedLogo.overlayId},c_pad,w_${logoW},h_${logoH},g_center,b_auto,a_${angleDeg}`,
+        `fl_layer_apply,g_center,x_${offX},y_${offY}`
+      );
+    }
   });
 
   if (!transforms.length) return baseUrl;
@@ -171,7 +197,7 @@ export const buildCloudinaryMockupUrl = ({
   return `https://res.cloudinary.com/${cloud}/image/upload/${transforms.join('/')}/${parsedBase.baseAsset}`;
 };
 
-/* ------------------------ RELATIVE builder ------------------------ */
+/* ------------------------ RELATIVE builder (0..1) ------------------------ */
 export const buildRelativeMockupUrl = ({
   baseUrl,
   placements = [],
@@ -180,10 +206,7 @@ export const buildRelativeMockupUrl = ({
   max = 900,
   maxH = null,
   productId = null,
-  debugLabel = 'relative',
 }) => {
-  const pid = productId ? `[${productId}]` : '';
-
   if (!isCloudinaryUrl(baseUrl)) return baseUrl;
   if (!Array.isArray(placements) || placements.length === 0) return baseUrl;
   if (!validLogo(logos?.logo_darker)) return baseUrl;
@@ -198,7 +221,7 @@ export const buildRelativeMockupUrl = ({
 
   transforms.push(`f_auto,q_auto,c_fit,w_${max}${maxH ? `,h_${maxH}` : ''}`);
 
-  placements.forEach((p, idx) => {
+  placements.forEach(p => {
     const chosen = pickLogoVariant(logos, !!p.__useBack, bgIsDark);
     if (!chosen || !isCloudinaryUrl(chosen.url)) return;
 
@@ -214,8 +237,8 @@ export const buildRelativeMockupUrl = ({
     let relW = p.wPercent,
       relH = p.hPercent;
     if (lw > 0 && lh > 0) {
-      const la = lw / lh;
-      const ba = p.wPercent / p.hPercent;
+      const la = lw / lh,
+        ba = p.wPercent / p.hPercent;
       if (la > ba) {
         relW = p.wPercent;
         relH = p.wPercent / la;
@@ -225,20 +248,34 @@ export const buildRelativeMockupUrl = ({
       }
     }
 
-    const relX = p.xPercent + (p.wPercent - relW) / 2;
-    const relY = p.yPercent + (p.hPercent - relH) / 2;
-    const angle = p.angle ? Math.round((p.angle * 180) / Math.PI) : 0;
+    const angleDeg = getAngleDeg(p);
 
-    transforms.push(
-      `l_${parsedLogo.overlayId},c_pad,fl_relative,w_${relW.toFixed(6)},h_${relH.toFixed(6)},g_center,b_auto${angle ? `,a_${angle}` : ''}`,
-      `fl_layer_apply,fl_relative,x_${relX.toFixed(6)},y_${relY.toFixed(6)},g_north_west`
-    );
+    if (!angleDeg) {
+      // —— No rotation: keep OLD behavior (top-left anchor with centered fit) ——
+      const relX = p.xPercent + (p.wPercent - relW) / 2;
+      const relY = p.yPercent + (p.hPercent - relH) / 2;
+
+      transforms.push(
+        `l_${parsedLogo.overlayId},c_pad,fl_relative,w_${relW.toFixed(6)},h_${relH.toFixed(6)},g_center,b_auto`,
+        `fl_layer_apply,fl_relative,x_${relX.toFixed(6)},y_${relY.toFixed(6)},g_north_west`
+      );
+    } else {
+      // —— Rotated: position by CENTER (offsets from base center) ——
+      const cRelX = p.xPercent + p.wPercent / 2;
+      const cRelY = p.yPercent + p.hPercent / 2;
+      const offRelX = (cRelX - 0.5).toFixed(6);
+      const offRelY = (cRelY - 0.5).toFixed(6);
+
+      transforms.push(
+        `l_${parsedLogo.overlayId},c_pad,fl_relative,w_${relW.toFixed(6)},h_${relH.toFixed(6)},g_center,b_auto,a_${angleDeg}`,
+        `fl_layer_apply,fl_relative,g_center,x_${offRelX},y_${offRelY}`
+      );
+    }
   });
 
   if (transforms.length <= 1) return baseUrl;
 
-  const final = `https://res.cloudinary.com/${cloud}/image/upload/${transforms.join('/')}/${parsedBase.baseAsset}`;
-  return final;
+  return `https://res.cloudinary.com/${cloud}/image/upload/${transforms.join('/')}/${parsedBase.baseAsset}`;
 };
 
 /* ---------------------- Public generators ---------------------- */
@@ -250,7 +287,6 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
   let baseW = Number(product?.thumbnail_meta?.width) || 0;
   let baseH = Number(product?.thumbnail_meta?.height) || 0;
   let baseHex = product?.thumbnail_meta?.thumbnail_color || '#ffffff';
-  let debugLabel = 'grid';
 
   if (product?.acf?.group_type === 'Group' && Array.isArray(product?.acf?.color)) {
     const idx = Number(opts?.colorIndex ?? 0);
@@ -260,15 +296,12 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
       baseW = Number(clr?.thumbnail?.width) || baseW;
       baseH = Number(clr?.thumbnail?.height) || baseH;
       baseHex = clr?.color_hex_code || baseHex;
-      debugLabel = 'slider';
     }
   }
 
-  console.log('📸 Generating mockup for product:', product);
   const rawPlacements = resolvePlacements(product, opts);
   const allowBack = isBackAllowedForProduct(product?.id, opts);
 
-  // 🔹 active filter
   const activePlacements = rawPlacements.filter(p => p?.active === true);
 
   const placements = activePlacements.map(p => ({
@@ -285,7 +318,6 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
         baseHex,
         max: 900,
         productId: product?.id || null,
-        debugLabel: `${debugLabel}_autoRel`,
       });
     }
     return buildCloudinaryMockupUrl({
@@ -296,7 +328,6 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
       placements,
       logos,
       productId: product?.id || null,
-      debugLabel,
     });
   }
 
@@ -307,11 +338,10 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
     baseHex,
     max: Number(opts.max) || 900,
     productId: product?.id || null,
-    debugLabel: `${debugLabel}_rel`,
   });
 };
 
-/* ---------------------- Cart thumbs (relative) ---------------------- */
+/* ---------------------- Cart / Hover thumbs (relative) ---------------------- */
 
 const resolveCartBaseFromItem = item => {
   if (item?.options?.group_type === 'Group') {
@@ -355,9 +385,7 @@ export const generateCartThumbUrlFromItem = (
     rawPlacements = item.product.placement_coordinates;
   }
 
-  // 🔹 active filter
   rawPlacements = rawPlacements.filter(p => p?.active === true);
-
   if (!rawPlacements.length) return base.url;
   if (!logos?.logo_darker?.url || !isCloudinaryUrl(logos.logo_darker.url)) return base.url;
 
@@ -393,8 +421,8 @@ export const generateCartThumbUrlFromItem = (
     let relW = p.wPercent,
       relH = p.hPercent;
     if (lw > 0 && lh > 0) {
-      const la = lw / lh;
-      const ba = p.wPercent / p.hPercent;
+      const la = lw / lh,
+        ba = p.wPercent / p.hPercent;
       if (la > ba) {
         relW = p.wPercent;
         relH = p.wPercent / la;
@@ -404,14 +432,29 @@ export const generateCartThumbUrlFromItem = (
       }
     }
 
-    const relX = p.xPercent + (p.wPercent - relW) / 2;
-    const relY = p.yPercent + (p.hPercent - relH) / 2;
-    const angle = p.angle ? Math.round((p.angle * 180) / Math.PI) : 0;
+    const angleDeg = getAngleDeg(p);
 
-    transforms.push(
-      `l_${parsedLogo.overlayId},c_pad,fl_relative,w_${relW.toFixed(6)},h_${relH.toFixed(6)},g_center,b_auto${angle ? `,a_${angle}` : ''}`,
-      `fl_layer_apply,fl_relative,x_${relX.toFixed(6)},y_${relY.toFixed(6)},g_north_west`
-    );
+    if (!angleDeg) {
+      // OLD behavior when not rotated
+      const relX = p.xPercent + (p.wPercent - relW) / 2;
+      const relY = p.yPercent + (p.hPercent - relH) / 2;
+
+      transforms.push(
+        `l_${parsedLogo.overlayId},c_pad,fl_relative,w_${relW.toFixed(6)},h_${relH.toFixed(6)},g_center,b_auto`,
+        `fl_layer_apply,fl_relative,x_${relX.toFixed(6)},y_${relY.toFixed(6)},g_north_west`
+      );
+    } else {
+      // CENTER placement when rotated
+      const cRelX = p.xPercent + p.wPercent / 2;
+      const cRelY = p.yPercent + p.hPercent / 2;
+      const offRelX = (cRelX - 0.5).toFixed(6);
+      const offRelY = (cRelY - 0.5).toFixed(6);
+
+      transforms.push(
+        `l_${parsedLogo.overlayId},c_pad,fl_relative,w_${relW.toFixed(6)},h_${relH.toFixed(6)},g_center,b_auto,a_${angleDeg}`,
+        `fl_layer_apply,fl_relative,g_center,x_${offRelX},y_${offRelY}`
+      );
+    }
   });
 
   if (transforms.length <= 1) return base.url;
@@ -424,6 +467,8 @@ export const generateHoverThumbUrlFromItem = (
   logos,
   { max = 400, pagePlacementMap, customBackAllowedSet } = {}
 ) => generateCartThumbUrlFromItem(item, logos, { max, pagePlacementMap, customBackAllowedSet });
+
+/* ---------------------- Overlay preview (color bbox fixed; logos conditional) ---------------------- */
 
 export const generateProductImageUrlWithOverlay = (
   product,
@@ -439,6 +484,7 @@ export const generateProductImageUrlWithOverlay = (
 ) => {
   if (!product) return '';
 
+  // base image
   let baseUrl = product.thumbnail;
   let baseHex = product?.thumbnail_meta?.thumbnail_color || '#ffffff';
 
@@ -452,11 +498,11 @@ export const generateProductImageUrlWithOverlay = (
 
   const rawPlacements = resolvePlacements(product, { pagePlacementMap });
 
-  // 🔹 active filter
-  const activePlacements = rawPlacements.filter(p => p?.active === true);
+  // Only active placements
+  const placementsActive = rawPlacements.filter(p => p?.active === true);
 
   const allowBack = isBackAllowedForProduct(product?.id, { customBackAllowedSet });
-  const placements = activePlacements.map(p => ({ ...p, __useBack: !!(p?.back && allowBack) }));
+  const placements = placementsActive.map(p => ({ ...p, __useBack: !!(p?.back && allowBack) }));
 
   if (!placements.length) return baseUrl;
 
@@ -469,16 +515,34 @@ export const generateProductImageUrlWithOverlay = (
   const hex = (overlayHex || '#000000').replace('#', '');
   const op = Math.max(0, Math.min(overlayOpacity, 100));
 
+  // --- Colorized rectangle: with rotation support ---
   placements.forEach(p => {
     const { xPercent, yPercent, wPercent, hPercent } = p || {};
     if (xPercent == null || yPercent == null || wPercent == null || hPercent == null) return;
 
-    transforms.push(
-      `l_one_pixel_s4c3vt,fl_relative,w_${wPercent.toFixed(6)},h_${hPercent.toFixed(6)}`,
-      `co_rgb:${hex},e_colorize:100,o_${op},fl_layer_apply,fl_relative,x_${xPercent.toFixed(6)},y_${yPercent.toFixed(6)},g_north_west`
-    );
+    const angleDeg = getAngleDeg(p);
+
+    if (!angleDeg) {
+      // No rotation: use original top-left positioning
+      transforms.push(
+        `l_one_pixel_s4c3vt,fl_relative,w_${wPercent.toFixed(6)},h_${hPercent.toFixed(6)}`,
+        `co_rgb:${hex},e_colorize:100,o_${op},fl_layer_apply,fl_relative,x_${xPercent.toFixed(6)},y_${yPercent.toFixed(6)},g_north_west`
+      );
+    } else {
+      // With rotation: use center positioning to avoid drift (same logic as logo)
+      const cRelX = xPercent + wPercent / 2;
+      const cRelY = yPercent + hPercent / 2;
+      const offRelX = (cRelX - 0.5).toFixed(6);
+      const offRelY = (cRelY - 0.5).toFixed(6);
+
+      transforms.push(
+        `l_one_pixel_s4c3vt,fl_relative,w_${wPercent.toFixed(6)},h_${hPercent.toFixed(6)},a_${angleDeg}`,
+        `co_rgb:${hex},e_colorize:100,o_${op},fl_layer_apply,fl_relative,g_center,x_${offRelX},y_${offRelY}`
+      );
+    }
   });
 
+  // --- Logo overlays: conditional placement (no-rotation: old; rotation: center) ---
   const bgIsDark = isDarkHex(baseHex);
 
   placements.forEach(p => {
@@ -507,28 +571,47 @@ export const generateProductImageUrlWithOverlay = (
     const lw = Number(chosen.width) || 0;
     const lh = Number(chosen.height) || 0;
 
-    let relW = p.wPercent,
-      relH = p.hPercent;
+    const { xPercent, yPercent, wPercent, hPercent } = p || {};
+    if (xPercent == null || yPercent == null || wPercent == null || hPercent == null) return;
+
+    // Fit logo into bbox (keep aspect)
+    let relW = wPercent,
+      relH = hPercent;
     if (lw > 0 && lh > 0) {
-      const la = lw / lh;
-      const ba = p.wPercent / p.hPercent;
+      const la = lw / lh,
+        ba = wPercent / hPercent;
       if (la > ba) {
-        relW = p.wPercent;
-        relH = p.wPercent / la;
+        relW = wPercent;
+        relH = wPercent / la;
       } else {
-        relH = p.hPercent;
-        relW = p.hPercent * la;
+        relH = hPercent;
+        relW = hPercent * la;
       }
     }
 
-    const relX = p.xPercent + (p.wPercent - relW) / 2;
-    const relY = p.yPercent + (p.hPercent - relH) / 2;
-    const angle = p.angle ? Math.round((p.angle * 180) / Math.PI) : 0;
+    const angleDeg = getAngleDeg(p);
 
-    transforms.push(
-      `l_${parsedLogo.overlayId},c_pad,fl_relative,w_${relW.toFixed(6)},h_${relH.toFixed(6)},g_center,b_auto${angle ? `,a_${angle}` : ''}`,
-      `fl_layer_apply,fl_relative,x_${relX.toFixed(6)},y_${relY.toFixed(6)},g_north_west`
-    );
+    if (!angleDeg) {
+      // OLD behavior: place by top-left with centered fit
+      const relX = xPercent + (wPercent - relW) / 2;
+      const relY = yPercent + (hPercent - relH) / 2;
+
+      transforms.push(
+        `l_${parsedLogo.overlayId},c_pad,fl_relative,w_${relW.toFixed(6)},h_${relH.toFixed(6)},g_center,b_auto`,
+        `fl_layer_apply,fl_relative,x_${relX.toFixed(6)},y_${relY.toFixed(6)},g_north_west`
+      );
+    } else {
+      // Rotated: center placement to avoid drift
+      const cRelX = xPercent + wPercent / 2;
+      const cRelY = yPercent + hPercent / 2;
+      const offRelX = (cRelX - 0.5).toFixed(6);
+      const offRelY = (cRelY - 0.5).toFixed(6);
+
+      transforms.push(
+        `l_${parsedLogo.overlayId},c_pad,fl_relative,w_${relW.toFixed(6)},h_${relH.toFixed(6)},g_center,b_auto,a_${angleDeg}`,
+        `fl_layer_apply,fl_relative,g_center,x_${offRelX},y_${offRelY}`
+      );
+    }
   });
 
   return `https://res.cloudinary.com/${cloud}/image/upload/${transforms.join('/')}/${parsedBase.baseAsset}`;

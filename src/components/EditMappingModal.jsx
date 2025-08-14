@@ -114,6 +114,14 @@ export default function EditMappingModal({
   };
   const formatCoordinate = v => (typeof v === 'number' ? Math.round(v) : v || 0);
 
+  // NEW: helpers for rotation
+  const formatRotation = v => (typeof v === 'number' && !Number.isNaN(v) ? Math.round(v) : 0); // NEW
+  const parseRotation = v => {
+    // NEW
+    const n = parseFloat(v);
+    return Number.isNaN(n) ? 0 : n;
+  };
+
   if (!mapping || !form) return null;
 
   const saveDisabled = !!nameError;
@@ -143,7 +151,6 @@ export default function EditMappingModal({
               {nameError ? nameError : 'Names must be unique within this product.'}
             </div>
           </div>
-
           {/* Percent inputs if present, else pixel inputs */}
           {form.xPercent !== undefined ? (
             <div className="grid grid-cols-2 gap-4">
@@ -220,7 +227,27 @@ export default function EditMappingModal({
               </div>
             </div>
           )}
-
+          {/* NEW: Rotation (degrees) */}
+          <div className="grid grid-cols-2 gap-4">
+            {' '}
+            {/* NEW */}
+            <div>
+              {' '}
+              {/* NEW */}
+              <Label>Rotation (°)</Label> {/* NEW */}
+              <Input
+                type="number"
+                step="1"
+                value={formatRotation(form.rotation)} // NEW
+                onChange={e => update('rotation', parseRotation(e.target.value))} // NEW
+                placeholder="0"
+              />
+              <div className="text-xs text-muted-foreground mt-1">
+                Rotate overlay inside this box (e.g., 15, -30). {/* NEW */}
+              </div>
+            </div>
+          </div>{' '}
+          {/* NEW */}
           {/* Back Logo */}
           <div className="mt-2">
             <Label className="flex items-center gap-2">
@@ -233,7 +260,6 @@ export default function EditMappingModal({
               Back Logo Enabled
             </Label>
           </div>
-
           {/* Active switch */}
           <div>
             <Label className="flex items-center gap-2">
