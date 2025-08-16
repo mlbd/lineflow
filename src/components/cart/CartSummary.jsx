@@ -1,12 +1,12 @@
+// /src/components/CartSummary.jsx  (or your path)
 'use client';
 import { useCartItems, getTotalPrice } from './cartStore';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 export default function CartSummary({ selectedShipping, coupon, userMeta = {}, companyData = {} }) {
   const items = useCartItems();
   const subtotal = getTotalPrice(items);
 
-  // --- Prices / coupon ---
   let couponDiscount = 0;
   let couponDescription = '';
   if (coupon?.valid) {
@@ -14,221 +14,186 @@ export default function CartSummary({ selectedShipping, coupon, userMeta = {}, c
     if (coupon.type === 'percent') {
       couponDiscount = Math.round(subtotal * (amount / 100));
       couponDescription = `${coupon.amount}% הנחה`;
-    } else {
-      couponDiscount = amount;
-      couponDescription = `${coupon.amount} ₪ הנחה`;
+    } else if (coupon.type === 'fixed') {
+      couponDiscount = Math.min(subtotal, Math.round(amount));
+      couponDescription = `₪${amount} הנחה`;
     }
   }
-  const total = Math.max(0, subtotal + (selectedShipping?.cost || 0) - couponDiscount);
 
-  // --- One-time initial values (respect lock_profile/dummy_email ONLY for defaults) ---
+  const shippingCost = Number(selectedShipping?.cost || 0);
+  const total = Math.max(0, subtotal - couponDiscount + shippingCost);
+
   const initialForm = useMemo(() => {
-    const lockAll = !!userMeta?.lock_profile;
     const dummyEmail = !!userMeta?.dummy_email;
-
+    const locked = !!userMeta?.lock_profile;
     const base = {
-      fullName: companyData.name || '',
-      invoiceName: userMeta.invoice || '',
-      email: userMeta.email_address || '',
-      phone: userMeta.phone || '',
-      city: userMeta.city || '',
-      streetName: userMeta.street_address || '',
-      streetNumber: userMeta.street_number || '',
+      fullName: locked ? '' : (userMeta?.full_name || ''),
+      email:    locked || dummyEmail ? '' : (userMeta?.email || ''),
+      phone:    locked ? '' : (userMeta?.phone || ''),
+      city:     locked ? '' : (userMeta?.city || ''),
+      streetName:  locked ? '' : (userMeta?.street_name || ''),
+      streetNumber: locked ? '' : (userMeta?.street_number || ''),
+      invoiceName: '',
     };
-
-    if (lockAll) {
-      // Clear all defaults (user can still type afterwards)
-      return {
-        fullName: '',
-        invoiceName: '',
-        email: '',
-        phone: '',
-        city: '',
-        streetName: '',
-        streetNumber: '',
-      };
-    }
-
-    // Only clear email default if dummy_email is true
-    if (dummyEmail) {
-      return { ...base, email: '' };
-    }
-
+    if (dummyEmail) base.email = '';
     return base;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once on mount; don't keep wiping user typing on prop changes
+  }, []);
 
   const [form, setForm] = useState(initialForm);
 
-  // --- Validation (invoiceName is optional) ---
   const errors = useMemo(() => {
     const e = {};
-    const emailOk = form.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email);
-
-    if (!form.fullName?.trim()) e.fullName = 'Required';
-    if (!form.email?.trim()) e.email = 'Required';
-    else if (!emailOk) e.email = 'Invalid email';
-    if (!form.phone?.trim()) e.phone = 'Required';
-    if (!form.city?.trim()) e.city = 'Required';
-    if (!form.streetName?.trim()) e.streetName = 'Required';
-    if (!form.streetNumber?.trim()) e.streetNumber = 'Required';
-
+    const req = ['fullName','email','phone','city','streetName','streetNumber'];
+    req.forEach(k => { if (!(form?.[k] || '').toString().trim()) e[k] = 'שדה חובה'; });
+    if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) e.email = 'אימייל לא תקין';
+    if (form.phone && !/^[0-9+\-()\s]{9,15}$/.test(form.phone)) e.phone = 'טלפון לא תקין';
     return e;
   }, [form]);
 
   const hasErrors = Object.keys(errors).length > 0;
-  const isCartEmpty = items.length === 0;
+  const isCartEmpty = !Array.isArray(items) || items.length === 0;
 
-  const handleChange = e => {
-    const { name, value } = e.target;
-    setForm(prev => ({ ...prev, [name]: value }));
-  };
+  const [paying, setPaying] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [paymentUrl, setPaymentUrl] = useState('');
+  const [showPayModal, setShowPayModal] = useState(false);
 
-  const baseInput = 'border p-2 rounded outline-none focus:ring-2 focus:ring-blue-500 transition';
-  const errorInput = 'border-red-500 focus:ring-red-500';
+  async function handleSubmit() {
+    setErrorMsg('');
+    setPaying(true);
+    try {
+      const resp = await fetch('/api/payments/zcredit/create-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          // send EVERYTHING we’ll need later to build the WC order:
+          form,
+          items,                 // must contain per-item custom fields you already track (size, color, alarnd_*…)
+          selectedShipping,
+          coupon: coupon?.valid ? coupon : null,
+          // include any per-item generated media/meta on your side, e.g. cloudinary thumbs, companyLogos
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data?.error || 'Create session failed');
+      setPaymentUrl(data.paymentUrl);
+      setShowPayModal(true);
+    } catch (e) {
+      setErrorMsg(e?.message || 'שגיאת תשלום');
+    } finally {
+      setPaying(false);
+    }
+  }
 
-  const handleSubmit = () => {
-    // Replace with your real checkout action
-    console.log('Submitting order with data:', form);
-  };
+  useEffect(() => {
+    function onMsg(e) {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.type === 'ZCREDIT_SUCCESS') {
+        const id = e.data?.transactionUniqueId || '';
+        window.location.href = `/payment/zcredit/return?status=success&transactionUniqueId=${encodeURIComponent(id)}`;
+      }
+      if (e.data?.type === 'ZCREDIT_ERROR') {
+        setShowPayModal(false);
+        setErrorMsg('התשלום נכשל או בוטל');
+      }
+    }
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
 
   return (
     <div className="bg-white border rounded-lg p-6 space-y-6">
-      <h2 className="text-xl font-semibold">סיכום הזמנה</h2>
-
-      <div className="flex justify-between">
-        <span>סכום ביניים:</span>
-        <span className="font-bold">{subtotal} ₪</span>
-      </div>
-
-      {selectedShipping && (
+      <div className="space-y-2 text-sm">
+        <div className="flex justify-between"><span>סכום ביניים</span><span>₪{subtotal.toLocaleString('he-IL')}</span></div>
+        {couponDiscount > 0 && (
+          <div className="flex justify-between text-green-700">
+            <span>{couponDescription || 'קופון'}</span>
+            <span>-₪{couponDiscount.toLocaleString('he-IL')}</span>
+          </div>
+        )}
         <div className="flex justify-between">
-          <span>משלוח:</span>
-          <span className="font-bold">
-            {selectedShipping.label}{' '}
-            {Number(selectedShipping.cost) === 0 ? '(חינם)' : `(${selectedShipping.cost} ₪)`}
-          </span>
+          <span>משלוח</span>
+          <span>{shippingCost > 0 ? `₪${shippingCost.toLocaleString('he-IL')}` : 'חינם'}</span>
         </div>
-      )}
-
-      {coupon?.valid && (
-        <div className="flex justify-between text-pink-600 font-bold">
-          <span>קופון:</span>
-          <span>
-            {coupon.description || couponDescription} &nbsp; (-{couponDiscount} ₪)
-          </span>
+        <div className="border-t pt-2 flex justify-between font-semibold text-lg">
+          <span>לתשלום</span><span>₪{total.toLocaleString('he-IL')}</span>
         </div>
-      )}
-
-      <div className="flex justify-between text-lg">
-        <span>סה&quot;כ לתשלום:</span>
-        <span className="font-bold">{total} ₪</span>
       </div>
 
       <form
-        onSubmit={e => {
+        onSubmit={(e) => {
           e.preventDefault();
-          if (!hasErrors && !isCartEmpty) handleSubmit();
+          if (!isCartEmpty && !hasErrors && !paying) handleSubmit();
         }}
+        className="space-y-3"
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {[
+            ['fullName', 'שם מלא'],
+            ['email', 'אימייל'],
+            ['phone', 'טלפון'],
+            ['city', 'עיר'],
+            ['streetName', 'רחוב'],
+            ['streetNumber', 'מס\' בית'],
+          ].map(([key, label]) => (
+            <label key={key} className="block text-sm">
+              <div className="mb-1">{label}</div>
+              <input
+                value={form[key] || ''}
+                onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                className={`w-full border rounded px-3 py-2 outline-none ${errors[key] ? 'border-red-500' : 'border-gray-300'}`}
+                required
+              />
+              {errors[key] && <div className="text-red-600 text-xs mt-1">{errors[key]}</div>}
+            </label>
+          ))}
+          <label className="block text-sm md:col-span-2">
+            <div className="mb-1">שם לחשבונית (אופציונלי)</div>
             <input
-              name="fullName"
-              placeholder="Full Name"
-              value={form.fullName}
-              onChange={handleChange}
-              className={`${baseInput} ${errors.fullName ? errorInput : ''} w-full`}
+              value={form.invoiceName || ''}
+              onChange={(e) => setForm((f) => ({ ...f, invoiceName: e.target.value }))}
+              className="w-full border rounded px-3 py-2 outline-none border-gray-300"
             />
-            {errors.fullName && <p className="text-red-600 text-sm mt-1">{errors.fullName}</p>}
-          </div>
-
-          <div>
-            <input
-              name="invoiceName"
-              placeholder="Invoice Name (optional)"
-              value={form.invoiceName}
-              onChange={handleChange}
-              className={`${baseInput} w-full`}
-            />
-          </div>
+          </label>
         </div>
 
-        <div className="mt-4">
-          <input
-            name="email"
-            type="email"
-            placeholder="Email"
-            value={form.email}
-            onChange={handleChange}
-            className={`${baseInput} ${errors.email ? errorInput : ''} w-full`}
-          />
-          {errors.email && <p className="text-red-600 text-sm mt-1">{errors.email}</p>}
-        </div>
-
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <input
-              name="phone"
-              placeholder="Phone"
-              value={form.phone}
-              onChange={handleChange}
-              className={`${baseInput} ${errors.phone ? errorInput : ''} w-full`}
-            />
-            {errors.phone && <p className="text-red-600 text-sm mt-1">{errors.phone}</p>}
-          </div>
-
-          <div>
-            <input
-              name="city"
-              placeholder="City"
-              value={form.city}
-              onChange={handleChange}
-              className={`${baseInput} ${errors.city ? errorInput : ''} w-full`}
-            />
-            {errors.city && <p className="text-red-600 text-sm mt-1">{errors.city}</p>}
-          </div>
-        </div>
-
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <input
-              name="streetName"
-              placeholder="Street Name"
-              value={form.streetName}
-              onChange={handleChange}
-              className={`${baseInput} ${errors.streetName ? errorInput : ''} w-full`}
-            />
-            {errors.streetName && <p className="text-red-600 text-sm mt-1">{errors.streetName}</p>}
-          </div>
-
-          <div>
-            <input
-              name="streetNumber"
-              placeholder="Street Number"
-              value={form.streetNumber}
-              onChange={handleChange}
-              className={`${baseInput} ${errors.streetNumber ? errorInput : ''} w-full`}
-            />
-            {errors.streetNumber && (
-              <p className="text-red-600 text-sm mt-1">{errors.streetNumber}</p>
-            )}
-          </div>
-        </div>
+        {errorMsg && <div className="text-red-600 text-sm">{errorMsg}</div>}
 
         <button
           type="submit"
-          disabled={isCartEmpty || hasErrors}
-          className={`w-full mt-6 py-3 rounded-lg font-semibold text-white transition
-            ${isCartEmpty || hasErrors ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}
-          `}
-          title={
-            isCartEmpty ? 'העגלה ריקה' : hasErrors ? 'נא למלא את כל השדות הנדרשים' : 'שליחת הזמנה'
-          }
+          disabled={isCartEmpty || hasErrors || paying}
+          className={`w-full mt-4 py-3 rounded-lg font-semibold text-white transition ${
+            isCartEmpty || hasErrors || paying ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+          }`}
+          title={isCartEmpty ? 'העגלה ריקה' : hasErrors ? 'נא למלא את כל השדות הנדרשים' : 'המשך לתשלום'}
         >
-          המשך לתשלום
+          {paying ? 'מעבד תשלום…' : 'המשך לתשלום'}
         </button>
       </form>
+
+      {showPayModal && (
+        <div className="fixed inset-0 z-[1000] bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-2xl rounded-2xl overflow-hidden shadow-xl">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <h3 className="font-semibold">תשלום מאובטח</h3>
+              <button onClick={() => setShowPayModal(false)} className="p-2" aria-label="Close">✕</button>
+            </div>
+            <div className="h-[70vh]">
+              {paymentUrl ? (
+                <iframe
+                  src={paymentUrl}
+                  title="Z-Credit Payment"
+                  className="w-full h-full"
+                  allow="payment *"
+                />
+              ) : (
+                <div className="h-full flex items-center justify-center">טוען…</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
