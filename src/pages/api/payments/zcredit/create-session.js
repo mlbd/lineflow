@@ -78,16 +78,30 @@ export default async function handler(req, res) {
     // ==========================================
     // REAL Z-CREDIT: Create WebCheckout session
     // ==========================================
+
+    // --- Preflight env validation (fail with helpful messages instead of throwing) ---
     const baseUrl = (process.env.ZCREDIT_BASE_URL || '').replace(/\/$/, '');
-    const path = process.env.ZCREDIT_CREATE_SESSION_PATH || '/api/WebCheckout/CreateSession';
-    const endpoint = `${baseUrl}${path}`;
+    const path = process.env.ZCREDIT_CREATE_SESSION_PATH || '/webcheckout/api/WebCheckout/CreateSession'; // <- Z-Credit WC plugin uses this path
+    const terminal = process.env.ZCREDIT_TERMINAL || '';
+    const password = process.env.ZCREDIT_PASSWORD || '';
+    const privateKey = process.env.ZCREDIT_PRIVATE_KEY || ''; // some accounts require it
+    const token = process.env.ZCREDIT_API_TOKEN || '';        // some accounts use token instead of user/pass
     const notifyToken = process.env.ZCREDIT_WEBHOOK_SECRET || '';
 
+    const problems = [];
+    if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) problems.push('ZCREDIT_BASE_URL must be an absolute URL (e.g. https://pci.zcredit.co.il).');
+    if (!terminal) problems.push('ZCREDIT_TERMINAL is required.');
+    if (!password && !token) problems.push('Provide either ZCREDIT_PASSWORD or ZCREDIT_API_TOKEN.');
+    if (!notifyToken) problems.push('ZCREDIT_WEBHOOK_SECRET is required to protect NotifyUrl.');
+    if (problems.length) return res.status(400).json({ error: 'Config error', details: problems });
+
+    const endpoint = `${baseUrl}${path}`;
+
     const payload = {
-      TerminalNumber: process.env.ZCREDIT_TERMINAL,
-      UserName: process.env.ZCREDIT_USERNAME || undefined,
-      Password: process.env.ZCREDIT_PASSWORD || undefined,
-      Token: process.env.ZCREDIT_API_TOKEN || undefined,
+      TerminalNumber: terminal,
+      Password: password || undefined,
+      Token: token || undefined,
+      PrivateKey: privateKey || undefined, // harmless if not needed
 
       SumToBill: amount,
       Currency: draft.currency || 'ILS',
@@ -104,23 +118,42 @@ export default async function handler(req, res) {
       Language: 'he',
     };
 
+    // Call Z-Credit
     const zRes = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
 
-    const zData =
-      (await zRes.json().catch(async () => ({ raw: await zRes.text() }))) || {};
-    if (!zRes.ok) {
-      return res
-        .status(400)
-        .json({ error: 'Z-Credit CreateSession failed', details: zData });
+    // Z-Credit sometimes returns text/html on errors — try JSON first, then raw text
+    let zData, rawText = '';
+    try {
+      zData = await zRes.json();
+    } catch {
+      try { rawText = await zRes.text(); } catch {}
+      zData = null;
     }
 
-    const paymentUrl = zData?.PaymentPageUrl || zData?.url || '';
-    const sessionId = zData?.SessionId || zData?.sessionId || '';
-    if (!paymentUrl) return res.status(400).json({ error: 'Missing payment URL from Z-Credit' });
+    if (!zRes.ok) {
+      return res.status(400).json({
+        error: 'Z-Credit CreateSession failed',
+        status: zRes.status,
+        details: zData || rawText || 'no body',
+        // TIP: Make sure baseUrl is https://pci.zcredit.co.il and path is /webcheckout/api/WebCheckout/CreateSession
+      });
+    }
+
+    // response fields seen in the wild: PaymentPageUrl | url | SessionUrl, plus SessionId
+    const paymentUrl =
+      (zData && (zData.PaymentPageUrl || zData.url || zData.SessionUrl)) || '';
+    const sessionId = (zData && (zData.SessionId || zData.sessionId)) || '';
+
+    if (!paymentUrl) {
+      return res.status(400).json({
+        error: 'Missing payment URL from Z-Credit',
+        details: zData || rawText || null,
+      });
+    }
 
     // Store the draft snapshot so WP can create the order during notify
     await fetch(`${process.env.NEXT_PUBLIC_WP_SITE_URL}/wp-json/mini-sites/v1/checkout/draft`, {
@@ -141,7 +174,8 @@ export default async function handler(req, res) {
       orderDraftId: draft.order_draft_id || null,
     });
   } catch (err) {
+    // Make the error visible so we know exactly what's wrong
     console.error('Create-session error:', err);
-    return res.status(500).json({ error: 'Server error creating session' });
+    return res.status(500).json({ error: 'Server error creating session', details: String(err?.message || err) });
   }
 }
