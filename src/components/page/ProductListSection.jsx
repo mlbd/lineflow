@@ -18,6 +18,7 @@ export default function ProductListSection({
   pagePlacementMap = {},
   customBackAllowedSet = {},
 }) {
+  console.log('ProductListSection', { products, bumpPrice });
   const [page, setPage] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [modalProduct, setModalProduct] = useState(null);

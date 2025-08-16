@@ -6,7 +6,8 @@ import { Trash2, SquarePen, Star } from 'lucide-react';
 
 export default function MappingList({ mappings, selectedId, onSelect, onDelete, onEdit }) {
   const formatCoordinate = value => (typeof value === 'number' ? Math.round(value) : value || 0);
-  const formatPercentage = value => (typeof value === 'number' ? (value * 100).toFixed(1) + '%' : '0%');
+  const formatPercentage = value =>
+    typeof value === 'number' ? (value * 100).toFixed(1) + '%' : '0%';
   const formatRotation = v => (typeof v === 'number' && !Number.isNaN(v) ? Math.round(v) : 0);
 
   return (
@@ -51,7 +52,9 @@ export default function MappingList({ mappings, selectedId, onSelect, onDelete, 
                     </div>
 
                     {m.back && (
-                      <div className="text-xs my-2 text-blue-600 font-semibold">Back Logo Enabled</div>
+                      <div className="text-xs my-2 text-blue-600 font-semibold">
+                        Back Logo Enabled
+                      </div>
                     )}
                   </div>
 

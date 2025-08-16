@@ -4,6 +4,11 @@
 const ENV_CLOUD =
   process.env.NEXT_PUBLIC_CLD_CLOUD || process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
 
+/** Toggle the new "step-scaling" logic.
+ * Set NEXT_PUBLIC_ENABLE_LOGO_STEP_SCALING=0 to disable.
+ */
+export const ENABLE_LOGO_STEP_SCALING = '1';
+
 /* --------------------- shared helpers --------------------- */
 
 export const isCloudinaryUrl = url =>
@@ -53,6 +58,19 @@ export const parseCloudinaryIds = url => {
   }
 };
 
+// --- Helpers from logos.jsx ---
+const ASPECT_DIFF_THRESHOLD = 0.3;
+const SCALE_UP_FACTOR = 1.3;
+const getOrientation = (w, h) => {
+  const aspect = w / h;
+  if (aspect >= 1.2) return 'horizontal';
+  if (aspect <= 0.8) return 'vertical';
+  return 'square';
+};
+function getAspectHeight(originalWidth, originalHeight, newWidth) {
+  return (originalHeight / originalWidth) * newWidth;
+}
+
 const brightnessFromHex = hex => {
   if (!hex || typeof hex !== 'string') return 128;
   const h = hex.replace('#', '').trim();
@@ -94,6 +112,244 @@ const getAngleDeg = p => {
   return 0;
 };
 
+/* --------------------- small util for ratio-ish % --------------------- */
+const percentDiff = (a, b) => {
+  if (!a) return 1;
+  return Math.min(1, Math.abs(b) / Math.abs(a));
+};
+
+/* --------------------- DRY helper for logo placement --------------------- */
+
+/**
+ * Build the two Cloudinary transform segments (overlay + apply) for a single placement.
+ *
+ * INPUTS
+ * - overlayId  : Cloudinary public ID of the logo layer (already parsed, no file extension).
+ * - logoW/H    : Natural (pixel) size of the chosen logo asset.
+ * - placement  : { xPercent, yPercent, wPercent, hPercent, rotation/angle... }
+ *                Coordinates are normalized (0..1) relative to the base image.
+ * - naturalW/H : The pixel size of the base render canvas the percentages map onto.
+ * - useRelative: When true, we write "fl_relative" on both overlay and apply segments.
+ *
+ * OUTPUT
+ * - Array of exactly two strings:
+ *   [ "l_<overlayId>,...size/fit...", "fl_layer_apply,...position..." ]
+ *   or [] if invalid inputs. You then push these into your transform pipeline.
+ *
+ * SEMANTICS
+ * - We "aspect-fit" the logo into the placement box using Cloudinary `c_pad,g_center`.
+ * - If the placement has rotation (angle != 0), we position via the image center to avoid drift:
+ *     overlay: ... , a_<angle>
+ *     apply  : fl_layer_apply, g_center, x_<offset-from-center>, y_<offset-from-center>
+ * - If no rotation, we position by top-left (north_west) and center the fitted logo inside the box.
+ * - NEW: Optional step-scaling heuristic (ENABLE_LOGO_STEP_SCALING) adjusts fitted size for logos
+ *        that are not "very" horizontal/vertical, using thresholds at 80% / 60% / 40%.
+ */
+const buildLogoPlacementTransforms = ({
+  overlayId,
+  logoW,
+  logoH,
+  placement,
+  naturalW,
+  naturalH,
+  useRelative = false,
+}) => {
+  // --- Basic guards: we can't build anything without an overlay, a placement, or a canvas size.
+  if (!overlayId || !placement) return [];
+  const { xPercent, yPercent, wPercent, hPercent } = placement;
+  if (
+    xPercent == null ||
+    yPercent == null ||
+    wPercent == null ||
+    hPercent == null ||
+    !naturalW ||
+    !naturalH
+  ) {
+    return [];
+  }
+
+  // --- Normalize logo dimensions (defensive: default to 0 if NaN/undefined).
+  const lw = Number(logoW) || 0; // logo natural width in px
+  const lh = Number(logoH) || 0; // logo natural height in px
+
+  // --- Convert normalized placement (% of base) to absolute pixels on the render canvas.
+  //     e.g. if xPercent=0.25 and naturalW=2000, x becomes 500 px.
+  const x = Math.round(xPercent * naturalW); // placement left (px)
+  const y = Math.round(yPercent * naturalH); // placement top  (px)
+  const w = Math.round(wPercent * naturalW); // placement width (px)
+  const h = Math.round(hPercent * naturalH); // placement height(px)
+
+  // --- Determine orientations for both logo and box.
+  //     getOrientation returns 'horizontal' | 'vertical' | 'square' using aspect thresholds.
+  const logoOrientation = getOrientation(lw, lh);
+  const boxOrientation = getOrientation(w, h);
+
+  // --- Aspect ratios for fit decision: we "c_pad" the logo into the box.
+  const logoAspect = lw / lh; // >1 means wider than tall
+  const boxAspect = w / h; // >1 means wider than tall
+
+  // --- Aspect-fit into the placement rectangle (no cropping).
+  //     If logo is relatively "wider" than the box, we fit by width; otherwise by height.
+  //     This reproduces Cloudinary c_pad behavior we want to reflect explicitly in size.
+  let fitW, fitH;
+  if (logoAspect >= boxAspect) {
+    fitW = w; // take the full box width
+    fitH = Math.round(w / logoAspect); // compute height to preserve logo aspect
+  } else {
+    fitH = h; // take the full box height
+    fitW = Math.round(h * logoAspect); // compute width to preserve logo aspect
+  }
+
+  // --- Legacy "cross-orientation" scaling:
+  //     If logo orientation mismatches the box orientation by a big margin,
+  //     gently scale it up (SCALE_UP_FACTOR) to visually fill better.
+  const doScaleUp = logoOrientation !== boxOrientation;
+  const aspectDiff = Math.abs(logoAspect - boxAspect) / Math.max(logoAspect, boxAspect);
+  if (doScaleUp && aspectDiff > ASPECT_DIFF_THRESHOLD) {
+    fitW = Math.round(fitW * SCALE_UP_FACTOR);
+    fitH = Math.round(fitH * SCALE_UP_FACTOR);
+  }
+
+  // ======================================================================
+  // NEW: Step-scaling heuristic (gated by ENABLE_LOGO_STEP_SCALING)
+  // ----------------------------------------------------------------------
+  // Why: Some logos are only *slightly* wider (or taller) than they are high (or wide),
+  // which can look undersized after a strict aspect-fit. We apply extra scaling for:
+  // - Horizontal boxes: if the logo isn't *strongly* horizontal (W>H but not by much),
+  //   reduce the scaling percentages by 20%, then step up size if the fitted width is
+  //   less than 80%/60%/40% of the box width (scale_40/60/80).
+  // - Vertical boxes: same idea but measured against height ratios.
+  // Expectations:
+  // - Logos that are clearly horizontal/vertical remain mostly unchanged.
+  // - Logos near-square in a strong orientation box get a tasteful size boost.
+  // - Disabled entirely when NEXT_PUBLIC_ENABLE_LOGO_STEP_SCALING=0.
+  // ======================================================================
+  if (ENABLE_LOGO_STEP_SCALING) {
+    // Reduction multipliers: default 1.0 (no reduction); become 0.8 (reduce 20%) when triggered.
+    let horizontalReduce = 1.0;
+    let verticalReduce = 1.0;
+
+    if (boxOrientation === 'horizontal') {
+      // "width-to-height difference percentage of the logo"
+      // We treat `percentDiff(lw, lh)` ~ (H/W) bounded to [0..1]. Smaller => more horizontal.
+      if (lw > lh) {
+        const diff = percentDiff(lw, lh);
+        // If logo is wider than tall but not *very* wide (<= 80%), dampen step multipliers by 20%.
+        if (diff <= 0.8) horizontalReduce = 0.8;
+      }
+
+      // Width-based step thresholds: compare fitted width vs box width.
+      const widthRatio = fitW / w;
+
+      // If fitted width < 80% of box width → scale_40 (multiply by 1.4, reduced by horizontalReduce).
+      if (fitW < w && widthRatio < 0.8) {
+        fitW = Math.round(fitW * (1.4 * horizontalReduce));
+        fitH = Math.round(fitH * (1.4 * horizontalReduce));
+      }
+      // If still < 60% → scale_60 (upgrade from previous 1.4 to 1.6; we revert then reapply).
+      if (fitW < w && widthRatio < 0.6) {
+        fitW = Math.round((fitW / (1.4 * horizontalReduce)) * (1.6 * horizontalReduce));
+        fitH = Math.round((fitH / (1.4 * horizontalReduce)) * (1.6 * horizontalReduce));
+      }
+      // If still < 40% → scale_80 (upgrade from previous 1.6 to 1.8; revert then reapply).
+      if (fitW < w && widthRatio < 0.4) {
+        fitW = Math.round((fitW / (1.6 * horizontalReduce)) * (1.8 * horizontalReduce));
+        fitH = Math.round((fitH / (1.6 * horizontalReduce)) * (1.8 * horizontalReduce));
+      }
+    } else if (boxOrientation === 'vertical') {
+      // "height-to-width difference percentage of the logo"
+      // We treat `percentDiff(lh, lw)` ~ (W/H) bounded to [0..1]. Smaller => more vertical.
+      if (lh > lw) {
+        const diff = percentDiff(lh, lw);
+        // If logo is taller than wide but not *very* tall (<= 80%), dampen step multipliers by 20%.
+        if (diff <= 0.8) verticalReduce = 0.8;
+      }
+
+      // Height-based step thresholds: compare fitted height vs box height.
+      const heightRatio = fitH / h;
+
+      // If fitted height < 80% of box height → scale_40 (multiply by 1.4, reduced by verticalReduce).
+      if (fitH < h && heightRatio < 0.8) {
+        fitW = Math.round(fitW * (1.4 * verticalReduce));
+        fitH = Math.round(fitH * (1.4 * verticalReduce));
+      }
+      // If still < 60% → scale_60 (upgrade from previous 1.4 to 1.6; we revert then reapply).
+      if (fitH < h && heightRatio < 0.6) {
+        fitW = Math.round((fitW / (1.4 * verticalReduce)) * (1.6 * verticalReduce));
+        fitH = Math.round((fitH / (1.4 * verticalReduce)) * (1.6 * verticalReduce));
+      }
+      // If still < 40% → scale_80 (upgrade from previous 1.6 to 1.8; revert then reapply).
+      if (fitH < h && heightRatio < 0.4) {
+        fitW = Math.round((fitW / (1.6 * verticalReduce)) * (1.8 * verticalReduce));
+        fitH = Math.round((fitH / (1.6 * verticalReduce)) * (1.8 * verticalReduce));
+      }
+    }
+    // For 'square' boxes we intentionally do nothing: the base aspect-fit is visually acceptable.
+  }
+
+  // --- Rotation handling: we compute the angle (deg). 0 means "no rotation".
+  const angleDeg = getAngleDeg(placement);
+
+  // --- Relative flag: when true, we add "fl_relative," to both segments.
+  const maybeRel = useRelative ? 'fl_relative,' : '';
+
+  if (!angleDeg) {
+    // =========================
+    // NON-ROTATED PLACEMENT
+    // -------------------------
+    // We want the logo centered inside the placement rectangle (x,y,w,h).
+    // Since Cloudinary `c_pad,g_center` fits the content inside the requested w/h,
+    // we position the final fitted size by offsetting from the top-left corner:
+    //   logoX = x + (w - fitW)/2
+    //   logoY = y + (h - fitH)/2
+    const logoX = x + Math.round((w - fitW) / 2);
+    const logoY = y + Math.round((h - fitH) / 2);
+
+    // Segment 1 (overlay): build the layer with size and pad fit.
+    // - l_<overlayId> : select the overlay asset
+    // - c_pad         : pad-fit (no crop), honoring the specified w_/h_
+    // - g_center      : center within that box
+    // - b_auto        : auto background for padding (invisible when composited)
+    // - w_/h_         : target box for pad-fit (our computed fitW/fitH already aspect-safe)
+    const overlay = `l_${overlayId},c_pad,${maybeRel}w_${fitW},h_${fitH},g_center,b_auto`;
+
+    // Segment 2 (apply): place the already-prepared overlay onto the base image.
+    // - fl_layer_apply : commit the overlay onto the base
+    // - g_north_west   : interpret x/y from the top-left corner of the base image
+    // - x_/y_          : offset in pixels (or relative units if fl_relative) from g_north_west
+    const apply = `fl_layer_apply,${maybeRel}x_${logoX},y_${logoY},g_north_west`;
+
+    return [overlay, apply];
+  } else {
+    // ======================
+    // ROTATED PLACEMENT
+    // ----------------------
+    // When rotation is applied, using top-left (north_west) tends to "drift."
+    // Instead, we:
+    // 1) Prepare the fitted overlay with the angle.
+    // 2) Apply it relative to the center of the base image (g_center).
+    // 3) Translate by the delta from image center to the *center of the placement box*.
+    //
+    // Center of placement box in absolute px:
+    const cx = x + Math.round(w / 2);
+    const cy = y + Math.round(h / 2);
+
+    // Offsets from the base image center:
+    const offX = cx - Math.round(naturalW / 2);
+    const offY = cy - Math.round(naturalH / 2);
+
+    // Segment 1 (overlay): same pad-fit, but include rotation (a_<deg>).
+    const overlay = `l_${overlayId},c_pad,${maybeRel}w_${fitW},h_${fitH},g_center,b_auto,a_${angleDeg}`;
+
+    // Segment 2 (apply): place via image center to avoid drift.
+    // - g_center : (0,0) now refers to the center of the base image.
+    // - x_/y_    : signed offsets from the center to land the logo at the placement center.
+    const apply = `fl_layer_apply,${maybeRel}g_center,x_${offX},y_${offY}`;
+
+    return [overlay, apply];
+  }
+};
+
 /* --------------------- helpers --------------------- */
 const resolvePlacements = (product, opts = {}) => {
   const pid = String(product?.id ?? '');
@@ -126,6 +382,15 @@ export const buildCloudinaryMockupUrl = ({
   logos = {},
   productId = null,
 }) => {
+  console.log('buildCloudinaryMockupUrl', {
+    baseUrl,
+    baseW,
+    baseH,
+    baseHex,
+    placements,
+    logos,
+    productId,
+  });
   if (!isCloudinaryUrl(baseUrl)) return baseUrl;
   if (!Array.isArray(placements) || placements.length === 0) return baseUrl;
   if (!validLogo(logos?.logo_darker)) return baseUrl;
@@ -138,6 +403,9 @@ export const buildCloudinaryMockupUrl = ({
   const bgIsDark = isDarkHex(baseHex);
   const transforms = [];
 
+  const naturalW = baseW;
+  const naturalH = baseH;
+
   placements.forEach(p => {
     const parsedLogoObj = pickLogoVariant(logos, !!p.__useBack, bgIsDark);
     if (!parsedLogoObj) return;
@@ -145,51 +413,16 @@ export const buildCloudinaryMockupUrl = ({
     const parsedLogo = parseCloudinaryIds(parsedLogoObj.url);
     if (!parsedLogo.overlayId) return;
 
-    const x = Math.round((p.xPercent != null ? p.xPercent : p.x / baseW) * baseW);
-    const y = Math.round((p.yPercent != null ? p.yPercent : p.y / baseH) * baseH);
-    const w = Math.max(1, Math.round((p.wPercent != null ? p.wPercent : p.w / baseW) * baseW));
-    const h = Math.max(1, Math.round((p.hPercent != null ? p.hPercent : p.h / baseH) * baseH));
-
-    // Fit logo inside bbox (keep aspect)
-    const lw = Number(parsedLogoObj.width) || 0;
-    const lh = Number(parsedLogoObj.height) || 0;
-    let logoW = w,
-      logoH = h;
-    if (lw > 0 && lh > 0) {
-      const la = lw / lh,
-        ba = w / h;
-      if (la > ba) {
-        logoW = w;
-        logoH = Math.round(w / la);
-      } else {
-        logoH = h;
-        logoW = Math.round(h * la);
-      }
-    }
-
-    const angleDeg = getAngleDeg(p);
-
-    if (!angleDeg) {
-      // —— No rotation: keep OLD behavior (top-left anchor with centered fit) ——
-      const finalX = x + Math.round((w - logoW) / 2);
-      const finalY = y + Math.round((h - logoH) / 2);
-
-      transforms.push(
-        `l_${parsedLogo.overlayId},c_pad,w_${logoW},h_${logoH},g_center,b_auto`,
-        `fl_layer_apply,x_${finalX},y_${finalY},g_north_west`
-      );
-    } else {
-      // —— Rotated: position by CENTER to avoid drift ——
-      const cx = x + Math.round(w / 2);
-      const cy = y + Math.round(h / 2);
-      const offX = cx - Math.round(baseW / 2);
-      const offY = cy - Math.round(baseH / 2);
-
-      transforms.push(
-        `l_${parsedLogo.overlayId},c_pad,w_${logoW},h_${logoH},g_center,b_auto,a_${angleDeg}`,
-        `fl_layer_apply,g_center,x_${offX},y_${offY}`
-      );
-    }
+    const segs = buildLogoPlacementTransforms({
+      overlayId: parsedLogo.overlayId,
+      logoW: parsedLogoObj.width,
+      logoH: parsedLogoObj.height,
+      placement: p,
+      naturalW,
+      naturalH,
+      useRelative: false, // absolute
+    });
+    if (segs.length) transforms.push(...segs);
   });
 
   if (!transforms.length) return baseUrl;
@@ -206,11 +439,29 @@ export const buildRelativeMockupUrl = ({
   max = 900,
   maxH = null,
   productId = null,
+  baseW = 0,
+  baseH = 0,
 }) => {
+  console.log('buildRelativeMockupUrl', {
+    baseUrl,
+    placements,
+    logos,
+    baseHex,
+    max,
+    maxH,
+    productId,
+  });
   if (!isCloudinaryUrl(baseUrl)) return baseUrl;
   if (!Array.isArray(placements) || placements.length === 0) return baseUrl;
   if (!validLogo(logos?.logo_darker)) return baseUrl;
-  if (!max) return baseUrl;
+  // if !max and baseW, baseH zero then return baseUrl but if max is set then continue, also if !max and baseW, baseH set then continue
+  if (!max && (!baseW || !baseH)) return baseUrl;
+
+  // if max is not set then use baseW
+  if (!max) {
+    max = baseW;
+    maxH = baseH;
+  }
 
   const parsedBase = parseCloudinaryIds(baseUrl);
   const cloud = ENV_CLOUD || parsedBase.cloud;
@@ -220,6 +471,9 @@ export const buildRelativeMockupUrl = ({
   const transforms = [];
 
   transforms.push(`f_auto,q_auto,c_fit,w_${max}${maxH ? `,h_${maxH}` : ''}`);
+
+  const naturalW = max;
+  const naturalH = getAspectHeight(baseW, baseH, max);
 
   placements.forEach(p => {
     const chosen = pickLogoVariant(logos, !!p.__useBack, bgIsDark);
@@ -231,46 +485,16 @@ export const buildRelativeMockupUrl = ({
     if (p.xPercent == null || p.yPercent == null || p.wPercent == null || p.hPercent == null)
       return;
 
-    const lw = Number(chosen.width) || 0;
-    const lh = Number(chosen.height) || 0;
-
-    let relW = p.wPercent,
-      relH = p.hPercent;
-    if (lw > 0 && lh > 0) {
-      const la = lw / lh,
-        ba = p.wPercent / p.hPercent;
-      if (la > ba) {
-        relW = p.wPercent;
-        relH = p.wPercent / la;
-      } else {
-        relH = p.hPercent;
-        relW = p.hPercent * la;
-      }
-    }
-
-    const angleDeg = getAngleDeg(p);
-
-    if (!angleDeg) {
-      // —— No rotation: keep OLD behavior (top-left anchor with centered fit) ——
-      const relX = p.xPercent + (p.wPercent - relW) / 2;
-      const relY = p.yPercent + (p.hPercent - relH) / 2;
-
-      transforms.push(
-        `l_${parsedLogo.overlayId},c_pad,fl_relative,w_${relW.toFixed(6)},h_${relH.toFixed(6)},g_center,b_auto`,
-        `fl_layer_apply,fl_relative,x_${relX.toFixed(6)},y_${relY.toFixed(6)},g_north_west`
-      );
-    } else {
-      // —— Rotated: position by CENTER (offsets from base center) ——
-      const cRelX = p.xPercent + p.wPercent / 2;
-      const cRelY = p.yPercent + p.hPercent / 2;
-      const offRelX = (cRelX - 0.5).toFixed(6);
-      const offRelY = (cRelY - 0.5).toFixed(6);
-
-      transforms.push(
-        `l_${parsedLogo.overlayId},c_pad,fl_relative,w_${relW.toFixed(6)},h_${relH.toFixed(6)},g_center,b_auto,a_${angleDeg}`,
-        `fl_layer_apply,fl_relative,g_center,x_${offRelX},y_${offRelY}`
-      );
-    }
+    const segs = buildLogoPlacementTransforms({
+      overlayId: parsedLogo.overlayId,
+      logoW: chosen.width,
+      logoH: chosen.height,
+      placement: p,
+      naturalW,
+      naturalH,
+      useRelative: true, // keep original fl_relative here
+    });
+    if (segs.length) transforms.push(...segs);
   });
 
   if (transforms.length <= 1) return baseUrl;
@@ -309,6 +533,8 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
     __useBack: !!(p?.back && allowBack),
   }));
 
+  console.log('generateProductImageUrl', baseW, baseH, product, opts, baseUrl);
+
   if (!opts?.max) {
     if (!baseW || !baseH) {
       return buildRelativeMockupUrl({
@@ -338,6 +564,8 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
     baseHex,
     max: Number(opts.max) || 900,
     productId: product?.id || null,
+    baseW,
+    baseH,
   });
 };
 
@@ -415,6 +643,7 @@ export const generateCartThumbUrlFromItem = (
     const parsedLogo = parseCloudinaryIds(chosen.url);
     if (!parsedLogo.overlayId) return;
 
+    // NOTE: Cart/hover uses its own relative math (unchanged) – keep as-is
     const lw = Number(chosen.width) || 0;
     const lh = Number(chosen.height) || 0;
 
@@ -487,6 +716,8 @@ export const generateProductImageUrlWithOverlay = (
   // base image
   let baseUrl = product.thumbnail;
   let baseHex = product?.thumbnail_meta?.thumbnail_color || '#ffffff';
+  let baseW = Number(product?.thumbnail_meta?.width) || 0;
+  let baseH = Number(product?.thumbnail_meta?.height) || 0;
 
   if (product?.acf?.group_type === 'Group' && Array.isArray(product?.acf?.color)) {
     const clr = product.acf.color[Number(colorIndex) || 0] || product.acf.color[0];
@@ -545,6 +776,9 @@ export const generateProductImageUrlWithOverlay = (
   // --- Logo overlays: conditional placement (no-rotation: old; rotation: center) ---
   const bgIsDark = isDarkHex(baseHex);
 
+  const naturalW = max;
+  const naturalH = getAspectHeight(baseW, baseH, naturalW);
+
   placements.forEach(p => {
     const choose = (logosObj, useBack, dark) => {
       const get = k => logosObj?.[k] || null;
@@ -568,50 +802,16 @@ export const generateProductImageUrlWithOverlay = (
     const parsedLogo = parseCloudinaryIds(chosen.url);
     if (!parsedLogo.overlayId) return;
 
-    const lw = Number(chosen.width) || 0;
-    const lh = Number(chosen.height) || 0;
-
-    const { xPercent, yPercent, wPercent, hPercent } = p || {};
-    if (xPercent == null || yPercent == null || wPercent == null || hPercent == null) return;
-
-    // Fit logo into bbox (keep aspect)
-    let relW = wPercent,
-      relH = hPercent;
-    if (lw > 0 && lh > 0) {
-      const la = lw / lh,
-        ba = wPercent / hPercent;
-      if (la > ba) {
-        relW = wPercent;
-        relH = wPercent / la;
-      } else {
-        relH = hPercent;
-        relW = hPercent * la;
-      }
-    }
-
-    const angleDeg = getAngleDeg(p);
-
-    if (!angleDeg) {
-      // OLD behavior: place by top-left with centered fit
-      const relX = xPercent + (wPercent - relW) / 2;
-      const relY = yPercent + (hPercent - relH) / 2;
-
-      transforms.push(
-        `l_${parsedLogo.overlayId},c_pad,fl_relative,w_${relW.toFixed(6)},h_${relH.toFixed(6)},g_center,b_auto`,
-        `fl_layer_apply,fl_relative,x_${relX.toFixed(6)},y_${relY.toFixed(6)},g_north_west`
-      );
-    } else {
-      // Rotated: center placement to avoid drift
-      const cRelX = xPercent + wPercent / 2;
-      const cRelY = yPercent + hPercent / 2;
-      const offRelX = (cRelX - 0.5).toFixed(6);
-      const offRelY = (cRelY - 0.5).toFixed(6);
-
-      transforms.push(
-        `l_${parsedLogo.overlayId},c_pad,fl_relative,w_${relW.toFixed(6)},h_${relH.toFixed(6)},g_center,b_auto,a_${angleDeg}`,
-        `fl_layer_apply,fl_relative,g_center,x_${offRelX},y_${offRelY}`
-      );
-    }
+    const segs = buildLogoPlacementTransforms({
+      overlayId: parsedLogo.overlayId,
+      logoW: chosen.width,
+      logoH: chosen.height,
+      placement: p,
+      naturalW,
+      naturalH,
+      useRelative: false, // keep original (no fl_relative) here
+    });
+    if (segs.length) transforms.push(...segs);
   });
 
   return `https://res.cloudinary.com/${cloud}/image/upload/${transforms.join('/')}/${parsedBase.baseAsset}`;

@@ -74,7 +74,7 @@ export async function getStaticProps({ params }) {
     // Build allow-list set for back logos
     const customBackAllowedSet = (data?.acf?.custom_logo_products || []).map(String);
 
-    let products = [];
+    let products = productIdsRaw;
 
     if (productIds.length) {
       const idsParam = productIds.join(',');
