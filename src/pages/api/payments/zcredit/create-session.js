@@ -32,20 +32,14 @@ export default async function handler(req, res) {
     if (!(amount > 0)) return res.status(400).json({ error: 'Invalid amount' });
 
     const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/$/, '');
-    const snapshot = {
-      customer: form,
-      items,
-      shipping: selectedShipping || null,
-      coupon: coupon || null,
-    };
+    const snapshot = { customer: form, items, shipping: selectedShipping || null, coupon: coupon || null };
 
     // ============================================================
-    // DEV SIMULATOR: Short-circuit to local DevPay page in iframe
+    // DEV SIMULATOR
     // ============================================================
     if (process.env.ZCREDIT_SIMULATE === '1') {
       const sessionId = `SIM-${Date.now()}`;
 
-      // Store the draft snapshot so WP can create the order on "simulate-notify"
       const wpDraft = await fetch(
         `${process.env.NEXT_PUBLIC_WP_SITE_URL}/wp-json/mini-sites/v1/checkout/draft`,
         {
@@ -78,81 +72,73 @@ export default async function handler(req, res) {
     // ==========================================
     // REAL Z-CREDIT: Create WebCheckout session
     // ==========================================
-
-    // --- Preflight env validation (fail with helpful messages instead of throwing) ---
     const baseUrl = (process.env.ZCREDIT_BASE_URL || '').replace(/\/$/, '');
-    const path = process.env.ZCREDIT_CREATE_SESSION_PATH || '/webcheckout/api/WebCheckout/CreateSession'; // <- Z-Credit WC plugin uses this path
-    const terminal = process.env.ZCREDIT_TERMINAL || '';
-    const password = process.env.ZCREDIT_PASSWORD || '';
-    const privateKey = process.env.ZCREDIT_PRIVATE_KEY || ''; // some accounts require it
-    const token = process.env.ZCREDIT_API_TOKEN || '';        // some accounts use token instead of user/pass
+    const path = process.env.ZCREDIT_CREATE_SESSION_PATH || '/webcheckout/api/WebCheckout/CreateSession';
+    const endpoint = `${baseUrl}${path}`.replace(/\/?$/, '/'); // ensure trailing slash
+
+    // >>> PRE-FLIGHT CONFIG <<<
+    const terminal   = process.env.ZCREDIT_TERMINAL || '';
+    const userName   = process.env.ZCREDIT_USERNAME || '';       // <— ADDED
+    const password   = process.env.ZCREDIT_PASSWORD || '';
+    const token      = process.env.ZCREDIT_API_TOKEN || '';
+    const privateKey = process.env.ZCREDIT_PRIVATE_KEY || '';
     const notifyToken = process.env.ZCREDIT_WEBHOOK_SECRET || '';
 
     const problems = [];
-    if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) problems.push('ZCREDIT_BASE_URL must be an absolute URL (e.g. https://pci.zcredit.co.il).');
+    if (!/^https?:\/\//i.test(baseUrl)) problems.push('ZCREDIT_BASE_URL must be an absolute URL (e.g. https://pci.zcredit.co.il).');
     if (!terminal) problems.push('ZCREDIT_TERMINAL is required.');
-    if (!password && !token) problems.push('Provide either ZCREDIT_PASSWORD or ZCREDIT_API_TOKEN.');
+    if (!token) {
+      // token-less accounts must use username + password
+      if (!userName) problems.push('ZCREDIT_USERNAME is required when not using ZCREDIT_API_TOKEN.');
+      if (!password) problems.push('ZCREDIT_PASSWORD is required when not using ZCREDIT_API_TOKEN.');
+    }
     if (!notifyToken) problems.push('ZCREDIT_WEBHOOK_SECRET is required to protect NotifyUrl.');
     if (problems.length) return res.status(400).json({ error: 'Config error', details: problems });
 
-    const endpoint = `${baseUrl}${path}`;
-
+    // >>> PAYLOAD (now includes UserName when provided) <<<
     const payload = {
       TerminalNumber: terminal,
+      UserName: userName || undefined,          // <— ADDED
       Password: password || undefined,
       Token: token || undefined,
-      PrivateKey: privateKey || undefined, // harmless if not needed
+      PrivateKey: privateKey || undefined,
 
       SumToBill: amount,
       Currency: draft.currency || 'ILS',
       Description: `Order ${draft.order_ref || draft.order_draft_id}`,
       OrderId: String(draft.order_draft_id || ''),
 
-      // iframe flow: success page on same origin, others go to return page
       SuccessUrl: `${siteUrl}/payment/zcredit/iframe-success`,
-      ErrorUrl: `${siteUrl}/payment/zcredit/return?status=error`,
-      CancelUrl: `${siteUrl}/payment/zcredit/return?status=cancel`,
-      BackUrl: `${siteUrl}/payment/zcredit/return?status=back`,
-      NotifyUrl: `${siteUrl}/api/payments/zcredit/notify?t=${encodeURIComponent(notifyToken)}`,
+      ErrorUrl:   `${siteUrl}/payment/zcredit/return?status=error`,
+      CancelUrl:  `${siteUrl}/payment/zcredit/return?status=cancel`,
+      BackUrl:    `${siteUrl}/payment/zcredit/return?status=back`,
+      NotifyUrl:  `${siteUrl}/api/payments/zcredit/notify?t=${encodeURIComponent(notifyToken)}`,
 
       Language: 'he',
     };
 
-    // Call Z-Credit
     const zRes = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
 
-    // Z-Credit sometimes returns text/html on errors — try JSON first, then raw text
     let zData, rawText = '';
-    try {
-      zData = await zRes.json();
-    } catch {
-      try { rawText = await zRes.text(); } catch {}
-      zData = null;
-    }
+    try { zData = await zRes.json(); } catch { try { rawText = await zRes.text(); } catch {} }
 
     if (!zRes.ok) {
       return res.status(400).json({
         error: 'Z-Credit CreateSession failed',
         status: zRes.status,
         details: zData || rawText || 'no body',
-        // TIP: Make sure baseUrl is https://pci.zcredit.co.il and path is /webcheckout/api/WebCheckout/CreateSession
       });
     }
 
-    // response fields seen in the wild: PaymentPageUrl | url | SessionUrl, plus SessionId
-    const paymentUrl =
-      (zData && (zData.PaymentPageUrl || zData.url || zData.SessionUrl)) || '';
-    const sessionId = (zData && (zData.SessionId || zData.sessionId)) || '';
+    const paymentUrl = (zData && (zData.PaymentPageUrl || zData.url || zData.SessionUrl)) || '';
+    const sessionId  = (zData && (zData.SessionId || zData.sessionId)) || '';
 
     if (!paymentUrl) {
-      return res.status(400).json({
-        error: 'Missing payment URL from Z-Credit',
-        details: zData || rawText || null,
-      });
+      return res.status(400).json({ error: 'Missing payment URL from Z-Credit', details: zData || rawText || null });
     }
 
     // Store the draft snapshot so WP can create the order during notify
@@ -167,14 +153,8 @@ export default async function handler(req, res) {
       }),
     }).catch(() => { /* non-fatal */ });
 
-    return res.status(200).json({
-      ok: true,
-      paymentUrl,
-      sessionId: sessionId || null,
-      orderDraftId: draft.order_draft_id || null,
-    });
+    return res.status(200).json({ ok: true, paymentUrl, sessionId: sessionId || null, orderDraftId: draft.order_draft_id || null });
   } catch (err) {
-    // Make the error visible so we know exactly what's wrong
     console.error('Create-session error:', err);
     return res.status(500).json({ error: 'Server error creating session', details: String(err?.message || err) });
   }
