@@ -60,6 +60,7 @@ export default function CartSummary({ selectedShipping, coupon, userMeta = {}, c
   const [showPayModal, setShowPayModal] = useState(false);
 
   async function handleSubmit() {
+    console.log('items', items);
     setErrorMsg('');
     setPaying(true);
     try {

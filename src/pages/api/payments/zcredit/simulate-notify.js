@@ -1,6 +1,6 @@
 // pages/api/payments/zcredit/simulate-notify.js
 export default async function handler(req, res) {
-  if (process.env.ZCREDIT_SIMULATE !== '1') return res.status(404).json({ error: 'disabled' });
+  console.log('ZCREDIT_SIMULATE', process.env.ZCREDIT_SIMULATE);
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
