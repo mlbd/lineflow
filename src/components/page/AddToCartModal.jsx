@@ -9,6 +9,8 @@ export default function AddToCartModal({
   bumpPrice,
   onOpenQuickView,
   onCartAddSuccess,
+  pagePlacementMap = {},
+  customBackAllowedSet = {},
 }) {
   if (!product) return null;
   const groupType = product.acf?.group_type;
@@ -22,6 +24,8 @@ export default function AddToCartModal({
         bumpPrice={bumpPrice}
         onOpenQuickView={onOpenQuickView}
         onCartAddSuccess={onCartAddSuccess}
+        pagePlacementMap={pagePlacementMap}
+        customBackAllowedSet={customBackAllowedSet}
       />
     );
   }
@@ -33,6 +37,8 @@ export default function AddToCartModal({
         product={product}
         bumpPrice={bumpPrice}
         onCartAddSuccess={onCartAddSuccess}
+        pagePlacementMap={pagePlacementMap}
+        customBackAllowedSet={customBackAllowedSet}
       />
     );
   }

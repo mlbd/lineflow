@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -11,16 +11,50 @@ import {
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import ImageGalleryOverlay from '@/components/page/ImageGalleryOverlay';
 import { generateProductImageUrl } from '@/utils/cloudinaryMockup';
+import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
 
-/* ======= Config ======= */
-const DISPLAY_MAX = 640; // main slide quality
-const ZOOM_MAX = 2200; // high-res for magnify
-const LENS_DIAMETER = 180; // px (circle)
+/* ======= Config (magnifier off by default) ======= */
+const DISPLAY_MAX = 640;
+const ZOOM_MAX = 2200;
+const LENS_DIAMETER = 180;
 const LENS_BORDER = '2px solid rgba(0,0,0,0.35)';
-
-/* Global toggles (env overrides are optional) */
 const ENABLE_MAGNIFY = false;
 const ENABLE_CLICK_TO_POPUP = true;
+
+/* ======= Helpers ======= */
+const parseMaybeArray = val => {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+  return [];
+};
+
+// Signature of active placements to compare
+function buildPlacementSignature(arr) {
+  try {
+    const actives = (Array.isArray(arr) ? arr : [])
+      .filter(p => p && p.name && p.active)
+      .map(p => String(p.name).trim().toLowerCase());
+    return actives.length ? actives.sort().join('|') : 'default';
+  } catch {
+    return 'default';
+  }
+}
+
+const placementsSig = arr =>
+  (Array.isArray(arr) ? arr : [])
+    .map(
+      p =>
+        `${String(p?.name || '')
+          .trim()
+          .toLowerCase()}:${p?.active ? 1 : 0}`
+    )
+    .sort()
+    .join('|');
 
 function PriceChart({ steps, regularPrice, currency = '₪' }) {
   if (!Array.isArray(steps) || steps.length === 0) return null;
@@ -33,11 +67,7 @@ function PriceChart({ steps, regularPrice, currency = '₪' }) {
     return `כמות: ${thisQty}+`;
   };
 
-  const parseMoney = v => {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : 0;
-  };
-
+  const parseMoney = v => (Number.isFinite(Number(v)) ? Number(v) : 0);
   const regular = parseMoney(regularPrice);
 
   return (
@@ -49,11 +79,9 @@ function PriceChart({ steps, regularPrice, currency = '₪' }) {
             const rowIdx = Math.floor(i / 2);
             const colIdx = i % 2;
             const checkerBg = rowIdx % 2 === colIdx % 2 ? 'bg-bglight' : '';
-
             const stepAmt = parseMoney(step?.amount);
             const useRegularForFirstTier = i === 0 && stepAmt === 0 && regular > 0;
-            const display = useRegularForFirstTier ? regular.toFixed(2) : stepAmt.toFixed(2);
-
+            const display = (useRegularForFirstTier ? regular : stepAmt).toFixed(2);
             return (
               <div
                 key={i}
@@ -78,7 +106,7 @@ export default function ProductQuickViewModal({
   onClose,
   product,
   onAddToCart,
-  bumpPrice,
+  bumpPrice, // not used here but kept for compat
   companyLogos = {},
   pagePlacementMap = {},
   customBackAllowedSet = {},
@@ -87,54 +115,41 @@ export default function ProductQuickViewModal({
   const [sliderIdx, setSliderIdx] = useState(0);
   const [slideLoading, setSlideLoading] = useState(false);
   const [slideSrc, setSlideSrc] = useState('');
-  const [ready, setReady] = useState({}); // display url ready map
+  const [ready, setReady] = useState({});
   const [preloading, setPreloading] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const preloadCacheRef = useRef(new Map());
 
-  /* ====== Magnify lens state ====== */
+  /* ===== Lens state ===== */
   const containerRef = useRef(null);
   const imgRef = useRef(null);
   const [lensVisible, setLensVisible] = useState(false);
   const [lensPos, setLensPos] = useState({ x: 0, y: 0 });
   const [imgDims, setImgDims] = useState({ w: 0, h: 0 });
-  const [zoomReady, setZoomReady] = useState({}); // zoom url ready map
+  const [zoomReady, setZoomReady] = useState({});
 
-  /* ===== Area filter state (on/off overrides) ===== */
+  /* ====== Area filter overrides (local toggles; persisted globally) ====== */
   const [areaOn, setAreaOn] = useState(new Set());
   const [areaOff, setAreaOff] = useState(new Set());
 
-  const parseMaybeArray = val => {
-    if (Array.isArray(val)) return val;
-    if (typeof val === 'string') {
-      try {
-        const parsed = JSON.parse(val);
-        if (Array.isArray(parsed)) return parsed;
-      } catch {}
-    }
-    return [];
-  };
-
   const acf = product?.acf || {};
+  const hasSlider = acf?.group_type === 'Group' && Array.isArray(acf.color) && acf.color.length > 0;
+  const colors = useMemo(() => (hasSlider ? acf.color : []), [hasSlider, acf?.color]);
 
-  // Steps
-  let steps = [];
-  if (acf.group_type === 'Group' && Array.isArray(acf.discount_steps)) {
-    steps = acf.discount_steps;
-  } else if (acf.group_type === 'Quantity' && Array.isArray(acf.quantity_steps)) {
-    steps = acf.quantity_steps;
-  }
+  // Steps for price chart
+  const steps = useMemo(() => {
+    if (acf?.group_type === 'Group' && Array.isArray(acf.discount_steps)) return acf.discount_steps;
+    if (acf?.group_type === 'Quantity' && Array.isArray(acf.quantity_steps))
+      return acf.quantity_steps;
+    return [];
+  }, [acf]);
 
-  // Slider presence
-  const hasSlider = acf.group_type === 'Group' && Array.isArray(acf.color) && acf.color.length > 0;
-  const colors = useMemo(() => (hasSlider ? acf.color : []), [hasSlider, acf.color]);
-
-  /* ====== SOURCE placements (page overrides win, else fallback to product) ====== */
+  /* ====== Base placements: page overrides > product defaults ====== */
   const sourcePlacements = useMemo(() => {
     if (!product) return [];
     const key = String(product.id || '');
 
-    // 1) Try pagePlacementMap for this product; only use if non-empty
+    // 1) Page override
     if (
       pagePlacementMap &&
       typeof pagePlacementMap === 'object' &&
@@ -143,17 +158,20 @@ export default function ProductQuickViewModal({
       const pageVal = pagePlacementMap[key];
       const pageArr = parseMaybeArray(pageVal);
       if (pageArr.length) return pageArr;
+      if (pageVal && typeof pageVal === 'object') {
+        if (Array.isArray(pageVal[key])) return pageVal[key];
+        if (Array.isArray(pageVal.placements)) return pageVal.placements;
+      }
     }
 
-    // 2) Fallback to product placement_coordinates (array | JSON string | keyed object)
+    // 2) Product default
     const prodVal =
-      product.placement_coordinates ??
-      product.meta?.placement_coordinates ??
-      product.acf?.placement_coordinates;
+      product?.placement_coordinates ??
+      product?.meta?.placement_coordinates ??
+      product?.acf?.placement_coordinates;
 
     const direct = parseMaybeArray(prodVal);
     if (direct.length) return direct;
-
     if (prodVal && typeof prodVal === 'object') {
       if (Array.isArray(prodVal[key])) return prodVal[key];
       if (Array.isArray(prodVal.placements)) return prodVal.placements;
@@ -161,25 +179,38 @@ export default function ProductQuickViewModal({
     return [];
   }, [product, pagePlacementMap]);
 
-  // Original active flags by name
+  /* ====== Global store sync: persist selection across close/reopen ====== */
+  const setFilter = useAreaFilterStore(s => s.setFilter);
+
+  // Select only this product's placements to limit re-renders
+  const storePlacements = useAreaFilterStore(s =>
+    product?.id ? s.filters[String(product.id)] || null : null
+  );
+
+  // Base we show in the modal (persisted across close/reopen)
+  const basePlacements = useMemo(
+    () => (storePlacements && storePlacements.length ? storePlacements : sourcePlacements),
+    [storePlacements, sourcePlacements]
+  );
+
+  // "Original" map to decide toggle behavior should be taken from the base (not always product default)
   const originalActiveByName = useMemo(() => {
     const map = new Map();
-    sourcePlacements.forEach(p => map.set(p?.name || '', !!p?.active));
+    basePlacements.forEach(p => map.set(p?.name || '', !!p?.active));
     return map;
-  }, [sourcePlacements]);
+  }, [basePlacements]);
 
-  // Reset overrides when product changes or modal opens
+  // Reset local toggles on product/open, but DO NOT clear global store selection
   useEffect(() => {
     if (!product || !open) return;
     setAreaOn(new Set());
     setAreaOff(new Set());
   }, [product?.id, open]);
 
-  // Toggle helper (supports turning OFF default-active and turning ON inactive)
+  // Toggle helper
   const toggleArea = name => {
     if (!name) return;
     const wasActive = originalActiveByName.get(name);
-
     const nextOn = new Set(areaOn);
     const nextOff = new Set(areaOff);
 
@@ -196,35 +227,64 @@ export default function ProductQuickViewModal({
         nextOff.delete(name);
       }
     }
-
     setAreaOn(nextOn);
     setAreaOff(nextOff);
     setSliderIdx(0);
   };
 
-  // Apply overrides to placements for the preview product
+  // Apply local toggles to the base placements (this becomes the effective placements)
   const previewPlacements = useMemo(() => {
-    return sourcePlacements.map(p => {
+    return basePlacements.map(p => {
       const nm = p?.name || '';
       const isAdded = areaOn.has(nm);
       const isRemoved = areaOff.has(nm);
       const effectiveActive = isRemoved ? false : isAdded ? true : !!p?.active;
       return { ...p, active: effectiveActive };
     });
-  }, [sourcePlacements, areaOn, areaOff]);
+  }, [basePlacements, areaOn, areaOff]);
 
-  // Build the product used for generators (⚠️ do NOT pass pagePlacementMap later)
+  // Detect if changed vs base (not vs product default)
+  // Did the user change vs source?
+  const filterWasChanged = useMemo(() => {
+    return buildPlacementSignature(previewPlacements) !== buildPlacementSignature(sourcePlacements);
+  }, [previewPlacements, sourcePlacements]);
+
+  // Product object used for image generators and for Add-to-Cart
   const previewProduct = useMemo(() => {
     if (!product) return null;
-    return { ...product, placement_coordinates: previewPlacements };
-  }, [product, previewPlacements]);
+    return {
+      ...product,
+      placement_coordinates: previewPlacements,
+      filter_was_changed: filterWasChanged, // ✅ pass the flag
+    };
+  }, [product, previewPlacements, filterWasChanged]);
 
-  // In-memory promise cache for preloads
+  // Prevent infinite loop: only save to store when effective placements actually changed
+  const lastSavedSigRef = useRef('');
+  useEffect(() => {
+    const pid = product?.id;
+    if (!pid) return;
+    const effSig = placementsSig(previewPlacements);
+    const storeSig = placementsSig(storePlacements);
+
+    // If store already matches or we already saved this exact signature, skip
+    if (effSig === storeSig || effSig === lastSavedSigRef.current) return;
+
+    setFilter(pid, previewPlacements); // store has its own no-op guard too
+    lastSavedSigRef.current = effSig;
+  }, [product?.id, previewPlacements, storePlacements, setFilter]);
+
+  // When switching products, reset the saved signature tracker
+  useEffect(() => {
+    lastSavedSigRef.current = placementsSig(storePlacements);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product?.id]);
+
+  /* ====== Image Preloaders ====== */
   const preloadImage = url => {
     if (!url) return Promise.resolve();
     const cache = preloadCacheRef.current;
     if (cache.has(url)) return cache.get(url);
-
     const p = new Promise((resolve, reject) => {
       if (typeof window === 'undefined') return resolve(url);
       const img = new Image();
@@ -235,8 +295,6 @@ export default function ProductQuickViewModal({
     cache.set(url, p);
     return p;
   };
-
-  /* === Build URLs === */
 
   // Full gallery images (keep high-res)
   const galleryImages = useMemo(() => {
@@ -262,7 +320,7 @@ export default function ProductQuickViewModal({
     ];
   }, [previewProduct, hasSlider, colors, companyLogos, customBackAllowedSet]);
 
-  // Modal main slide (display)
+  // Display slide URLs
   const modalSlideUrls = useMemo(() => {
     if (!previewProduct) return [];
     if (hasSlider) {
@@ -282,7 +340,7 @@ export default function ProductQuickViewModal({
     ];
   }, [previewProduct, hasSlider, colors, companyLogos, customBackAllowedSet]);
 
-  // Zoom (high-res) versions for the lens
+  // Zoom URLs (if magnifier is enabled)
   const zoomSlideUrls = useMemo(() => {
     if (!ENABLE_MAGNIFY || !previewProduct) return [];
     if (hasSlider) {
@@ -302,7 +360,7 @@ export default function ProductQuickViewModal({
     ];
   }, [previewProduct, hasSlider, colors, companyLogos, customBackAllowedSet]);
 
-  // Reset on product change
+  // Reset image states on product change
   useEffect(() => {
     if (!product) return;
     setSliderIdx(0);
@@ -374,7 +432,7 @@ export default function ProductQuickViewModal({
     };
   }, [open, modalSlideUrls, product]);
 
-  // Preload the CURRENT zoom slide (so lens is instant)
+  // Preload the CURRENT zoom slide
   useEffect(() => {
     if (!ENABLE_MAGNIFY) return;
     if (!open || !product) return;
@@ -386,7 +444,7 @@ export default function ProductQuickViewModal({
 
     let cancelled = false;
     preloadImage(url)
-      .then(u => {
+      .then(() => {
         if (cancelled) return;
         setZoomReady(prev => ({ ...prev, [idx]: true }));
       })
@@ -399,7 +457,7 @@ export default function ProductQuickViewModal({
     };
   }, [open, sliderIdx, hasSlider, zoomSlideUrls, product]);
 
-  // Track actual rendered image size (for object-contain)
+  // Measure rendered image size
   const measureImg = () => {
     const el = imgRef.current;
     if (!el) return;
@@ -415,21 +473,7 @@ export default function ProductQuickViewModal({
 
   if (!product) return null;
 
-  /* ====== Nav handlers ====== */
-  const handleDotClick = idx => {
-    if (idx === sliderIdx) return;
-    setSliderIdx(idx);
-  };
-  const handlePrev = () => setSliderIdx((sliderIdx - 1 + colors.length) % colors.length);
-  const handleNext = () => setSliderIdx((sliderIdx + 1) % colors.length);
-
   const navDisabled = preloading || slideLoading || !open;
-
-  /* ====== Lens math ====== */
-  const lensRadius = LENS_DIAMETER / 2;
-  const zoomFactor = ZOOM_MAX / DISPLAY_MAX; // expected ratio of high-res to display
-  const lensBgSize = `${imgDims.w * zoomFactor}px ${imgDims.h * zoomFactor}px`;
-
   const handleMouseMove = e => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
@@ -443,7 +487,11 @@ export default function ProductQuickViewModal({
   const currentZoomReady = zoomReady[hasSlider ? sliderIdx : 0] === true;
   const currentZoomUrl = ENABLE_MAGNIFY ? zoomSlideUrls[hasSlider ? sliderIdx : 0] || '' : '';
 
-  /* ====== UI ====== */
+  const handleAddToCartClick = () => {
+    if (onClose) onClose();
+    if (onAddToCart) onAddToCart(previewProduct);
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={onClose}>
@@ -475,14 +523,14 @@ export default function ProductQuickViewModal({
                   : 'פרטי מוצר'}
               </DialogDescription>
 
-              {/* ===== AREA FILTER (above PriceChart) ===== */}
-              {sourcePlacements.length > 0 && (
+              {/* AREA FILTER */}
+              {basePlacements.length > 0 && (
                 <div className="mb-4">
                   <div className="text-xs text-gray-500 mb-1">מיקומי לוגו</div>
                   <div className="flex flex-wrap gap-2">
-                    {sourcePlacements.map(p => {
+                    {basePlacements.map(p => {
                       const nm = p?.name || '';
-                      const orig = !!p?.active;
+                      const orig = !!p?.active; // from base (store/page/product)
                       const isAdded = areaOn.has(nm);
                       const isRemoved = areaOff.has(nm);
                       const effectiveActive = isRemoved ? false : isAdded ? true : orig;
@@ -523,10 +571,7 @@ export default function ProductQuickViewModal({
               <div>
                 <button
                   className="alarnd-btn mt-5 bg-primary text-white"
-                  onClick={() => {
-                    if (onClose) onClose();
-                    if (onAddToCart) onAddToCart();
-                  }}
+                  onClick={handleAddToCartClick}
                 >
                   הוסיפו לעגלה
                 </button>
@@ -546,7 +591,6 @@ export default function ProductQuickViewModal({
                 onMouseLeave={ENABLE_MAGNIFY ? () => setLensVisible(false) : undefined}
                 onMouseMove={ENABLE_MAGNIFY ? handleMouseMove : undefined}
               >
-                {/* Click image to open FULL gallery (QuickView stays open) */}
                 {slideSrc ? (
                   <img
                     ref={imgRef}
@@ -570,7 +614,6 @@ export default function ProductQuickViewModal({
                   </div>
                 )}
 
-                {/* ===== Magnify lens (circular) ===== */}
                 {ENABLE_MAGNIFY &&
                   lensVisible &&
                   currentZoomReady &&
@@ -645,7 +688,6 @@ export default function ProductQuickViewModal({
                 </div>
               )}
 
-              {/* Optional helper note */}
               {preloading && hasSlider && colors.length > 1 && (
                 <div className="mt-3 text-xs text-gray-500">טוען תמונות מקדימות…</div>
               )}
@@ -654,7 +696,7 @@ export default function ProductQuickViewModal({
         </DialogContent>
       </Dialog>
 
-      {/* Fullscreen gallery overlay (keeps QuickView open underneath) */}
+      {/* Fullscreen gallery overlay */}
       <ImageGalleryOverlay
         open={galleryOpen}
         initialIndex={hasSlider ? sliderIdx : 0}

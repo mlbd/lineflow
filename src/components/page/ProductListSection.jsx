@@ -7,6 +7,7 @@ import ProductQuickViewModal from '@/components/page/ProductQuickViewModal';
 import AddToCartModal from '@/components/page/AddToCartModal';
 import Image from 'next/image';
 import { generateProductImageUrl } from '@/utils/cloudinaryMockup';
+import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
 
 const PRODUCT_PER_PAGE = 12;
 
@@ -18,11 +19,13 @@ export default function ProductListSection({
   pagePlacementMap = {},
   customBackAllowedSet = {},
 }) {
-  console.log('ProductListSection', { products, bumpPrice });
   const [page, setPage] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [modalProduct, setModalProduct] = useState(null);
   const [cartModalProduct, setCartModalProduct] = useState(null);
+
+  // 🔁 re-render when any product's override changes
+  const filters = useAreaFilterStore(s => s.filters);
 
   const allCategories = useMemo(() => {
     return Array.from(new Set(products.flatMap(p => p.categories?.map(c => c.slug) || [])));
@@ -44,13 +47,8 @@ export default function ProductListSection({
     return visibleProducts.length < filtered.length;
   }, [visibleProducts, products, selectedCategory]);
 
-  const handleLoadMore = () => {
-    setPage(prev => prev + 1);
-  };
-
+  const handleLoadMore = () => setPage(prev => prev + 1);
   const categoryName = slug => slug;
-
-  console.log('visibleProducts', visibleProducts);
 
   return (
     <section className="w-full py-10 flex justify-center">
@@ -80,56 +78,65 @@ export default function ProductListSection({
 
         {/* Product Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {visibleProducts.map(p => (
-            <div key={p.id} className="bg-bglight rounded-2xl shadow flex flex-col items-center">
-              <div
-                className="w-full h-[200px] flex items-center cursor-pointer overflow-hidden rounded-t-2xl"
-                onClick={() => setModalProduct(p)}
-              >
-                <div className="relative w-full h-[200px] bg-bglighter mb-3">
-                  <Image
-                    src={generateProductImageUrl(p, companyLogos, {
-                      max: 500,
-                      pagePlacementMap,
-                      customBackAllowedSet,
-                    })}
-                    alt={p.name}
-                    fill
-                    className="object-contain"
-                    loading="lazy"
-                    unoptimized
-                  />
+          {visibleProducts.map(p => {
+            // 🚩 Overwrite placements if user selected any for this product
+            const override = filters?.[String(p.id)] || null;
+            const productForThumb = override ? { ...p, placement_coordinates: override } : p;
+
+            // If override exists, DO NOT pass pagePlacementMap (so it doesn't override the override)
+            const url = generateProductImageUrl(productForThumb, companyLogos, {
+              max: 500,
+              ...(override ? {} : { pagePlacementMap }),
+              customBackAllowedSet,
+            });
+
+            return (
+              <div key={p.id} className="bg-bglight rounded-2xl shadow flex flex-col items-center">
+                <div
+                  className="w-full h-[200px] flex items-center cursor-pointer overflow-hidden rounded-t-2xl"
+                  onClick={() => setModalProduct(p)}
+                >
+                  <div className="relative w-full h-[200px] bg-bglighter mb-3">
+                    <Image
+                      src={url}
+                      alt={p.name}
+                      fill
+                      className="object-contain"
+                      loading="lazy"
+                      unoptimized
+                    />
+                  </div>
+                </div>
+                <div className="w-full p-7 flex flex-col justify-center items-center flex-grow">
+                  <h3
+                    className="text-xl w-full text-center font-medium mb-2 text-primary cursor-pointer"
+                    onClick={() => setModalProduct(p)}
+                  >
+                    {p.name}
+                  </h3>
+                  <ProductColorBoxes acf={p.acf} onBoxClick={() => setModalProduct(p)} />
+                  <ProductPriceLabel product={p} bumpPrice={bumpPrice} />
+                  <Button
+                    variant="link"
+                    className="text-skyblue mt-2 font-medium text-lg cursor-pointer"
+                    onClick={() => setModalProduct(p)}
+                  >
+                    לפרטים על המוצר
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setModalProduct(null);
+                      setTimeout(() => setCartModalProduct(p), 120);
+                    }}
+                    id={`add-to-cart-${p.id}`}
+                    className="bg-accent rounded-[11px] mt-5 w-auto text-primary font-bold hover:bg-[#002266] hover:text-white text-[17px] py-[23px] px-[25px] transition cursor-pointer"
+                  >
+                    הוסף להזמנה
+                  </Button>
                 </div>
               </div>
-              <div className="w-full p-7 flex flex-col justify-center items-center flex-grow">
-                <h3
-                  className="text-xl w-full text-center font-medium mb-2 text-primary cursor-pointer"
-                  onClick={() => setModalProduct(p)}
-                >
-                  {p.name}
-                </h3>
-                <ProductColorBoxes acf={p.acf} onBoxClick={() => setModalProduct(p)} />
-                <ProductPriceLabel product={p} bumpPrice={bumpPrice} />
-                <Button
-                  variant="link"
-                  className="text-skyblue mt-2 font-medium text-lg cursor-pointer"
-                  onClick={() => setModalProduct(p)}
-                >
-                  לפרטים על המוצר
-                </Button>
-                <Button
-                  onClick={() => {
-                    setModalProduct(null);
-                    setTimeout(() => setCartModalProduct(p), 120);
-                  }}
-                  id={`add-to-cart-${p.id}`}
-                  className="bg-accent rounded-[11px] mt-5 w-auto text-primary font-bold hover:bg-[#002266] hover:text-white text-[17px] py-[23px] px-[25px] transition cursor-pointer"
-                >
-                  הוסף להזמנה
-                </Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
           {visibleProducts.length === 0 && (
             <div className="col-span-3 text-center text-gray-400 py-10">
               אין מוצרים בקטגוריה זו.
@@ -152,9 +159,9 @@ export default function ProductListSection({
         open={!!modalProduct}
         onClose={() => setModalProduct(null)}
         product={modalProduct}
-        onAddToCart={() => {
+        onAddToCart={nextProduct => {
           setModalProduct(null);
-          setTimeout(() => setCartModalProduct(modalProduct), 120);
+          setTimeout(() => setCartModalProduct(nextProduct || modalProduct), 120);
         }}
         companyLogos={companyLogos}
         bumpPrice={bumpPrice}
@@ -171,6 +178,8 @@ export default function ProductListSection({
           setTimeout(() => setModalProduct(p), 120);
         }}
         onCartAddSuccess={onCartAddSuccess}
+        pagePlacementMap={pagePlacementMap}
+        customBackAllowedSet={customBackAllowedSet}
       />
     </section>
   );

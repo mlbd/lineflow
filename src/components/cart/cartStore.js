@@ -1,74 +1,180 @@
+// components/cart/cartStore.js
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+/* ===========================
+   Currency-safe number utils
+   =========================== */
+const toNumber = v => {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+  if (v == null) return 0;
+  const s = String(v).replace(/[^\d.-]/g, ''); // strips ₪, commas, spaces, etc.
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const normalizeSteps = (steps = []) =>
+  [...(Array.isArray(steps) ? steps : [])]
+    .map(s => ({ quantity: toNumber(s?.quantity), amount: toNumber(s?.amount) }))
+    .filter(s => s.quantity > 0) // keep only meaningful tiers
+    .sort((a, b) => a.quantity - b.quantity);
+
+// Tiered unit price for Group products (sum across all lines of same product)
+const _getStepPrice = (total, regularPrice = 0, discountSteps = []) => {
+  let price = toNumber(regularPrice);
+  const steps = normalizeSteps(discountSteps);
+  for (const step of steps) {
+    if (total >= step.quantity) {
+      // Only update when amount is > 0 to avoid accidental zeros/empties
+      if (step.amount > 0) price = step.amount;
+    } else {
+      break;
+    }
+  }
+  return price;
+};
+
+// Unit price for Quantity-type products (per-line)
+const _getQuantityUnitPrice = (q, steps = [], fallback = 0) => {
+  const norm = normalizeSteps(steps);
+  let p = toNumber(fallback);
+  for (const s of norm) {
+    if (q >= s.quantity && s.amount > 0) p = s.amount;
+    else if (q < s.quantity) break;
+  }
+  return p;
+};
+
+/* ===========================
+   Placement signature helpers
+   =========================== */
+const buildPlacementSignature = placements => {
+  try {
+    const actives = (Array.isArray(placements) ? placements : [])
+      .filter(p => p && p.name && p.active)
+      .map(p => String(p.name).trim().toLowerCase());
+    return actives.length ? actives.sort().join('|') : 'default';
+  } catch {
+    return 'default';
+  }
+};
+
+// For merging: if user didn't change filter, treat as 'default' regardless of stored coordinates
+const effectiveSigForMerge = item => {
+  return item?.options?.group_type === 'Group'
+    ? item?.filter_was_changed
+      ? buildPlacementSignature(item?.placement_coordinates)
+      : 'default'
+    : '';
+};
+
+/* ===========================
+   Store
+   =========================== */
 export const useCartStore = create(
   persist(
     (set, get) => ({
       items: [],
 
+      /* Add item (merge rules restored):
+         - GROUP: merge by product_id + color + size + sig
+           where sig = 'default' if filter_was_changed !== true,
+                 else signature of active placements.
+         - NON-GROUP: previous behavior (options deep equality).
+      */
       addItem: item => {
         set(state => {
-          if (item.options && item.options.group_type === 'Group') {
-            const idx = state.items.findIndex(
-              i =>
-                i.product_id === item.product_id &&
-                i.options?.group_type === 'Group' &&
-                i.options?.color === item.options.color &&
-                i.options?.size === item.options.size
-            );
-            if (idx > -1) {
-              const newItems = [...state.items];
-              newItems[idx] = {
-                ...newItems[idx],
-                quantity: newItems[idx].quantity + item.quantity,
+          const newItems = [...(Array.isArray(state.items) ? state.items : [])];
+
+          // GROUP flow (color/size grid)
+          if (item?.options?.group_type === 'Group') {
+            const pid = String(item.product_id || '');
+            const color = String(item?.options?.color || '');
+            const size = String(item?.options?.size || '');
+            const inSig = effectiveSigForMerge(item);
+
+            const matchIdx = newItems.findIndex(i => {
+              if (i?.options?.group_type !== 'Group') return false;
+              return (
+                String(i.product_id || '') === pid &&
+                String(i?.options?.color || '') === color &&
+                String(i?.options?.size || '') === size &&
+                effectiveSigForMerge(i) === inSig
+              );
+            });
+
+            if (matchIdx > -1) {
+              const prev = newItems[matchIdx];
+              const nextQty = (parseInt(prev.quantity) || 0) + (parseInt(item.quantity) || 0);
+
+              newItems[matchIdx] = {
+                ...prev,
+                quantity: nextQty,
               };
-              return { items: newItems };
+            } else {
+              newItems.push(item);
             }
-            return { items: [...state.items, item] };
+
+            // Re-price all GROUP lines of this product by current tier
+            const groupLines = newItems
+              .map((it, idx) => ({ it, idx }))
+              .filter(
+                ({ it }) => it.product_id === item.product_id && it?.options?.group_type === 'Group'
+              );
+
+            // Prefer pricing data from any line (fallback to current item)
+            const anyWithPricing = groupLines.find(({ it }) => it.pricing?.discount_steps) || {
+              it: { pricing: item.pricing || {} },
+            };
+
+            const regular_price = toNumber(anyWithPricing.it.pricing?.regular_price);
+            const discount_steps = anyWithPricing.it.pricing?.discount_steps || [];
+
+            if (discount_steps && discount_steps.length) {
+              const totalQty = groupLines.reduce(
+                (sum, { it }) => sum + (parseInt(it.quantity) || 0),
+                0
+              );
+              const newUnit = _getStepPrice(totalQty, regular_price, discount_steps);
+              groupLines.forEach(({ idx }) => {
+                newItems[idx] = { ...newItems[idx], price: newUnit };
+              });
+            }
+
+            return { items: newItems };
           }
 
-          const idx = state.items.findIndex(
+          // NON-GROUP flow (Quantity-type or simple)
+          const idx = newItems.findIndex(
             i =>
               i.product_id === item.product_id &&
-              JSON.stringify(i.options) === JSON.stringify(item.options)
+              JSON.stringify(i.options || {}) === JSON.stringify(item.options || {})
           );
+
           if (idx > -1) {
-            const newItems = [...state.items];
+            const nextQty =
+              (parseInt(newItems[idx].quantity) || 0) + (parseInt(item.quantity) || 0);
+            let nextPrice = toNumber(newItems[idx].price);
+
+            if (newItems[idx].pricing?.steps) {
+              nextPrice = _getQuantityUnitPrice(nextQty, newItems[idx].pricing.steps, nextPrice);
+            }
+
             newItems[idx] = {
               ...newItems[idx],
-              quantity: newItems[idx].quantity + item.quantity,
+              quantity: nextQty,
+              price: nextPrice,
             };
             return { items: newItems };
           }
 
-          return { items: [...state.items, item] };
+          return { items: [...newItems, item] };
         });
       },
 
+      /* Add or update (same behavior as addItem, exposed for clarity) */
       addOrUpdateItem: item => {
-        set(state => {
-          const items = [...state.items];
-          const matchIndex = items.findIndex(
-            i =>
-              i.product_id === item.product_id &&
-              i.options?.group_type === 'Group' &&
-              i.options?.color === item.options?.color &&
-              i.options?.size === item.options?.size
-          );
-
-          if (matchIndex > -1) {
-            console.log(
-              `[CartStore] Updating existing item ${item.product_id} (${item.options.color} / ${item.options.size})`
-            );
-            items[matchIndex].quantity += item.quantity;
-            return { items };
-          }
-
-          console.log(
-            `[CartStore] Adding NEW item ${item.product_id} (${item.options.color} / ${item.options.size})`
-          );
-          return { items: [...items, item] };
-        });
+        get().addItem(item);
       },
 
       removeItem: index => {
@@ -77,12 +183,46 @@ export const useCartStore = create(
         }));
       },
 
+      /* Change quantity; re-price accordingly (Group tier or Quantity steps) */
       updateItemQuantity: (index, newQuantity) => {
         set(state => {
           const newItems = [...state.items];
-          if (newItems[index] && newItems[index].quantity !== newQuantity) {
-            newItems[index] = { ...newItems[index], quantity: newQuantity };
+          if (!newItems[index]) return { items: newItems };
+
+          const q = Math.max(0, parseInt(newQuantity) || 0);
+          newItems[index] = { ...newItems[index], quantity: q };
+
+          const item = newItems[index];
+
+          // GROUP reprice across all lines for this product
+          if (item.options?.group_type === 'Group' && item.pricing?.discount_steps) {
+            const pid = item.product_id;
+            const groupLines = newItems
+              .map((it, idx) => ({ it, idx }))
+              .filter(({ it }) => it.product_id === pid && it.options?.group_type === 'Group');
+
+            const totalQty = groupLines.reduce(
+              (sum, { it }) => sum + (parseInt(it.quantity) || 0),
+              0
+            );
+            const unit = _getStepPrice(
+              totalQty,
+              toNumber(item.pricing.regular_price),
+              item.pricing.discount_steps
+            );
+
+            groupLines.forEach(({ idx }) => {
+              newItems[idx] = { ...newItems[idx], price: unit };
+            });
+            return { items: newItems };
           }
+
+          // QUANTITY-type: reprice this line only via steps (if present)
+          if (item.pricing?.steps) {
+            const unit = _getQuantityUnitPrice(q, item.pricing.steps, toNumber(item.price));
+            newItems[index] = { ...newItems[index], price: unit };
+          }
+
           return { items: newItems };
         });
       },
@@ -91,35 +231,38 @@ export const useCartStore = create(
         set({ items: [] });
       },
     }),
-    {
-      name: 'cart-storage',
-    }
+    { name: 'cart-storage' }
   )
 );
 
-// Hooks
-export const useCartItems = () => useCartStore(state => state.items);
-export const useAddItem = () => useCartStore(state => state.addItem);
-export const useAddOrUpdateItem = () => useCartStore(state => state.addOrUpdateItem);
-export const useRemoveItem = () => useCartStore(state => state.removeItem);
-export const useUpdateItemQuantity = () => useCartStore(state => state.updateItemQuantity);
-export const useClearCart = () => useCartStore(state => state.clearCart);
+/* ===========================
+   Selectors / helpers
+   =========================== */
+export const useCartItems = () => useCartStore(s => s.items);
+export const useAddItem = () => useCartStore(s => s.addItem);
+export const useAddOrUpdateItem = () => useCartStore(s => s.addOrUpdateItem);
+export const useRemoveItem = () => useCartStore(s => s.removeItem);
+export const useUpdateItemQuantity = () => useCartStore(s => s.updateItemQuantity);
+export const useClearCart = () => useCartStore(s => s.clearCart);
 
-// Utility functions
-export const getTotalItems = items => {
-  return items.reduce((total, item) => total + item.quantity, 0);
-};
+export const getTotalItems = items =>
+  (Array.isArray(items) ? items : []).reduce(
+    (total, item) => total + (parseInt(item.quantity) || 0),
+    0
+  );
 
-export const getTotalPrice = items => {
-  return items.reduce((total, item) => total + item.price * item.quantity, 0);
-};
+export const getTotalPrice = items =>
+  (Array.isArray(items) ? items : []).reduce(
+    (total, item) => total + toNumber(item.price) * (parseInt(item.quantity) || 0),
+    0
+  );
 
 export const getCartTotalPrice = (items, { coupon = null, shippingCost = 0 } = {}) => {
   const subtotal = getTotalPrice(items);
 
   let couponDiscount = 0;
   if (coupon && coupon.valid) {
-    const couponAmount = Number(coupon.amount);
+    const couponAmount = toNumber(coupon.amount);
     if (coupon.type === 'percent') {
       couponDiscount = Math.round(subtotal * (couponAmount / 100));
     } else {
@@ -127,6 +270,6 @@ export const getCartTotalPrice = (items, { coupon = null, shippingCost = 0 } = {
     }
   }
 
-  const total = Math.max(0, subtotal + Number(shippingCost) - couponDiscount);
+  const total = Math.max(0, subtotal + toNumber(shippingCost) - couponDiscount);
   return total;
 };

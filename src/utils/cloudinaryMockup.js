@@ -382,15 +382,15 @@ export const buildCloudinaryMockupUrl = ({
   logos = {},
   productId = null,
 }) => {
-  console.log('buildCloudinaryMockupUrl', {
-    baseUrl,
-    baseW,
-    baseH,
-    baseHex,
-    placements,
-    logos,
-    productId,
-  });
+  // console.log('buildCloudinaryMockupUrl', {
+  //   baseUrl,
+  //   baseW,
+  //   baseH,
+  //   baseHex,
+  //   placements,
+  //   logos,
+  //   productId,
+  // });
   if (!isCloudinaryUrl(baseUrl)) return baseUrl;
   if (!Array.isArray(placements) || placements.length === 0) return baseUrl;
   if (!validLogo(logos?.logo_darker)) return baseUrl;
@@ -442,15 +442,15 @@ export const buildRelativeMockupUrl = ({
   baseW = 0,
   baseH = 0,
 }) => {
-  console.log('buildRelativeMockupUrl', {
-    baseUrl,
-    placements,
-    logos,
-    baseHex,
-    max,
-    maxH,
-    productId,
-  });
+  // console.log('buildRelativeMockupUrl', {
+  //   baseUrl,
+  //   placements,
+  //   logos,
+  //   baseHex,
+  //   max,
+  //   maxH,
+  //   productId,
+  // });
   if (!isCloudinaryUrl(baseUrl)) return baseUrl;
   if (!Array.isArray(placements) || placements.length === 0) return baseUrl;
   if (!validLogo(logos?.logo_darker)) return baseUrl;
@@ -533,7 +533,7 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
     __useBack: !!(p?.back && allowBack),
   }));
 
-  console.log('generateProductImageUrl', baseW, baseH, product, opts, baseUrl);
+  // console.log('generateProductImageUrl', baseW, baseH, product, opts, baseUrl);
 
   if (!opts?.max) {
     if (!baseW || !baseH) {

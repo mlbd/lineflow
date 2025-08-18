@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import NextImage from 'next/image'; // ✅ alias the Next component
+import NextImage from 'next/image';
 import { Trash2 } from 'lucide-react';
 import { useRemoveItem, useUpdateItemQuantity } from './cartStore';
 import { isDarkColor } from '@/utils/color';
@@ -9,6 +9,9 @@ import {
   generateCartThumbUrlFromItem,
   generateHoverThumbUrlFromItem,
 } from '@/utils/cloudinaryMockup';
+
+const SHOW_PLACEMENTS_LABEL = true;
+const SHOW_FILTER_CHANGED_LABEL = true;
 
 // ---- Global promise cache so each URL preloads once per session ----
 const preloadCache = new Map(); // url -> Promise<string>
@@ -18,7 +21,7 @@ const preloadImage = url => {
 
   const p = new Promise(resolve => {
     if (typeof window === 'undefined') return resolve(url);
-    const img = new window.Image(); // ✅ native constructor
+    const img = new window.Image();
     img.onload = () => resolve(url);
     img.onerror = () => resolve(url); // non-blocking
     img.src = url;
@@ -31,7 +34,7 @@ export default function CartItem({
   item,
   idx,
   companyLogos = {},
-  pagePlacementMap = {},
+  pagePlacementMap = {}, // intentionally unused for cart thumbs (cart is frozen)
   customBackAllowedSet = {},
 }) {
   const removeItem = useRemoveItem();
@@ -56,22 +59,41 @@ export default function CartItem({
     setLocalQuantity(item.quantity.toString());
   }, [item.quantity]);
 
-  // Small cart thumb (<=300)
+  // Small cart thumb (<=300) — use the FROZEN snapshot from the item only
   useEffect(() => {
     const url = generateCartThumbUrlFromItem(item, companyLogos, {
       max: 200,
-      pagePlacementMap,
-      customBackAllowedSet,
+      customBackAllowedSet, // ❌ no pagePlacementMap here — cart is frozen
     });
     setThumbUrl(url || item.thumbnail || '');
-  }, [item, companyLogos]);
+  }, [
+    item?.product_id,
+    item?.options?.color,
+    item?.options?.size,
+    item?.placement_coordinates, // frozen placements
+    item?.filter_was_changed,
+    companyLogos,
+    customBackAllowedSet,
+  ]);
 
-  // Build larger hover preview (<=400)
+  // Hover (bigger) cart image — also from the frozen snapshot
   useEffect(() => {
-    const big = generateHoverThumbUrlFromItem(item, companyLogos, { max: 400 });
-    setHoverUrl(big || '');
-    setHoverReady(false);
-  }, [item, companyLogos]);
+    const url = generateHoverThumbUrlFromItem(item, companyLogos, {
+      max: 400,
+      customBackAllowedSet, // ❌ no pagePlacementMap here — cart is frozen
+    });
+    setHoverUrl(url || thumbUrl || item.thumbnail || '');
+    if (url) preloadImage(url).then(() => setHoverReady(true));
+  }, [
+    item?.product_id,
+    item?.options?.color,
+    item?.options?.size,
+    item?.placement_coordinates,
+    item?.filter_was_changed,
+    companyLogos,
+    customBackAllowedSet,
+    thumbUrl,
+  ]);
 
   // Preload hover image early: when row is near viewport (IO), else on idle
   useEffect(() => {
@@ -189,45 +211,71 @@ export default function CartItem({
     }
   };
 
-  const renderProductDetails = () => (
-    <div className="space-y-1">
-      <div className="font-semibold text-skyblue text-[15px]">{item.name}</div>
+  const renderProductDetails = () => {
+    // Build active placement labels from the FROZEN snapshot on the item
+    const activePlacements = (
+      Array.isArray(item?.placement_coordinates) ? item.placement_coordinates : []
+    )
+      .filter(p => p && p.name && p.active)
+      .map(p => String(p.name));
 
-      {item.options?.group_type === 'Group' && (
-        <div className="space-y-1 text-sm text-gray-600">
-          <div className="flex items-center gap-2">
-            <span>צבע:</span>
-            <span
-              className="p-0.5 rounded text-xs font-medium"
-              style={{
-                backgroundColor: item.options.color_hex_code,
-                color: isDarkColor(item.options.color_hex_code) ? '#fff' : '#000',
-                border: `1px solid ${isDarkColor(item.options.color_hex_code) ? '#fff' : '#000'}`,
-                padding: '2px 6px',
-              }}
-            >
-              {item.options.color}
-            </span>
-          </div>
-          <div>
-            מידה: <span className="font-medium">{item.options.size}</span>
-          </div>
-        </div>
-      )}
+    return (
+      <div className="space-y-1">
+        <div className="font-semibold text-skyblue text-[15px]">{item.name}</div>
 
-      {item.options &&
-        item.options.group_type !== 'Group' &&
-        Object.keys(item.options).length > 0 && (
-          <div className="text-sm text-gray-600">
-            {Object.entries(item.options).map(([k, v]) => (
-              <div key={k}>
-                {k}: <span className="font-medium">{String(v)}</span>
+        {item.options?.group_type === 'Group' && (
+          <div className="space-y-1 text-sm text-gray-600">
+            <div className="flex items-center gap-2">
+              <span>צבע:</span>
+              <span
+                className="p-0.5 rounded text-xs font-medium"
+                style={{
+                  backgroundColor: item.options.color_hex_code,
+                  color: isDarkColor(item.options.color_hex_code) ? '#fff' : '#000',
+                  border: `1px solid ${isDarkColor(item.options.color_hex_code) ? '#fff' : '#000'}`,
+                  padding: '2px 6px',
+                }}
+              >
+                {item.options.color}
+              </span>
+            </div>
+            <div>
+              מידה: <span className="font-medium">{item.options.size}</span>
+            </div>
+
+            {/* ✅ Placement labels */}
+            {SHOW_PLACEMENTS_LABEL && activePlacements.length > 0 && (
+              <div className="flex items-start gap-2 flex-wrap">
+                <div className="flex gap-1 flex-wrap">
+                  {activePlacements.map(nm => (
+                    <span
+                      key={nm}
+                      className="px-2 py-0.5 rounded-full text-[11px] font-medium border border-emerald-600 text-emerald-700 bg-emerald-50"
+                      title={nm}
+                    >
+                      {nm}
+                    </span>
+                  ))}
+                </div>
               </div>
-            ))}
+            )}
           </div>
         )}
-    </div>
-  );
+
+        {item.options &&
+          item.options.group_type !== 'Group' &&
+          Object.keys(item.options).length > 0 && (
+            <div className="text-sm text-gray-600">
+              {Object.entries(item.options).map(([k, v]) => (
+                <div key={k}>
+                  {k}: <span className="font-medium">{String(v)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+      </div>
+    );
+  };
 
   const totalPrice = item.price * item.quantity;
 
@@ -285,6 +333,9 @@ export default function CartItem({
       <div className="text-center">
         <div className="text-sm font-semibold text-gray-900">{item.price} ₪</div>
         <div className="text-xs text-gray-500">ליחידה</div>
+        {SHOW_FILTER_CHANGED_LABEL && item.filter_was_changed && (
+          <div className="text-xs text-red-500">⚠ מיקומי לוגו שונו</div>
+        )}
       </div>
 
       {/* 4) Quantity (editable) */}

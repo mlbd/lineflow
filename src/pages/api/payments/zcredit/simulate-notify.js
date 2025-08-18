@@ -13,23 +13,26 @@ export default async function handler(req, res) {
       OrderId: String(draft),
       TransactionUniqueId: txId,
       ApprovalNumber: approved ? 'DEV-OK' : 'DEV-FAIL',
-      TransactionSum: 0 // WP will read the authoritative total from the draft snapshot
+      TransactionSum: 0, // WP will read the authoritative total from the draft snapshot
     };
 
     // Tell WP to complete the order using the stored draft.
     // We set dev_simulate=true and pass a dev secret header.
-    const wp = await fetch(`${process.env.NEXT_PUBLIC_WP_SITE_URL}/wp-json/mini-sites/v1/checkout/complete`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-MS-Dev-Secret': process.env.ZCREDIT_SIMULATE_SECRET || ''
-      },
-      body: JSON.stringify({
-        payment_provider: 'zcredit',
-        dev_simulate: true,
-        zcredit: event
-      })
-    });
+    const wp = await fetch(
+      `${process.env.NEXT_PUBLIC_WP_SITE_URL}/wp-json/mini-sites/v1/checkout/complete`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-MS-Dev-Secret': process.env.ZCREDIT_SIMULATE_SECRET || '',
+        },
+        body: JSON.stringify({
+          payment_provider: 'zcredit',
+          dev_simulate: true,
+          zcredit: event,
+        }),
+      }
+    );
     const j = await wp.json().catch(() => ({}));
     if (!wp.ok) return res.status(400).json({ error: j?.message || 'WP complete failed' });
 

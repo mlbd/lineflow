@@ -16,7 +16,7 @@ export default function DevPay() {
       const r = await fetch('/api/payments/zcredit/simulate-notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approved, draft })
+        body: JSON.stringify({ approved, draft }),
       });
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || 'simulate failed');
@@ -41,8 +41,18 @@ export default function DevPay() {
         <h1 className="text-xl font-semibold">DevPay (Simulator)</h1>
         <p className="text-sm text-gray-600">draft: {draft || '-'}</p>
         <div className="flex gap-3 justify-center">
-          <button onClick={() => simulate(true)} className="px-4 py-2 rounded bg-green-600 text-white">Approve</button>
-          <button onClick={() => simulate(false)} className="px-4 py-2 rounded bg-red-600 text-white">Decline</button>
+          <button
+            onClick={() => simulate(true)}
+            className="px-4 py-2 rounded bg-green-600 text-white"
+          >
+            Approve
+          </button>
+          <button
+            onClick={() => simulate(false)}
+            className="px-4 py-2 rounded bg-red-600 text-white"
+          >
+            Decline
+          </button>
         </div>
         <p className="text-xs text-gray-500">Simulator is active because ZCREDIT_SIMULATE=1</p>
       </div>

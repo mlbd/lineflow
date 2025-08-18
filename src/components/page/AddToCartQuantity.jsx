@@ -67,6 +67,7 @@ export default function AddToCartQuantity({ open, onClose, product, bumpPrice, o
       thumbnail: product.thumbnail,
       quantity,
       price,
+      pricing: { type: 'Quantity', steps },
       options: {}, // add options if any (for quantity type, usually none)
     });
     if (typeof window !== 'undefined' && window.dataLayer) {
