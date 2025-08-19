@@ -60,18 +60,75 @@ function useResponsiveModalWidth(sizes, minPad = 32) {
   return computedWidth;
 }
 
-function getStepPrice(total, regularPrice, discountSteps = []) {
-  let price = toNumber(regularPrice);
-  let lastStepQty = 0;
-  for (const step of discountSteps) {
-    const q = toNumber(step.quantity);
-    if (total >= q) {
-      const amt = toNumber(step.amount);
-      price = amt;
-      lastStepQty = q;
+/**
+ * Steps are "max-quantity tiers".
+ * Example:
+ *  [{q:14,a:0}, {q:49,a:51}, {q:99,a:43}, {q:100,a:38}]
+ * Ranges:
+ *  1–14  => amount 0 (use regular)
+ *  15–49 => 51
+ *  50–99 => 43
+ *  100+  => 38
+ *
+ * Returns current unit price and info needed for the "next tier" UI.
+ */
+function resolveStepPricing(total, regularPrice, discountSteps = []) {
+  const reg = toNumber(regularPrice);
+
+  const steps = (Array.isArray(discountSteps) ? discountSteps : [])
+    .map(s => ({ quantity: toNumber(s.quantity), amount: toNumber(s.amount) }))
+    .filter(s => s.quantity > 0)
+    .sort((a, b) => a.quantity - b.quantity);
+
+  if (!steps.length) {
+    return {
+      price: reg,
+      currentIdx: -1,
+      nextStep: null,
+      unitsToNext: null,
+    };
+  }
+
+  // Find current step index = first step with total <= step.quantity; else last
+  let currentIdx = steps.length - 1;
+  for (let i = 0; i < steps.length; i++) {
+    if (total <= steps[i].quantity) {
+      currentIdx = i;
+      break;
     }
   }
-  return { price, lastStepQty };
+
+  // Current tier unit price (0 means "use regular")
+  const current = steps[currentIdx];
+  const price = current.amount > 0 ? current.amount : reg;
+
+  // Next tier is the step AFTER current
+  const nextIdx = currentIdx + 1;
+  if (nextIdx >= steps.length) {
+    return {
+      price,
+      currentIdx,
+      nextStep: null,
+      unitsToNext: null,
+    };
+  }
+
+  const next = steps[nextIdx];
+
+  // How many more units to reach the *minimum of next tier*:
+  // next tier min = current max + 1
+  const nextTierMin = steps[currentIdx].quantity + 1;
+  const unitsToNext = Math.max(0, nextTierMin - total);
+
+  // Next tier amount for display (0 -> show regular price)
+  const nextDisplayAmt = next.amount > 0 ? next.amount : reg;
+
+  return {
+    price,
+    currentIdx,
+    nextStep: { ...next, amount: nextDisplayAmt },
+    unitsToNext,
+  };
 }
 
 // Parse pagePlacementMap entry (array | JSON string | keyed object)
@@ -113,20 +170,13 @@ export default function AddToCartGroup({
   const clearFilter = useAreaFilterStore(s => s.clearFilter);
   const mode = useAreaFilterStore(s => s.mode);
 
-  console.log("mode", mode);
-
   const { total, stepInfo } = useMemo(() => {
     let t = 0;
     for (const row of quantities) for (const val of row) t += parseInt(val || 0);
-    const { price, lastStepQty } = getStepPrice(t, regularPrice, discountSteps);
-    return { total: t, stepInfo: { price, lastStepQty } };
-  }, [quantities, discountSteps, regularPrice]);
 
-  const nextStep = discountSteps.find(s => parseInt(s.quantity) > total);
-  const unitsToNext =
-    nextStep && parseInt(nextStep.quantity) - total > 0
-      ? parseInt(nextStep.quantity) - total
-      : null;
+    const info = resolveStepPricing(t, regularPrice, discountSteps);
+    return { total: t, stepInfo: info };
+  }, [quantities, discountSteps, regularPrice]);
 
   const addOrUpdateItem = useCartStore(s => s.addOrUpdateItem);
 
@@ -176,12 +226,11 @@ export default function AddToCartGroup({
       ? product.placement_coordinates
       : [];
 
-    // 1. If user has changed filter for this product → take that as top priority
+    // 1) User-chosen filter wins
     if (filters && filters[pid] && Array.isArray(filters[pid])) {
       effectivePlacements = filters[pid];
     }
-
-    // 2. Else, if pagePlacementMap has an override for this product → use that
+    // 2) Else page override
     else if (
       pagePlacementMap &&
       typeof pagePlacementMap === 'object' &&
@@ -191,9 +240,8 @@ export default function AddToCartGroup({
       effectivePlacements = coercePlacementArray(pagePlacementMap[pid], product?.id);
     }
 
-    // Baseline = pagePlacementMap override (if exists) OR product defaults
+    // Baseline for comparison
     let baselinePlacements = [];
-
     if (
       pagePlacementMap &&
       typeof pagePlacementMap === 'object' &&
@@ -212,9 +260,8 @@ export default function AddToCartGroup({
     const baselineSignature = buildPlacementSignature(baselinePlacements);
     const filterWasChanged = placementSignature !== baselineSignature;
 
-    // Step 1: Collect all cart entries to add (FREEZE the effective placements)
+    // Collect items to add (freeze placements)
     const itemsToAdd = [];
-
     colors.forEach((color, rIdx) => {
       sizes.forEach((size, cIdx) => {
         const qty = parseInt(quantities[rIdx][cIdx] || 0);
@@ -222,24 +269,16 @@ export default function AddToCartGroup({
           itemsToAdd.push({
             product_id: product.id,
             name: product.name,
-
             thumbnail: product.thumbnail,
-
             price: Number(stepInfo.price) || 0,
             quantity: qty,
-
             pricing: {
               type: 'Group',
               regular_price: Number(regularPrice),
               discount_steps: discountSteps,
             },
-
-            // (kept for debugging/compat; cartStore derives its own signature)
             placement_signature: placementSignature,
-
-            // ✅ FROZEN placements snapshot (effective)
-            placement_coordinates: effectivePlacements,
-
+            placement_coordinates: effectivePlacements, // frozen snapshot
             product: {
               id: product.id,
               placement_coordinates: effectivePlacements,
@@ -247,10 +286,7 @@ export default function AddToCartGroup({
                 color: Array.isArray(product?.acf?.color) ? product.acf.color : [],
               },
             },
-
-            // ✅ correct flag for cart (merging + UI)
             filter_was_changed: filterWasChanged,
-
             options: {
               group_type: 'Group',
               color: color.title,
@@ -263,9 +299,7 @@ export default function AddToCartGroup({
       });
     });
 
-    itemsToAdd.forEach(item => {
-      addOrUpdateItem(item);
-    });
+    itemsToAdd.forEach(item => addOrUpdateItem(item));
 
     if (typeof window !== 'undefined' && window.dataLayer) {
       itemsToAdd.forEach(item => {
@@ -290,7 +324,7 @@ export default function AddToCartGroup({
     if (onCartAddSuccess) onCartAddSuccess();
     onClose();
 
-    if(mode === 'temp' && filterWasChanged) {
+    if (mode === 'temp' && filterWasChanged) {
       clearFilter(pid);
     }
   };
@@ -399,13 +433,13 @@ export default function AddToCartGroup({
           <div className="w-full">
             {error ? (
               <div className="text-red-500 text-sm text-center mb-2">{error}</div>
-            ) : unitsToNext ? (
+            ) : stepInfo.nextStep ? (
               <div className="text-pink text-xl pt-[10px] text-center mb-2 flex flex-col">
                 <span>
-                  הוסיפו {unitsToNext} פריטים נוספים להורדת המחיר ל-{' '}
-                  <b>{nextStep.amount || regularPrice}₪</b> ליחידה
+                  הוסיפו {stepInfo.unitsToNext} פריטים נוספים להורדת המחיר ל-{' '}
+                  <b>{stepInfo.nextStep.amount}₪</b> ליחידה
                 </span>
-                <span className="line-through">(כרגע {stepInfo.price}₪)</span>
+                <span className="line-through current_price">(כרגע {stepInfo.price}₪)</span>
               </div>
             ) : (
               total > 0 && (
@@ -429,7 +463,7 @@ export default function AddToCartGroup({
                 <div className="alarnd--price-by-shirt text-center my-4">
                   <p className="alarnd--group-price text-lg font-semibold">
                     <span>
-                      <span className="alarnd__wc-price">{stepInfo.price}</span>
+                      <span className="current_price">{stepInfo.price}</span>
                       <span className="woocommerce-Price-currencySymbol">₪</span>
                     </span>{' '}
                     / {acf.first_line_keyword || 'תיק'}
@@ -440,7 +474,7 @@ export default function AddToCartGroup({
                   <span className="alarnd--total-price">
                     סה&quot;כ:{' '}
                     <span>
-                      <span className="alarnd__wc-price">{total * stepInfo.price}</span>
+                      <span className="current_total_price">{total * stepInfo.price}</span>
                       <span className="woocommerce-Price-currencySymbol">₪</span>
                     </span>
                   </span>

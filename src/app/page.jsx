@@ -333,6 +333,18 @@ export default function HomePage() {
   const handleSavePlacement = async () => {
     if (!selectedProductId || mappings.length === 0) return;
 
+     // ✅ NEW GUARD: require at least one active placement
+    const hasActive = Array.isArray(mappings) && mappings.some(m => m?.active === true);
+    if (!hasActive) {
+      setWarnTitle('No active placements');
+      setWarnBody(
+        'You must mark at least one placement as Active before saving.\n\n' +
+        'Open a placement, toggle “Active”, and try again.'
+      );
+      setWarnOpen(true);
+      return; // ⛔ stop here; do not proceed to confirm/save
+    }
+
     if (!isCloudinaryUrl(currentThumbUrl)) {
       setConfirmTitle('Proceed without Cloudinary image?');
       setConfirmBody(
@@ -413,6 +425,7 @@ export default function HomePage() {
 
       setResultOk(true);
       setResultMsg(data?.message || 'Placements saved!');
+      setOnlyThisPage(false);
     } catch (err) {
       setResultOk(false);
       setResultMsg(err.message || 'Failed to update placements.');

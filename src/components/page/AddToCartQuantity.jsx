@@ -23,14 +23,43 @@ export default function AddToCartQuantity({ open, onClose, product, bumpPrice, o
   // Modal width: 470px
   const sizeWidth = 470;
 
+  // Helper function to get price for a given quantity
+  const getPriceForQuantity = (qty) => {
+    if (!qty || !steps.length) return 0;
+    
+    // Filter out hidden steps
+    const visibleSteps = steps.filter(step => !step.hide);
+    
+    // Find the appropriate step for this quantity
+    let applicableStep = visibleSteps[0]; // Default to first step
+    
+    for (const step of visibleSteps) {
+      if (qty >= parseInt(step.quantity)) {
+        applicableStep = step;
+      } else {
+        break;
+      }
+    }
+    
+    return applicableStep ? parseFloat(applicableStep.amount) : 0;
+  };
+
+  // Calculate custom quantity pricing
+  const customPricing = useMemo(() => {
+    const qty = parseInt(customQty || 0);
+    if (!qty) return { unitPrice: 0, total: 0 };
+    
+    const unitPrice = getPriceForQuantity(qty);
+    const total = qty * unitPrice;
+    
+    return { unitPrice, total };
+  }, [customQty, steps]);
+
   // Compute current selection
   const { quantity, price } = useMemo(() => {
     if (selectedIdx === 0) {
       const q = parseInt(customQty || 0);
-      let p = steps[0]?.amount ? parseFloat(steps[0].amount) : 0;
-      for (let i = 0; i < steps.length; i++) {
-        if (q >= parseInt(steps[i].quantity)) p = parseFloat(steps[i].amount);
-      }
+      const p = getPriceForQuantity(q);
       return { quantity: q, price: p };
     } else {
       const idx = selectedIdx - 1;
@@ -49,7 +78,7 @@ export default function AddToCartQuantity({ open, onClose, product, bumpPrice, o
     let newVal = val.replace(/[^0-9]/g, '');
     if (parseInt(newVal) > QTY_LIMIT) {
       setError(`כמות מקסימלית לרכישה: ${QTY_LIMIT}`);
-      newVal = QTY_LIMIT.toString();
+      // Don't auto-correct, just show error and keep the typed value
     } else if (newVal && parseInt(newVal) < minStep) {
       setError(`הכמות המינימלית היא ${minStep}`);
     } else {
@@ -119,19 +148,39 @@ export default function AddToCartQuantity({ open, onClose, product, bumpPrice, o
                   className="form-radio mx-2"
                 />
                 <input
-                  className="border rounded-lg px-2 py-1 w-24 text-right"
+                  className="custom_qty_input border rounded-lg px-2 py-1 w-24 text-right"
                   inputMode="numeric"
                   pattern="[0-9]*"
                   placeholder="הקלידו כמות…"
                   value={customQty}
-                  onChange={e => handleCustomQty(e.target.value)}
+                  onChange={e => {
+                    if (selectedIdx !== 0) setSelectedIdx(0); // Auto-select on type
+                    handleCustomQty(e.target.value);
+                  }}
+                  onFocus={() => setSelectedIdx(0)} // Auto-select on focus
+                  onClick={() => setSelectedIdx(0)} // Auto-select on click
                   onBlur={() => setError(null)}
-                  maxLength={5}
+                  maxLength={6}
                 />
               </div>
+
+              {/* Middle column: total */}
+              <div className="alarnd-single-qty flex-1 text-center">
+                <span className="text-gray-400">
+                  {customQty && parseInt(customQty) > 0 ? `${Math.round(customPricing.total)}₪` : '—'}
+                </span>
+              </div>
+
+              {/* Right column: unit price */}
+              <div className="alarnd-single-qty flex-shrink-0">
+                <span className="font-bold">
+                  {customQty && parseInt(customQty) > 0 ? `${customPricing.unitPrice} ש״ח ליחידה` : '—'}
+                </span>
+              </div>
             </label>
+
             {/* Preset steps */}
-            {steps.map((step, idx) => (
+            {steps.filter(step => !step.hide).map((step, idx) => (
               <label
                 key={idx + 1}
                 className={clsx('flex justify-between items-center gap-3 p-1 cursor-pointer')}
@@ -152,7 +201,7 @@ export default function AddToCartQuantity({ open, onClose, product, bumpPrice, o
                   </span>
                 </div>
                 <div className="alarnd-single-qty flex-shrink-0">
-                  <span className="font-bold">{step.amount} ש&quot;ח ליחידה</span>
+                  <span className="font-bold">{step.amount} ש״ח ליחידה</span>
                 </div>
               </label>
             ))}
