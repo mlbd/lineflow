@@ -110,6 +110,10 @@ export default function AddToCartGroup({
   const [error, setError] = useState(null);
 
   const filters = useAreaFilterStore(s => s.filters);
+  const clearFilter = useAreaFilterStore(s => s.clearFilter);
+  const mode = useAreaFilterStore(s => s.mode);
+
+  console.log("mode", mode);
 
   const { total, stepInfo } = useMemo(() => {
     let t = 0;
@@ -285,6 +289,10 @@ export default function AddToCartGroup({
 
     if (onCartAddSuccess) onCartAddSuccess();
     onClose();
+
+    if(mode === 'temp' && filterWasChanged) {
+      clearFilter(pid);
+    }
   };
 
   if (!product) return null;
