@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Image as IconImage,
   Plus,
@@ -71,6 +71,18 @@ function isCloudinaryUrl(url = '') {
   return url.includes('res.cloudinary.com') || url.includes('cloudinary.com');
 }
 
+/** Parse an array or a JSON string that may contain an array; else return [] */
+function parseMaybeJsonArray(val) {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+  return [];
+}
+
 export default function HomePage() {
   const [imageUrl, setImageUrl] = useState(
     `https://res.cloudinary.com/${cloudName}/image/upload/V-Neck_L-Gray_ulfprv.jpg`
@@ -118,14 +130,18 @@ export default function HomePage() {
   const [confirmBody, setConfirmBody] = useState('');
   const [confirmAction, setConfirmAction] = useState(null); // fn
 
-  // keep full page object so we can validate selected_products later
+  // keep full page object so we can validate placements later
   const [selectedPageFull, setSelectedPageFull] = useState(null);
 
   // Update-only-for-page checkbox
   const [onlyThisPage, setOnlyThisPage] = useState(false);
 
-  // add near other state
-  // ========= NEW: Active-only previews with manual add buttons =========
+  // ========= NEW: toggle to apply Page meta placements =========
+  const [usePagePlacements, setUsePagePlacements] = useState(false);
+  const [pagePlacementsCandidate, setPagePlacementsCandidate] = useState([]); // normalized
+  const [pagePlacementsAvailable, setPagePlacementsAvailable] = useState(false);
+
+  // ========= NEW: Active-only previews with manual add buttons (existing feature kept) =========
   const [logosManualAreas, setLogosManualAreas] = useState(new Set()); // names added by user
   const [logosManualOn, setLogosManualOn] = useState(new Set()); // names force-added
   const [logosManualOff, setLogosManualOff] = useState(new Set()); // names force-removed
@@ -143,9 +159,7 @@ export default function HomePage() {
   const pagePlacementMap = useMemo(() => {
     const src = selectedPageFull?.meta?.placement_coordinates;
     if (!src) return {};
-    // prefer keyed object: { "<productId>": Placement[] }
     if (typeof src === 'object' && !Array.isArray(src)) return src;
-    // tolerate JSON string
     if (typeof src === 'string') {
       try {
         const parsed = JSON.parse(src);
@@ -199,13 +213,16 @@ export default function HomePage() {
 
     // selection: page/logo
     setSelectedPage(null);
-    setSelectedPageFull?.(null); // if you added selectedPageFull earlier
+    setSelectedPageFull?.(null);
     setCompanyLogos({});
     setLogoId('');
     setLogoPreviewUrl('');
 
     // UI flags
     setOnlyThisPage(false);
+    setUsePagePlacements(false);
+    setPagePlacementsCandidate([]);
+    setPagePlacementsAvailable(false);
     setLogosSliderIdx(0);
 
     // close any open panels/modals
@@ -215,13 +232,10 @@ export default function HomePage() {
     setLogosMapOpen(false);
     setLogosOverlayMapOpen(false);
 
-    // clear persisted preview payload for /logos page
     try {
       localStorage.removeItem('logo_page_data');
     } catch {}
 
-    // (optional) also reset the canvas image to your default
-    // comment OUT the next line if you prefer to keep the current image
     setImageUrl(`https://res.cloudinary.com/${cloudName}/image/upload/V-Neck_L-Gray_ulfprv.jpg`);
   };
 
@@ -244,7 +258,6 @@ export default function HomePage() {
       return;
     }
 
-    // must have a selected product
     if (!selectedProductId) {
       setWarnTitle('Select a product first');
       setWarnBody('You need to select a product before scoping updates to a page.');
@@ -253,7 +266,6 @@ export default function HomePage() {
       return;
     }
 
-    // must have a full page object with selected_products
     const allowed = Array.isArray(selectedPageFull?.acf?.selected_products)
       ? selectedPageFull.acf.selected_products
       : null;
@@ -269,7 +281,6 @@ export default function HomePage() {
       return;
     }
 
-    // product must exist in that list
     const ok = allowed.some(p => Number(p?.id) === Number(selectedProductId));
     if (!ok) {
       setWarnTitle('Product not allowed for this page');
@@ -282,7 +293,6 @@ export default function HomePage() {
       return;
     }
 
-    // all good
     setOnlyThisPage(true);
   };
 
@@ -314,7 +324,7 @@ export default function HomePage() {
 
   // --- Gate for Logos Mapping buttons: require Cloudinary base image
   const ensureCloudinaryForMapping = openFn => {
-    if (!selectedProductId) return; // disabled by canUpdate anyway
+    if (!selectedProductId) return;
     if (!isCloudinaryUrl(currentThumbUrl)) {
       setWarnTitle('Cloudinary image required');
       setWarnBody(
@@ -329,20 +339,19 @@ export default function HomePage() {
     openFn(true);
   };
 
-  // === Update Placement API (with confirm if not Cloudinary) ===
+  // === Update Placement (with guard for active) ===
   const handleSavePlacement = async () => {
     if (!selectedProductId || mappings.length === 0) return;
 
-     // ✅ NEW GUARD: require at least one active placement
     const hasActive = Array.isArray(mappings) && mappings.some(m => m?.active === true);
     if (!hasActive) {
       setWarnTitle('No active placements');
       setWarnBody(
         'You must mark at least one placement as Active before saving.\n\n' +
-        'Open a placement, toggle “Active”, and try again.'
+          'Open a placement, toggle “Active”, and try again.'
       );
       setWarnOpen(true);
-      return; // ⛔ stop here; do not proceed to confirm/save
+      return;
     }
 
     if (!isCloudinaryUrl(currentThumbUrl)) {
@@ -383,15 +392,12 @@ export default function HomePage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.message || `HTTP ${res.status}`);
 
-      // Merge updated product/page into local cache
+      // Update caches (unchanged from your version)
       try {
         if (data?.saved_on === 'product' && data?.product) {
-          // Update current state if this is the selected product
           if (Number(data.product.id) === Number(selectedProductId)) {
             setSelectedProduct(data.product);
           }
-
-          // Update products LocalStorage cache
           const LS_KEY = 'ms_cache_products_all_v2';
           const raw = localStorage.getItem(LS_KEY);
           if (raw) {
@@ -405,7 +411,6 @@ export default function HomePage() {
             }
           }
         } else if (data?.saved_on === 'page' && data?.page) {
-          // Update pages LocalStorage cache
           const LS_KEY_PAGES = 'ms_cache_pages_all_v5';
           const raw = localStorage.getItem(LS_KEY_PAGES);
           if (raw) {
@@ -450,10 +455,110 @@ export default function HomePage() {
         yPercent: yP,
         wPercent: wP,
         hPercent: hP,
-        active: c.active === true, // 👈 default off unless explicitly true
+        active: c.active === true, // default off unless explicitly true
         ...c,
       };
     });
+  };
+
+  /** Helper: normalize current product's placements */
+  const getNormalizedProductPlacements = useCallback(() => {
+    const raw = selectedProduct?.placement_coordinates;
+    let coords = Array.isArray(raw) ? raw : [];
+    if (!coords.length && typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) coords = parsed;
+      } catch {}
+    }
+    const baseW = Number(selectedProduct?.thumbnail_meta?.width) || 0;
+    const baseH = Number(selectedProduct?.thumbnail_meta?.height) || 0;
+    return normalizeCoords(coords, baseW, baseH);
+  }, [selectedProduct]);
+
+  /** Compute page->product candidate placements + availability */
+  const computePageCandidate = useCallback(() => {
+    if (!selectedPageFull || !selectedProductId) {
+      return { list: [], available: false };
+    }
+
+    const pagePC = selectedPageFull?.meta?.placement_coordinates;
+    const key = String(selectedProductId);
+
+    // Strict requirement: pagePC must be an object keyed by product id and contain a non-empty array
+    if (pagePC && typeof pagePC === 'object' && !Array.isArray(pagePC)) {
+      const chosen = parseMaybeJsonArray(pagePC[key]);
+      if (Array.isArray(chosen) && chosen.length) {
+        const baseW = Number(selectedProduct?.thumbnail_meta?.width) || 0;
+        const baseH = Number(selectedProduct?.thumbnail_meta?.height) || 0;
+        return { list: normalizeCoords(chosen, baseW, baseH), available: true };
+      }
+      return { list: [], available: false };
+    }
+
+    // No keyed entries => not available (legacy arrays intentionally ignored per new requirement)
+    return { list: [], available: false };
+  }, [selectedPageFull, selectedProductId, selectedProduct]);
+
+  // Keep candidate & availability in sync when product/page changes
+  useEffect(() => {
+    const { list, available } = computePageCandidate();
+    setPagePlacementsCandidate(list);
+    setPagePlacementsAvailable(available);
+
+    // If toggle was ON but availability vanished (product changed etc.), turn OFF and revert.
+    if (usePagePlacements && !available) {
+      setUsePagePlacements(false);
+      setMappingSource(null);
+      const prodNorm = getNormalizedProductPlacements();
+      setMappings(prodNorm);
+      setSelectedMapping(prodNorm[0] || null);
+    }
+  }, [computePageCandidate, usePagePlacements, getNormalizedProductPlacements]);
+
+  /** Toggle handler: apply/remove page placements */
+  const handleToggleUsePagePlacements = nextOn => {
+    if (nextOn) {
+      if (!pagePlacementsAvailable || pagePlacementsCandidate.length === 0) return;
+      setUsePagePlacements(true);
+      setMappings(pagePlacementsCandidate);
+      setSelectedMapping(pagePlacementsCandidate[0] || null);
+      setMappingSource({
+        type: 'page',
+        pageId: selectedPage?.id,
+        pageTitle: selectedPage?.title,
+        productId: selectedProductId,
+      });
+      return;
+    }
+
+    // OFF => revert to product placements
+    const prodNorm = getNormalizedProductPlacements();
+    setUsePagePlacements(false);
+    setMappingSource(null);
+    setMappings(prodNorm);
+    setSelectedMapping(prodNorm[0] || null);
+  };
+
+  /** Remove selected logo/page completely */
+  const handleRemoveSelectedLogoPage = () => {
+    // If we were using page placements, revert first
+    if (usePagePlacements) {
+      const prodNorm = getNormalizedProductPlacements();
+      setUsePagePlacements(false);
+      setMappingSource(null);
+      setMappings(prodNorm);
+      setSelectedMapping(prodNorm[0] || null);
+    }
+
+    setSelectedPage(null);
+    setSelectedPageFull(null);
+    setCompanyLogos({});
+    setLogoId('');
+    setLogoPreviewUrl('');
+    setOnlyThisPage(false);
+    setPagePlacementsCandidate([]);
+    setPagePlacementsAvailable(false);
   };
 
   // Use the live rectangles drawn on the canvas for previews (raw)
@@ -488,34 +593,6 @@ export default function HomePage() {
     return { ...selectedProduct, placement_coordinates: effectiveMappingsForPreview };
   }, [selectedProduct, effectiveMappingsForPreview]);
 
-  // Toggle logic:
-  // - if originally active  -> first click = deactivate (goes to ManualOff)
-  // - if originally inactive -> first click = add (goes to ManualOn)
-  // Clicking again removes the manual override.
-  const toggleAreaForPreview = name => {
-    if (!name) return;
-    const wasActive = originalActiveByName.get(name);
-
-    setLogosManualOn(prev => {
-      const next = new Set(prev);
-      if (next.has(name)) {
-        next.delete(name);
-        return next;
-      }
-      if (!wasActive && !logosManualOff.has(name)) next.add(name);
-      return next;
-    });
-    setLogosManualOff(prev => {
-      const next = new Set(prev);
-      if (next.has(name)) {
-        next.delete(name);
-        return next;
-      }
-      if (wasActive && !logosManualOn.has(name)) next.add(name);
-      return next;
-    });
-  };
-
   const previewPlacements = useMemo(() => {
     return (mappings || []).map(m => {
       const nm = m?.name || '';
@@ -530,7 +607,7 @@ export default function HomePage() {
     return { ...selectedProduct, placement_coordinates: previewPlacements };
   }, [selectedProduct, previewPlacements]);
 
-  // 6) Build URLs for the main logos preview (⚠️ do NOT pass pagePlacementMap here)
+  // Main logos preview (no overlay)
   const logosSliderImages = useMemo(() => {
     const p = previewProductForLogos;
     const logos = companyLogos && Object.keys(companyLogos).length ? companyLogos : null;
@@ -556,7 +633,7 @@ export default function HomePage() {
     }));
   }, [previewProductForLogos, companyLogos, customBackAllowedIds]);
 
-  // ========== Existing overlay-preview (kept as-is) ==========
+  // Overlay preview
   const logosSliderImagesOverlay = useMemo(() => {
     const p = previewProductForLogos;
     const logos = companyLogos && Object.keys(companyLogos).length ? companyLogos : null;
@@ -570,7 +647,6 @@ export default function HomePage() {
     if (!colors.length) {
       return [
         {
-          // ⛔ no pagePlacementMap here
           src: generateProductImageUrlWithOverlay(p, companyLogos, {
             ...baseOpts,
             customBackAllowedIds,
@@ -672,6 +748,52 @@ export default function HomePage() {
                   </b>
                   )
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* NEW: Use page placements switcher (visible when a page is selected) */}
+          {selectedPage?.id && (
+            <div className="px-6">
+              <div className="flex items-center justify-between border rounded-md p-3 bg-gray-50">
+                <div className="text-sm">
+                  <div className="font-medium">Use placements from this Page</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    {pagePlacementsAvailable
+                      ? 'Toggle on to replace product placements with saved page placements.'
+                      : 'No saved placements for this product on the selected page.'}
+                  </div>
+                </div>
+                <label className="inline-flex items-center gap-2 select-none">
+                  {/* SR-only input for accessibility; label makes the whole control clickable */}
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    aria-label="Use page placements"
+                    aria-checked={usePagePlacements}
+                    checked={usePagePlacements}
+                    onChange={e => handleToggleUsePagePlacements(e.target.checked)}
+                    disabled={!pagePlacementsAvailable}
+                    className="sr-only"
+                  />
+
+                  {/* Track (clips the thumb) */}
+                  <span
+                    className={`relative inline-block h-6 w-11 rounded-full overflow-hidden transition-colors duration-200
+      ${usePagePlacements ? 'bg-blue-600' : 'bg-gray-300'}
+      ${!pagePlacementsAvailable ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-opacity-90'}
+      focus-within:outline-none focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2
+    `}
+                  >
+                    {/* Thumb moves via left/right swap (no transforms) */}
+                    <span
+                      aria-hidden="true"
+                      className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow ring-1 ring-black/5 transition-all duration-200
+        ${usePagePlacements ? 'right-0.5 left-auto' : 'left-0.5 right-auto'}
+      `}
+                    />
+                  </span>
+                </label>
               </div>
             </div>
           )}
@@ -779,8 +901,7 @@ export default function HomePage() {
                 e.stopPropagation();
                 setSelectedMapping(null);
                 setShowLogoPanel(false);
-                setShowProductPanel(true); // force open
-                console.log('[UI] Opening Product panel');
+                setShowProductPanel(true);
               }}
             />
 
@@ -789,7 +910,6 @@ export default function HomePage() {
               label="Select Logo"
               title="Select Logo / Page"
               onClick={() => {
-                // Require product first
                 if (!selectedProductId) {
                   setWarnTitle('Select a product first');
                   setWarnBody('You need to select a product before choosing a logo/page.');
@@ -826,12 +946,9 @@ export default function HomePage() {
               label="Clear Cache"
               title="Clear local & server caches"
               onClick={async () => {
-                // Clear browser caches
                 window.dispatchEvent(new Event('ms-clear-cache'));
-                localStorage.setItem('ms_force_noCache', '1'); // 👈 next request will skip server cache
-                localStorage.setItem('ms_force_noCache_pages', '1'); // pages
-
-                // Revalidate product cache on the server (products route uses Next tag cache)
+                localStorage.setItem('ms_force_noCache', '1');
+                localStorage.setItem('ms_force_noCache_pages', '1');
                 try {
                   await fetch('/api/ms/revalidate', {
                     method: 'POST',
@@ -839,7 +956,6 @@ export default function HomePage() {
                     body: JSON.stringify({ tags: ['ms:products', 'ms:pages'] }),
                   });
                 } catch {}
-
                 alert('Cache cleared!');
               }}
               className="text-yellow-600 hover:bg-yellow-100"
@@ -865,7 +981,7 @@ export default function HomePage() {
                 </div>
               )}
 
-              {/* Logo/Page badge */}
+              {/* Logo/Page badge + remove button */}
               {(logoPreviewUrl || selectedPage) && (
                 <div className="flex items-center gap-2 border rounded-md px-2 py-1 bg-gray-50">
                   {logoPreviewUrl ? (
@@ -879,11 +995,22 @@ export default function HomePage() {
                     <div className="w-8 h-8 rounded bg-gray-100" />
                   )}
                   <div className="leading-4">
-                    <div className="text-xs font-semibold truncate max-w-[180px]">
+                    <div className="text-xs font-semibold truncate max-w-[160px]">
                       {selectedPage ? `#${selectedPage.id} — ${selectedPage.title}` : 'Logo'}
                     </div>
                     <div className="text-[10px] text-gray-500">Selected logo/page</div>
                   </div>
+
+                  {/* NEW: remove logo/page */}
+                  <button
+                    type="button"
+                    title="Remove selected logo/page"
+                    aria-label="Remove selected logo/page"
+                    onClick={handleRemoveSelectedLogoPage}
+                    className="ml-1 p-1 rounded hover:bg-red-50 text-red-600 cursor-pointer"
+                  >
+                    <XCircle size={16} />
+                  </button>
                 </div>
               )}
             </div>
@@ -931,24 +1058,29 @@ export default function HomePage() {
           setSelectedProduct(product || null);
           setMappingSource(null); // reset hint unless page overrides later
 
+          // NEW: reset page-placements toggle/candidate when product changes
+          setUsePagePlacements(false);
+          setPagePlacementsCandidate([]);
+          setPagePlacementsAvailable(false);
+
           // Build placements if product has any
-          const raw = product?.placement_coordinates;
-          let coords = Array.isArray(raw) ? raw : [];
-          if (!coords.length && typeof raw === 'string') {
-            try {
-              const parsed = JSON.parse(raw);
-              if (Array.isArray(parsed)) coords = parsed;
-            } catch {}
-          }
+          const prodNorm = (() => {
+            const raw = product?.placement_coordinates;
+            let coords = Array.isArray(raw) ? raw : [];
+            if (!coords.length && typeof raw === 'string') {
+              try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) coords = parsed;
+              } catch {}
+            }
+            const baseW = Number(product?.thumbnail_meta?.width) || 0;
+            const baseH = Number(product?.thumbnail_meta?.height) || 0;
+            return normalizeCoords(coords, baseW, baseH);
+          })();
 
-          const baseW = Number(product?.thumbnail_meta?.width) || 0;
-          const baseH = Number(product?.thumbnail_meta?.height) || 0;
-
-          const normalized = normalizeCoords(coords, baseW, baseH);
-
-          if (normalized.length > 0) {
-            setMappings(normalized);
-            setSelectedMapping(normalized[0]);
+          if (prodNorm.length > 0) {
+            setMappings(prodNorm);
+            setSelectedMapping(prodNorm[0]);
           } else {
             setMappings([]);
             setSelectedMapping(null);
@@ -985,12 +1117,11 @@ export default function HomePage() {
                 `Page: #${page?.id} — ${page?.title}`
             );
             setWarnOpen(true);
-            // re-open panel after warning so user can pick another
             setTimeout(() => setShowLogoPanel(true), 0);
             return;
           }
 
-          // Accept logo/page
+          // Accept logo/page selection
           setLogoId(publicId || '');
           const darkerUrl = page?.acf?.logo_darker?.url || '';
           setLogoPreviewUrl(darkerUrl || (publicId ? cldUrlFromPublicId(publicId) : ''));
@@ -1005,45 +1136,26 @@ export default function HomePage() {
             back_darker: page?.acf?.back_darker || null,
           });
 
-          // PRIORITY: page.meta.placement_coordinates by product ID
-          // Supports keyed object: { "8109": [ ... ] }
-          // and legacy array/string fallbacks
-          const pagePC = page?.meta?.placement_coordinates;
-          const key = String(selectedProductId);
-          let chosen = [];
-
-          const parseMaybeJsonArray = val => {
-            if (Array.isArray(val)) return val;
-            if (typeof val === 'string') {
-              try {
-                const parsed = JSON.parse(val);
-                if (Array.isArray(parsed)) return parsed;
-              } catch {}
+          // NEW: prepare (but DO NOT apply) page candidate + availability
+          const { list, available } = (() => {
+            const pagePC = page?.meta?.placement_coordinates;
+            const key = String(selectedProductId);
+            if (pagePC && typeof pagePC === 'object' && !Array.isArray(pagePC)) {
+              const chosen = parseMaybeJsonArray(pagePC[key]);
+              if (Array.isArray(chosen) && chosen.length) {
+                const baseW = Number(selectedProduct?.thumbnail_meta?.width) || 0;
+                const baseH = Number(selectedProduct?.thumbnail_meta?.height) || 0;
+                return { list: normalizeCoords(chosen, baseW, baseH), available: true };
+              }
+              return { list: [], available: false };
             }
-            return [];
-          };
+            return { list: [], available: false };
+          })();
 
-          if (pagePC && typeof pagePC === 'object' && !Array.isArray(pagePC)) {
-            chosen = parseMaybeJsonArray(pagePC[key]);
-          } else {
-            chosen = parseMaybeJsonArray(pagePC);
-          }
-
-          if (chosen.length) {
-            const baseW = Number(selectedProduct?.thumbnail_meta?.width) || 0;
-            const baseH = Number(selectedProduct?.thumbnail_meta?.height) || 0;
-            const normalized = normalizeCoords(chosen, baseW, baseH);
-            setMappings(normalized);
-            setSelectedMapping(normalized[0] || null);
-            setMappingSource({
-              type: 'page',
-              pageId: page.id,
-              pageTitle: page.title,
-              productId: selectedProductId,
-            });
-          } else {
-            setMappingSource(null);
-          }
+          setUsePagePlacements(false);
+          setPagePlacementsCandidate(list);
+          setPagePlacementsAvailable(available);
+          setMappingSource(null); // not applied yet
 
           setShowLogoPanel(false);
         }}
@@ -1090,7 +1202,7 @@ export default function HomePage() {
                       top: `${(b.yPercent || 0) * 100}%`,
                       width: `${(b.wPercent || 0) * 100}%`,
                       height: `${(b.hPercent || 0) * 100}%`,
-                      transform: `rotate(${Number(b.rotation) || 0}deg)`, // <-- changed
+                      transform: `rotate(${Number(b.rotation) || 0}deg)`,
                     }}
                   >
                     <div className="absolute -top-5 left-0 text-[11px] bg-blue-600 text-white px-1 py-0.5 rounded">
@@ -1188,7 +1300,7 @@ export default function HomePage() {
                   </div>
                 )}
 
-              {/* Area buttons: ALL mapped areas; active ones locked; inactive can be toggled */}
+              {/* Area buttons */}
               {mappings.length > 0 && (
                 <div className="mt-6 w-full max-w-[1000px]">
                   <div className="text-sm text-muted-foreground mb-2 text-center">Areas</div>
@@ -1204,7 +1316,27 @@ export default function HomePage() {
                         <button
                           key={m.id}
                           type="button"
-                          onClick={() => toggleAreaForPreview(nm)}
+                          onClick={() => {
+                            const wasActive = originalActiveByName.get(nm);
+                            setLogosManualOn(prev => {
+                              const next = new Set(prev);
+                              if (next.has(nm)) {
+                                next.delete(nm);
+                                return next;
+                              }
+                              if (!wasActive && !logosManualOff.has(nm)) next.add(nm);
+                              return next;
+                            });
+                            setLogosManualOff(prev => {
+                              const next = new Set(prev);
+                              if (next.has(nm)) {
+                                next.delete(nm);
+                                return next;
+                              }
+                              if (wasActive && !logosManualOn.has(nm)) next.add(nm);
+                              return next;
+                            });
+                          }}
                           className={`px-3 py-1 rounded-full border text-xs font-medium transition
               ${
                 effectiveActive
@@ -1236,7 +1368,7 @@ export default function HomePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Logos Mapping (with overlay rectangles) — unchanged behavior */}
+      {/* Logos Mapping (with overlay rectangles) */}
       <Dialog open={logosOverlayMapOpen} onOpenChange={setLogosOverlayMapOpen}>
         <DialogContent className="!max-w-[1200px] p-0 overflow-hidden">
           <div className="bg-white">
@@ -1321,7 +1453,7 @@ export default function HomePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Warning Dialog (generic) */}
+      {/* Warning Dialog */}
       <Dialog open={warnOpen} onOpenChange={setWarnOpen}>
         <DialogContent className="!max-w-[560px]" dir="ltr">
           <DialogTitle className="text-xl font-semibold flex items-center gap-2">
@@ -1341,7 +1473,7 @@ export default function HomePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Confirm Dialog (for non-Cloudinary Update Placement) */}
+      {/* Confirm Dialog */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="!max-w-[560px]" dir="ltr">
           <DialogTitle className="text-xl font-semibold">Confirm</DialogTitle>

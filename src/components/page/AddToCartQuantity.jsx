@@ -24,15 +24,15 @@ export default function AddToCartQuantity({ open, onClose, product, bumpPrice, o
   const sizeWidth = 470;
 
   // Helper function to get price for a given quantity
-  const getPriceForQuantity = (qty) => {
+  const getPriceForQuantity = qty => {
     if (!qty || !steps.length) return 0;
-    
+
     // Filter out hidden steps
     const visibleSteps = steps.filter(step => !step.hide);
-    
+
     // Find the appropriate step for this quantity
     let applicableStep = visibleSteps[0]; // Default to first step
-    
+
     for (const step of visibleSteps) {
       if (qty >= parseInt(step.quantity)) {
         applicableStep = step;
@@ -40,7 +40,7 @@ export default function AddToCartQuantity({ open, onClose, product, bumpPrice, o
         break;
       }
     }
-    
+
     return applicableStep ? parseFloat(applicableStep.amount) : 0;
   };
 
@@ -48,10 +48,10 @@ export default function AddToCartQuantity({ open, onClose, product, bumpPrice, o
   const customPricing = useMemo(() => {
     const qty = parseInt(customQty || 0);
     if (!qty) return { unitPrice: 0, total: 0 };
-    
+
     const unitPrice = getPriceForQuantity(qty);
     const total = qty * unitPrice;
-    
+
     return { unitPrice, total };
   }, [customQty, steps]);
 
@@ -167,44 +167,50 @@ export default function AddToCartQuantity({ open, onClose, product, bumpPrice, o
               {/* Middle column: total */}
               <div className="alarnd-single-qty flex-1 text-center">
                 <span className="text-gray-400">
-                  {customQty && parseInt(customQty) > 0 ? `${Math.round(customPricing.total)}₪` : '—'}
+                  {customQty && parseInt(customQty) > 0
+                    ? `${Math.round(customPricing.total)}₪`
+                    : '—'}
                 </span>
               </div>
 
               {/* Right column: unit price */}
               <div className="alarnd-single-qty flex-shrink-0">
                 <span className="font-bold">
-                  {customQty && parseInt(customQty) > 0 ? `${customPricing.unitPrice} ש״ח ליחידה` : '—'}
+                  {customQty && parseInt(customQty) > 0
+                    ? `${customPricing.unitPrice} ש״ח ליחידה`
+                    : '—'}
                 </span>
               </div>
             </label>
 
             {/* Preset steps */}
-            {steps.filter(step => !step.hide).map((step, idx) => (
-              <label
-                key={idx + 1}
-                className={clsx('flex justify-between items-center gap-3 p-1 cursor-pointer')}
-              >
-                <div className="alarnd-single-qty flex-shrink-0">
-                  <input
-                    type="radio"
-                    name="quantity_choice"
-                    checked={selectedIdx === idx + 1}
-                    onChange={() => setSelectedIdx(idx + 1)}
-                    className="form-radio mx-2"
-                  />
-                  <span className="font-semibold">{step.quantity}</span>
-                </div>
-                <div className="alarnd-single-qty flex-1 text-center">
-                  <span className="text-gray-400">
-                    {Math.round(parseFloat(step.quantity) * parseFloat(step.amount))}₪
-                  </span>
-                </div>
-                <div className="alarnd-single-qty flex-shrink-0">
-                  <span className="font-bold">{step.amount} ש״ח ליחידה</span>
-                </div>
-              </label>
-            ))}
+            {steps
+              .filter(step => !step.hide)
+              .map((step, idx) => (
+                <label
+                  key={idx + 1}
+                  className={clsx('flex justify-between items-center gap-3 p-1 cursor-pointer')}
+                >
+                  <div className="alarnd-single-qty flex-shrink-0">
+                    <input
+                      type="radio"
+                      name="quantity_choice"
+                      checked={selectedIdx === idx + 1}
+                      onChange={() => setSelectedIdx(idx + 1)}
+                      className="form-radio mx-2"
+                    />
+                    <span className="font-semibold">{step.quantity}</span>
+                  </div>
+                  <div className="alarnd-single-qty flex-1 text-center">
+                    <span className="text-gray-400">
+                      {Math.round(parseFloat(step.quantity) * parseFloat(step.amount))}₪
+                    </span>
+                  </div>
+                  <div className="alarnd-single-qty flex-shrink-0">
+                    <span className="font-bold">{step.amount} ש״ח ליחידה</span>
+                  </div>
+                </label>
+              ))}
           </div>
           {error && <div className="text-red-500 text-sm text-center mt-2">{error}</div>}
           <div className="text-center mt-4">
