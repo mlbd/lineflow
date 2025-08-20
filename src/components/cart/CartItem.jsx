@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import NextImage from 'next/image';
 import { Trash2 } from 'lucide-react';
-import { useRemoveItem, useUpdateItemQuantity } from './cartStore';
+import { useRemoveItem } from './cartStore';
 import { isDarkColor } from '@/utils/color';
 import {
   generateCartThumbUrlFromItem,
@@ -11,7 +11,7 @@ import {
 } from '@/utils/cloudinaryMockup';
 
 const SHOW_PLACEMENTS_LABEL = true;
-const SHOW_FILTER_CHANGED_LABEL = true;
+const SHOW_FILTER_CHANGED_LABEL = false;
 
 // ---- Global promise cache so each URL preloads once per session ----
 const preloadCache = new Map(); // url -> Promise<string>
@@ -36,16 +36,11 @@ export default function CartItem({
   companyLogos = {},
   pagePlacementMap = {}, // intentionally unused for cart thumbs (cart is frozen)
   customBackAllowedSet = {},
+  onOpenQuickViewFromCart, // ⬅️ new
 }) {
   const removeItem = useRemoveItem();
-  const updateItemQuantity = useUpdateItemQuantity();
-
   const rowRef = useRef(null);
 
-  const [error, setError] = useState('');
-  const [localQuantity, setLocalQuantity] = useState(item.quantity.toString());
-
-  // Images (small for cell, larger for hover preview)
   const [thumbUrl, setThumbUrl] = useState(item.thumbnail || '');
   const [hoverUrl, setHoverUrl] = useState('');
   const [hoverReady, setHoverReady] = useState(false);
@@ -53,11 +48,6 @@ export default function CartItem({
   // Hover UI state
   const [hovering, setHovering] = useState(false);
   const [pos, setPos] = useState({ x: 0, y: 0 });
-
-  // Keep local qty in sync
-  useEffect(() => {
-    setLocalQuantity(item.quantity.toString());
-  }, [item.quantity]);
 
   // Small cart thumb (<=300) — use the FROZEN snapshot from the item only
   useEffect(() => {
@@ -76,13 +66,11 @@ export default function CartItem({
     customBackAllowedSet,
   ]);
 
-  console.log('cartItem', companyLogos);
-
   // Hover (bigger) cart image — also from the frozen snapshot
   useEffect(() => {
     const url = generateHoverThumbUrlFromItem(item, companyLogos, {
       max: 400,
-      customBackAllowedSet, // ❌ no pagePlacementMap here — cart is frozen
+      customBackAllowedSet,
     });
     setHoverUrl(url || thumbUrl || item.thumbnail || '');
     if (url) preloadImage(url).then(() => setHoverReady(true));
@@ -176,45 +164,7 @@ export default function CartItem({
     setPos({ x: nx, y: ny });
   };
 
-  // Quantity helpers
-  const minQuantity = 1;
-  const maxQuantity = 999;
-
-  const handleQuantityChange = value => {
-    let cleanValue = value.replace(/[^0-9]/g, '');
-    if (cleanValue.length > 1 && cleanValue[0] === '0') cleanValue = cleanValue.replace(/^0+/, '');
-    setLocalQuantity(cleanValue);
-
-    const numValue = parseInt(cleanValue) || 0;
-    if (!cleanValue) {
-      setError('');
-      return;
-    }
-    if (numValue < minQuantity) {
-      setError(`כמות מינימלית: ${minQuantity}`);
-      return;
-    }
-    if (numValue > maxQuantity) {
-      setError(`כמות מקסימלית: ${maxQuantity}`);
-      setLocalQuantity(maxQuantity.toString());
-      updateItemQuantity(idx, maxQuantity);
-      return;
-    }
-    setError('');
-    updateItemQuantity(idx, numValue);
-  };
-
-  const handleQuantityBlur = () => {
-    const numValue = parseInt(localQuantity) || 0;
-    if (!localQuantity || numValue < minQuantity) {
-      setLocalQuantity(minQuantity.toString());
-      updateItemQuantity(idx, minQuantity);
-      setError('');
-    }
-  };
-
   const renderProductDetails = () => {
-    // Build active placement labels from the FROZEN snapshot on the item
     const activePlacements = (
       Array.isArray(item?.placement_coordinates) ? item.placement_coordinates : []
     )
@@ -329,23 +279,17 @@ export default function CartItem({
         )}
       </div>
 
-      {/* 4) Quantity (editable) */}
+      {/* 4) Quantity — now a button that opens Quick View */}
       <div className="text-center">
-        <div className="space-y-1">
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            value={localQuantity}
-            onChange={e => handleQuantityChange(e.target.value)}
-            onBlur={handleQuantityBlur}
-            className={`w-16 px-2 py-1 text-center border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-              error ? 'border-red-400 focus:ring-red-500 focus:border-red-500' : 'border-gray-300'
-            }`}
-            maxLength="3"
-          />
-          {error && <div className="text-sm text-red-500 mt-1">{error}</div>}
-        </div>
+        <button
+          type="button"
+          className="w-16 px-2 cursor-pointer py-1 text-center border rounded bg-gray-50 hover:bg-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 border-gray-300"
+          onClick={() => onOpenQuickViewFromCart?.(item, idx)}
+          aria-label="עריכת מיקומי לוגו דרך תצוגה מהירה"
+          title="פתח תצוגה מהירה (לעריכת מיקומי לוגו)"
+        >
+          {item.quantity}
+        </button>
       </div>
 
       {/* 5) Total price */}

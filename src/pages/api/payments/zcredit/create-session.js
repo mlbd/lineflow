@@ -274,14 +274,12 @@ export default async function handler(req, res) {
     dlog(id, 'CreateSession status', zRes.status, zBody || zText);
 
     if (!zRes.ok) {
-      return res
-        .status(400)
-        .json({
-          error: 'Z-Credit CreateSession failed',
-          cid: id,
-          status: zRes.status,
-          details: zBody || zText || null,
-        });
+      return res.status(400).json({
+        error: 'Z-Credit CreateSession failed',
+        cid: id,
+        status: zRes.status,
+        details: zBody || zText || null,
+      });
     }
 
     const hasErr = zBody?.HasError || zBody?.Data?.HasError;
@@ -289,13 +287,11 @@ export default async function handler(req, res) {
     const sessionId = zBody?.Data?.SessionId || zBody?.SessionId || null;
 
     if (hasErr || !sessionUrl) {
-      return res
-        .status(400)
-        .json({
-          error: 'Z-Credit CreateSession returned error',
-          cid: id,
-          details: zBody || zText || null,
-        });
+      return res.status(400).json({
+        error: 'Z-Credit CreateSession returned error',
+        cid: id,
+        details: zBody || zText || null,
+      });
     }
 
     await fetchWithTimeout(
@@ -326,12 +322,10 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error(`[ZCREDIT][${id}] FATAL`, err);
-    return res
-      .status(500)
-      .json({
-        error: 'Server error creating session',
-        cid: id,
-        ...(DEBUG ? { details: String(err?.message || err) } : {}),
-      });
+    return res.status(500).json({
+      error: 'Server error creating session',
+      cid: id,
+      ...(DEBUG ? { details: String(err?.message || err) } : {}),
+    });
   }
 }

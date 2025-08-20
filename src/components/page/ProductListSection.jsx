@@ -125,8 +125,8 @@ export default function ProductListSection({
                   </Button>
                   <Button
                     onClick={() => {
-                      setModalProduct(null);
-                      setTimeout(() => setCartModalProduct(p), 120);
+                      setModalProduct(p);
+                      // setTimeout(() => setCartModalProduct(p), 120);
                     }}
                     id={`add-to-cart-${p.id}`}
                     className="bg-accent rounded-[11px] mt-5 w-auto text-primary font-bold hover:bg-[#002266] hover:text-white text-[17px] py-[23px] px-[25px] transition cursor-pointer"

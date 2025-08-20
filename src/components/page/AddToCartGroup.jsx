@@ -1,4 +1,4 @@
-import { useState, useMemo, useLayoutEffect } from 'react';
+import { useState, useMemo, useLayoutEffect, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogClose } from '@/components/ui/dialog';
 import clsx from 'clsx';
 import { applyBumpPrice, applyBumpToRegular } from '@/utils/price';
@@ -60,36 +60,15 @@ function useResponsiveModalWidth(sizes, minPad = 32) {
   return computedWidth;
 }
 
-/**
- * Steps are "max-quantity tiers".
- * Example:
- *  [{q:14,a:0}, {q:49,a:51}, {q:99,a:43}, {q:100,a:38}]
- * Ranges:
- *  1–14  => amount 0 (use regular)
- *  15–49 => 51
- *  50–99 => 43
- *  100+  => 38
- *
- * Returns current unit price and info needed for the "next tier" UI.
- */
 function resolveStepPricing(total, regularPrice, discountSteps = []) {
   const reg = toNumber(regularPrice);
-
   const steps = (Array.isArray(discountSteps) ? discountSteps : [])
     .map(s => ({ quantity: toNumber(s.quantity), amount: toNumber(s.amount) }))
     .filter(s => s.quantity > 0)
     .sort((a, b) => a.quantity - b.quantity);
 
-  if (!steps.length) {
-    return {
-      price: reg,
-      currentIdx: -1,
-      nextStep: null,
-      unitsToNext: null,
-    };
-  }
+  if (!steps.length) return { price: reg, currentIdx: -1, nextStep: null, unitsToNext: null };
 
-  // Find current step index = first step with total <= step.quantity; else last
   let currentIdx = steps.length - 1;
   for (let i = 0; i < steps.length; i++) {
     if (total <= steps[i].quantity) {
@@ -98,49 +77,48 @@ function resolveStepPricing(total, regularPrice, discountSteps = []) {
     }
   }
 
-  // Current tier unit price (0 means "use regular")
   const current = steps[currentIdx];
   const price = current.amount > 0 ? current.amount : reg;
 
-  // Next tier is the step AFTER current
   const nextIdx = currentIdx + 1;
-  if (nextIdx >= steps.length) {
-    return {
-      price,
-      currentIdx,
-      nextStep: null,
-      unitsToNext: null,
-    };
-  }
+  if (nextIdx >= steps.length) return { price, currentIdx, nextStep: null, unitsToNext: null };
 
   const next = steps[nextIdx];
-
-  // How many more units to reach the *minimum of next tier*:
-  // next tier min = current max + 1
   const nextTierMin = steps[currentIdx].quantity + 1;
   const unitsToNext = Math.max(0, nextTierMin - total);
-
-  // Next tier amount for display (0 -> show regular price)
   const nextDisplayAmt = next.amount > 0 ? next.amount : reg;
 
-  return {
-    price,
-    currentIdx,
-    nextStep: { ...next, amount: nextDisplayAmt },
-    unitsToNext,
-  };
+  return { price, currentIdx, nextStep: { ...next, amount: nextDisplayAmt }, unitsToNext };
 }
 
-// Parse pagePlacementMap entry (array | JSON string | keyed object)
-const parseMaybeArray = val => {
+function coercePlacementArray(val, pid) {
   if (Array.isArray(val)) return val;
   if (typeof val === 'string') {
     try {
       const parsed = JSON.parse(val);
       if (Array.isArray(parsed)) return parsed;
+      if (parsed && typeof parsed === 'object') {
+        const key = String(pid || '');
+        if (Array.isArray(parsed[key])) return parsed[key];
+        if (Array.isArray(parsed.placements)) return parsed.placements;
+      }
     } catch {}
   }
+  if (val && typeof val === 'object') {
+    const key = String(pid || '');
+    if (Array.isArray(val[key])) return val[key];
+    if (Array.isArray(val.placements)) return val.placements;
+  }
   return [];
+}
+
+// signature used in cart merge: 'default' if not changed; else names sorted
+const effectiveSigForCartItem = it => {
+  return it?.options?.group_type === 'Group'
+    ? it?.filter_was_changed
+      ? buildPlacementSignature(it?.placement_coordinates)
+      : 'default'
+    : '';
 };
 
 export default function AddToCartGroup({
@@ -173,12 +151,15 @@ export default function AddToCartGroup({
   const { total, stepInfo } = useMemo(() => {
     let t = 0;
     for (const row of quantities) for (const val of row) t += parseInt(val || 0);
-
     const info = resolveStepPricing(t, regularPrice, discountSteps);
     return { total: t, stepInfo: info };
   }, [quantities, discountSteps, regularPrice]);
 
+  // cart store fns
   const addOrUpdateItem = useCartStore(s => s.addOrUpdateItem);
+  const cartItems = useCartStore(s => s.items);
+  const updateItemQuantity = useCartStore(s => s.updateItemQuantity);
+  const removeItem = useCartStore(s => s.removeItem);
 
   const handleInput = (colorIdx, sizeIdx, val) => {
     let newVal = val.replace(/[^0-9]/g, '');
@@ -195,133 +176,222 @@ export default function AddToCartGroup({
     );
   };
 
-  function coercePlacementArray(val, pid) {
-    if (Array.isArray(val)) return val;
-    if (typeof val === 'string') {
-      try {
-        const parsed = JSON.parse(val);
-        if (Array.isArray(parsed)) return parsed;
-        if (parsed && typeof parsed === 'object') {
-          const key = String(pid || '');
-          if (Array.isArray(parsed[key])) return parsed[key];
-          if (Array.isArray(parsed.placements)) return parsed.placements;
-        }
-      } catch {}
-    }
-    if (val && typeof val === 'object') {
-      const key = String(pid || '');
-      if (Array.isArray(val[key])) return val[key];
-      if (Array.isArray(val.placements)) return val.placements;
-    }
-    return [];
-  }
-
-  const handleAddToCart = () => {
-    if (total === 0) return;
-
-    const pid = String(product?.id || '');
-
-    // Start with product-provided placements
-    let effectivePlacements = Array.isArray(product?.placement_coordinates)
-      ? product.placement_coordinates
-      : [];
-
-    // 1) User-chosen filter wins
+  // —— Effective placements & baseline same as add logic ——
+  const pid = String(product?.id || '');
+  const effectivePlacements = useMemo(() => {
+    let eff = Array.isArray(product?.placement_coordinates) ? product.placement_coordinates : [];
     if (filters && filters[pid] && Array.isArray(filters[pid])) {
-      effectivePlacements = filters[pid];
-    }
-    // 2) Else page override
-    else if (
+      eff = filters[pid]; // user filter wins
+    } else if (
       pagePlacementMap &&
       typeof pagePlacementMap === 'object' &&
       !Array.isArray(pagePlacementMap) &&
       pagePlacementMap[pid]
     ) {
-      effectivePlacements = coercePlacementArray(pagePlacementMap[pid], product?.id);
+      eff = coercePlacementArray(pagePlacementMap[pid], product?.id); // page override
     }
+    return eff;
+  }, [product?.placement_coordinates, product?.id, filters, pid, pagePlacementMap]);
 
-    // Baseline for comparison
-    let baselinePlacements = [];
+  const baselinePlacements = useMemo(() => {
     if (
       pagePlacementMap &&
       typeof pagePlacementMap === 'object' &&
       !Array.isArray(pagePlacementMap) &&
       pid in pagePlacementMap
     ) {
-      baselinePlacements = coercePlacementArray(pagePlacementMap[pid], product?.id);
-    } else {
-      baselinePlacements = coercePlacementArray(
-        product?.meta?.placement_coordinates ?? product?.acf?.placement_coordinates ?? [],
-        product?.id
-      );
+      return coercePlacementArray(pagePlacementMap[pid], product?.id);
+    }
+    return coercePlacementArray(
+      product?.meta?.placement_coordinates ?? product?.acf?.placement_coordinates ?? [],
+      product?.id
+    );
+  }, [
+    pagePlacementMap,
+    pid,
+    product?.meta?.placement_coordinates,
+    product?.acf?.placement_coordinates,
+    product?.id,
+  ]);
+
+  const placementSignature = useMemo(
+    () => buildPlacementSignature(effectivePlacements),
+    [effectivePlacements]
+  );
+  const baselineSignature = useMemo(
+    () => buildPlacementSignature(baselinePlacements),
+    [baselinePlacements]
+  );
+  const filterWasChanged = placementSignature !== baselineSignature;
+
+  // —— PRE-FILL GRID from cart if same product + same signature ——
+  const prefillMatrix = useMemo(() => {
+    const expectedSig = filterWasChanged ? placementSignature : 'default';
+    const base = colors.map(() => sizes.map(() => ''));
+    const colorIndex = new Map(colors.map((c, i) => [String(c.title), i]));
+    const sizeIndex = new Map(sizes.map((s, i) => [String(s), i]));
+
+    (Array.isArray(cartItems) ? cartItems : [])
+      .filter(
+        it =>
+          String(it?.product_id || '') === pid &&
+          it?.options?.group_type === 'Group' &&
+          effectiveSigForCartItem(it) === expectedSig
+      )
+      .forEach(it => {
+        const r = colorIndex.get(String(it?.options?.color || ''));
+        const c = sizeIndex.get(String(it?.options?.size || ''));
+        if (r != null && c != null) {
+          const prev = parseInt(base[r][c] || 0);
+          const add = parseInt(it.quantity || 0);
+          base[r][c] = String(prev + add);
+        }
+      });
+
+    return base;
+  }, [cartItems, colors, sizes, pid, filterWasChanged, placementSignature]);
+
+  // ✅ Initialize once per open (avoid updates during Dialog transitions)
+  const didPrefillRef = useRef(false);
+  useEffect(() => {
+    if (open && !didPrefillRef.current) {
+      setQuantities(prefillMatrix);
+      didPrefillRef.current = true;
+    }
+    if (!open) didPrefillRef.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // —— REPLACE semantics on submit ——
+  const handleAddToCart = () => {
+    // No-op if grid all zero
+    const flatTotal = quantities.flat().reduce((s, v) => s + (parseInt(v || 0) || 0), 0);
+    if (flatTotal === 0) {
+      // if there are existing items for this signature, remove them all
+      const expectedSig = filterWasChanged ? placementSignature : 'default';
+      const now = useCartStore.getState().items;
+      const matches = now
+        .map((it, idx) => ({ it, idx }))
+        .filter(
+          ({ it }) =>
+            String(it?.product_id || '') === pid &&
+            it?.options?.group_type === 'Group' &&
+            effectiveSigForCartItem(it) === expectedSig
+        )
+        .map(({ idx }) => idx)
+        .sort((a, b) => b - a);
+      matches.forEach(i => removeItem(i));
+      onCartAddSuccess?.();
+      onClose();
+      if (mode === 'temp' && filterWasChanged) clearFilter(pid);
+      return;
     }
 
-    const placementSignature = buildPlacementSignature(effectivePlacements);
-    const baselineSignature = buildPlacementSignature(baselinePlacements);
-    const filterWasChanged = placementSignature !== baselineSignature;
+    const placement_signature = filterWasChanged ? placementSignature : 'default';
+    const expectedSig = placement_signature;
 
-    // Collect items to add (freeze placements)
-    const itemsToAdd = [];
+    // Build index maps for existing + new grid values
+    const colorIndex = new Map(colors.map((c, i) => [String(c.title), i]));
+    const sizeIndex = new Map(sizes.map((s, i) => [String(s), i]));
+
+    // 1) Snapshot of current matching cart lines (same product + sig)
+    const now = useCartStore.getState().items;
+    const existing = now
+      .map((it, idx) => ({ it, idx }))
+      .filter(
+        ({ it }) =>
+          String(it?.product_id || '') === pid &&
+          it?.options?.group_type === 'Group' &&
+          effectiveSigForCartItem(it) === expectedSig
+      );
+
+    // Map existing by color|size
+    const keyOf = (color, size) => `${String(color)}|${String(size)}`;
+    const existMap = new Map();
+    for (const { it, idx } of existing) {
+      existMap.set(keyOf(it?.options?.color, it?.options?.size), {
+        idx,
+        qty: parseInt(it.quantity) || 0,
+      });
+    }
+
+    // 2) Compute actions
+    const updates = []; // [{ idx, qty }]
+    const removals = []; // [idx]
+    const additions = []; // [item]
+
     colors.forEach((color, rIdx) => {
       sizes.forEach((size, cIdx) => {
-        const qty = parseInt(quantities[rIdx][cIdx] || 0);
-        if (qty > 0) {
-          itemsToAdd.push({
-            product_id: product.id,
-            name: product.name,
-            thumbnail: product.thumbnail,
-            price: Number(stepInfo.price) || 0,
-            quantity: qty,
-            pricing: {
-              type: 'Group',
-              regular_price: Number(regularPrice),
-              discount_steps: discountSteps,
-            },
-            placement_signature: placementSignature,
-            placement_coordinates: effectivePlacements, // frozen snapshot
-            product: {
-              id: product.id,
-              placement_coordinates: effectivePlacements,
-              acf: {
-                color: Array.isArray(product?.acf?.color) ? product.acf.color : [],
+        const newQty = parseInt(quantities[rIdx][cIdx] || 0) || 0;
+        const k = keyOf(color.title, size);
+
+        if (existMap.has(k)) {
+          const { idx, qty: oldQty } = existMap.get(k);
+          if (newQty === 0) {
+            removals.push(idx); // delete only if it originally existed
+          } else if (newQty !== oldQty) {
+            updates.push({ idx, qty: newQty }); // replace value
+          }
+          // if equal, do nothing
+        } else {
+          if (newQty > 0) {
+            additions.push({
+              product_id: product.id,
+              name: product.name,
+              thumbnail: product.thumbnail,
+              price: Number(stepInfo.price) || 0, // will be repriced by store
+              quantity: newQty,
+              pricing: {
+                type: 'Group',
+                regular_price: Number(regularPrice),
+                discount_steps: discountSteps,
               },
-            },
-            filter_was_changed: filterWasChanged,
-            options: {
-              group_type: 'Group',
-              color: color.title,
-              color_hex_code: color.color_hex_code,
-              size,
-              color_thumbnail_url: color?.thumbnail?.url || '',
-            },
-          });
+              placement_signature: expectedSig,
+              placement_coordinates: effectivePlacements, // frozen snapshot
+              product: {
+                id: product.id,
+                placement_coordinates: effectivePlacements,
+                acf: { color: Array.isArray(product?.acf?.color) ? product.acf.color : [] },
+              },
+              filter_was_changed: filterWasChanged,
+              options: {
+                group_type: 'Group',
+                color: color.title,
+                color_hex_code: color.color_hex_code,
+                size,
+                color_thumbnail_url: color?.thumbnail?.url || '',
+              },
+            });
+          }
         }
       });
     });
 
-    itemsToAdd.forEach(item => addOrUpdateItem(item));
+    // 3) Apply actions
+    //    Order matters to keep indices sane AND pricing correct at the end.
 
-    if (typeof window !== 'undefined' && window.dataLayer) {
-      itemsToAdd.forEach(item => {
-        window.dataLayer.push({
-          event: 'add_to_cart',
-          ecommerce: {
-            items: [
-              {
-                item_id: item.product_id,
-                item_name: item.name,
-                price: item.price,
-                quantity: item.quantity,
-                item_color: item.options.color,
-                item_size: item.options.size,
-              },
-            ],
-          },
-        });
-      });
+    // 3a) Updates (safe: indices valid pre-removal)
+    updates.forEach(({ idx, qty }) => updateItemQuantity(idx, qty));
+
+    // 3b) Additions (store will reprice after each add)
+    additions.forEach(item => addOrUpdateItem(item));
+
+    // 3c) Removals — do in descending order to avoid index shift
+    removals.sort((a, b) => b - a).forEach(idx => removeItem(idx));
+
+    // 3d) Final reprice in case last operation was removal only
+    const after = useCartStore.getState().items;
+    const remainingOfPid = after
+      .map((it, idx) => ({ it, idx }))
+      .filter(
+        ({ it }) => it?.options?.group_type === 'Group' && String(it?.product_id || '') === pid
+      );
+    if (remainingOfPid.length > 0) {
+      const { it, idx } = remainingOfPid[0];
+      updateItemQuantity(idx, it.quantity); // nudge to trigger group repricing
     }
 
-    if (onCartAddSuccess) onCartAddSuccess();
+    onCartAddSuccess?.();
     onClose();
 
     if (mode === 'temp' && filterWasChanged) {
@@ -332,7 +402,12 @@ export default function AddToCartGroup({
   if (!product) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog
+      open={open}
+      onOpenChange={isOpen => {
+        if (!isOpen) onClose?.();
+      }}
+    >
       <DialogContent
         className="rounded-2xl shadow-xl"
         style={{
@@ -442,7 +517,7 @@ export default function AddToCartGroup({
                 <span className="line-through current_price">(כרגע {stepInfo.price}₪)</span>
               </div>
             ) : (
-              total > 0 && (
+              flatTotalFromMatrix(quantities) > 0 && (
                 <div className="text-green-600 text-center mb-2">
                   {`מחיר ליחידה: ${stepInfo.price}₪`}
                 </div>
@@ -454,7 +529,10 @@ export default function AddToCartGroup({
                 <button
                   type="button"
                   className="trigger-view-modal-btn alarnd-btn"
-                  onClick={() => onOpenQuickView && onOpenQuickView(product)}
+                  onClick={() => {
+                    onClose?.();
+                    setTimeout(() => onOpenQuickView?.(product), 0);
+                  }}
                 >
                   Quick View
                 </button>
@@ -469,12 +547,18 @@ export default function AddToCartGroup({
                     / {acf.first_line_keyword || 'תיק'}
                   </p>
                   <p>
-                    סה&quot;כ יחידות: <span className="alarnd__total_qty">{total}</span>
+                    סה&quot;כ יחידות:{' '}
+                    <span className="alarnd__total_qty">
+                      {quantities.flat().reduce((s, v) => s + (parseInt(v || 0) || 0), 0)}
+                    </span>
                   </p>
                   <span className="alarnd--total-price">
                     סה&quot;כ:{' '}
                     <span>
-                      <span className="current_total_price">{total * stepInfo.price}</span>
+                      <span className="current_total_price">
+                        {quantities.flat().reduce((s, v) => s + (parseInt(v || 0) || 0), 0) *
+                          stepInfo.price}
+                      </span>
                       <span className="woocommerce-Price-currencySymbol">₪</span>
                     </span>
                   </span>
@@ -483,7 +567,7 @@ export default function AddToCartGroup({
               <div className="flex-shrink-0">
                 <button
                   type="button"
-                  disabled={total === 0}
+                  disabled={quantities.flat().every(v => (parseInt(v || 0) || 0) === 0)}
                   className="alarnd-btn"
                   onClick={handleAddToCart}
                 >
@@ -496,4 +580,12 @@ export default function AddToCartGroup({
       </DialogContent>
     </Dialog>
   );
+}
+
+function flatTotalFromMatrix(mat) {
+  try {
+    return mat.flat().reduce((s, v) => s + (parseInt(v || 0) || 0), 0);
+  } catch {
+    return 0;
+  }
 }

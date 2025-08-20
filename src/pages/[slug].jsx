@@ -213,6 +213,7 @@ export default function LandingPage({
           )}
           <div className="w-full" ref={cartSectionRef}>
             <CartPage
+              initialProducts={initialProducts}
               shippingOptions={shippingOptions}
               shippingLoading={false}
               acf={acf}

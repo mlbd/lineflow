@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect } from 'react';
+
+import { useState, useEffect, useCallback } from 'react';
 import { useCartItems } from './cartStore';
 import CartItem from './CartItem';
 import Checkout from './Checkout';
@@ -8,7 +9,25 @@ import ShippingOptions from './ShippingOptions';
 import CouponField from './CouponField';
 import CartShimmer from './CartShimmer';
 
+import ProductQuickViewModal from '@/components/page/ProductQuickViewModal';
+import AddToCartModal from '@/components/page/AddToCartModal';
+import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
+
+function findProductLocally(id, initialProducts, companyData) {
+  const pid = String(id);
+  if (Array.isArray(initialProducts)) {
+    const p = initialProducts.find(pr => String(pr?.id) === pid);
+    if (p) return p;
+  }
+  if (companyData && Array.isArray(companyData.products)) {
+    const p = companyData.products.find(pr => String(pr?.id) === pid);
+    if (p) return p;
+  }
+  return null;
+}
+
 export default function CartPage({
+  initialProducts = [], // ✅ passed from [slug].jsx
   shippingOptions = [],
   shippingLoading = false,
   acf = {},
@@ -18,21 +37,23 @@ export default function CartPage({
   customBackAllowedSet = {},
 }) {
   const items = useCartItems();
+
   const [selectedShipping, setSelectedShipping] = useState(null);
 
-  // Coupon logic
   const [validating, setValidating] = useState(false);
-  const [coupon, setCoupon] = useState(null); // { valid, amount, type, description, ... }
+  const [coupon, setCoupon] = useState(null);
   const [couponInput, setCouponInput] = useState('');
+
+  // ✅ Single "modal router": only ONE Radix Dialog mounted at a time
+  //    kind: 'quick' | 'add' | null
+  const [modal, setModal] = useState({ kind: null, product: null });
 
   useEffect(() => {
     if (!selectedShipping && shippingOptions.length > 0) {
-      // ✅ Always select first one
       setSelectedShipping(shippingOptions[0]);
     }
   }, [shippingOptions, selectedShipping]);
 
-  // Coupon validate handler
   const handleValidateCoupon = async ({ code, onError }) => {
     setValidating(true);
     setCoupon(null);
@@ -47,9 +68,9 @@ export default function CartPage({
       );
       const data = await res.json();
       setCoupon(data);
-      if (!data.valid && data.error) onError(data.error);
-    } catch (e) {
-      onError('שגיאה באימות קופון');
+      if (!data?.valid && data?.error) onError?.(data.error);
+    } catch {
+      onError?.('שגיאה באימות קופון');
     } finally {
       setValidating(false);
     }
@@ -60,6 +81,56 @@ export default function CartPage({
     setCouponInput('');
   };
 
+  // Open Quick View from cart row — preload placements AND hydrate from props
+  const onOpenQuickViewFromCart = useCallback(
+    item => {
+      const pid = String(item?.product_id || '');
+      const placements = Array.isArray(item?.placement_coordinates)
+        ? item.placement_coordinates
+        : [];
+
+      // 1) Prime area filter store so Quick View shows same active areas
+      try {
+        useAreaFilterStore.setState(s => ({
+          filters: { ...(s.filters || {}), [pid]: placements },
+        }));
+      } catch {}
+
+      // 2) Hydrate the product without fetching
+      let product = findProductLocally(pid, initialProducts, companyData);
+      if (!product) {
+        product = {
+          id: item.product_id,
+          name: item.name,
+          thumbnail: item.thumbnail,
+          price: item.price,
+          regular_price: item.regular_price ?? item.price,
+          acf: { ...(item?.acf || {}) },
+        };
+      }
+
+      const acfOut = product.acf ? { ...product.acf } : {};
+      if (
+        (!acfOut.discount_steps || !acfOut.discount_steps.length) &&
+        item?.pricing?.discount_steps
+      ) {
+        acfOut.discount_steps = item.pricing.discount_steps;
+      }
+      if (!acfOut.group_type && item?.options?.group_type) {
+        acfOut.group_type = item.options.group_type;
+      }
+      if (product.regular_price == null && product.price != null) {
+        product = { ...product, regular_price: product.price };
+      }
+
+      setModal({
+        kind: 'quick',
+        product: { ...product, placement_coordinates: placements, acf: acfOut },
+      });
+    },
+    [initialProducts, companyData]
+  );
+
   if (!items.length) return <CartEmpty />;
 
   return (
@@ -67,13 +138,14 @@ export default function CartPage({
       <div className="mt-16 max-w-[900px] mx-auto w-full">
         <div className="container mx-auto py-8 px-4">
           <h1 className="text-3xl font-bold mb-8 text-center">סל קניות</h1>
+
           {validating ? (
             <CartShimmer itemCount={items.length || 3} />
           ) : (
             <div className="flex flex-col md:flex-row gap-8 items-start">
-              {/* Cart Section: 80% width on desktop */}
+              {/* Cart Section */}
               <div className="md:w-[70%] w-full">
-                {/* Cart Header */}
+                {/* Header */}
                 <div className="grid grid-cols-7 gap-0 p-4 bg-gray-50 border border-gray-200 rounded-lg mb-4">
                   <div className="text-center font-semibold text-gray-700"></div>
                   <div className="col-span-2 font-semibold text-gray-700">מוצר</div>
@@ -82,9 +154,8 @@ export default function CartPage({
                   <div className="text-center font-semibold text-gray-700">סה&quot;כ</div>
                 </div>
 
-                {/* Shimmer overlay during validation */}
+                {/* Items + shimmer overlay */}
                 <div className={`relative ${validating ? 'pointer-events-none opacity-60' : ''}`}>
-                  {/* Cart Items */}
                   <div className="space-y-4">
                     {items.map((item, idx) => (
                       <CartItem
@@ -94,9 +165,11 @@ export default function CartPage({
                         companyLogos={companyLogos}
                         pagePlacementMap={pagePlacementMap}
                         customBackAllowedSet={customBackAllowedSet}
+                        onOpenQuickViewFromCart={onOpenQuickViewFromCart}
                       />
                     ))}
                   </div>
+
                   {validating && (
                     <div className="absolute inset-0 z-10 bg-white/70 flex items-center justify-center rounded-lg animate-pulse">
                       <div className="w-14 h-14 rounded-full border-4 border-blue-200 border-t-blue-600 animate-spin" />
@@ -104,7 +177,7 @@ export default function CartPage({
                   )}
                 </div>
 
-                {/* Coupon Field */}
+                {/* Coupon */}
                 <CouponField
                   couponInput={couponInput}
                   setCouponInput={setCouponInput}
@@ -115,7 +188,7 @@ export default function CartPage({
                 />
               </div>
 
-              {/* Shipping Options: 20% width */}
+              {/* Shipping / Summary */}
               <div className="md:w-[30%] min-w-[260px] max-w-[370px] w-full sticky top-8 self-start">
                 <ShippingOptions
                   shippingOptions={shippingOptions}
@@ -130,6 +203,8 @@ export default function CartPage({
           )}
         </div>
       </div>
+
+      {/* Checkout block */}
       <div className="py-[50px] mt-[50px] bg-white">
         <div className="mt-16 flex justify-center max-w-[900px] mx-auto w-full">
           <div className="w-8/12">
@@ -144,6 +219,44 @@ export default function CartPage({
           </div>
         </div>
       </div>
+
+      {/* 🔀 Modal router — prevents two Dialogs from mounting at once */}
+      {modal.kind === 'quick' && (
+        <ProductQuickViewModal
+          open
+          onClose={() => setModal({ kind: null, product: null })}
+          product={modal.product}
+          onAddToCart={nextProduct => {
+            const chosen = nextProduct || modal.product;
+            // close QuickView, then open AddToCart on next tick
+            setModal({ kind: null, product: null });
+            setTimeout(() => setModal({ kind: 'add', product: chosen }), 0);
+          }}
+          companyLogos={companyLogos}
+          bumpPrice={acf?.bump_price}
+          pagePlacementMap={pagePlacementMap}
+          customBackAllowedSet={customBackAllowedSet}
+        />
+      )}
+
+      {modal.kind === 'add' && (
+        <AddToCartModal
+          open
+          onClose={() => setModal({ kind: null, product: null })}
+          product={modal.product}
+          bumpPrice={acf?.bump_price}
+          onOpenQuickView={p => {
+            const chosen = p || modal.product;
+            setModal({ kind: null, product: null });
+            setTimeout(() => setModal({ kind: 'quick', product: chosen }), 0);
+          }}
+          onCartAddSuccess={() => {
+            // optional: toast / refresh
+          }}
+          pagePlacementMap={pagePlacementMap}
+          customBackAllowedSet={customBackAllowedSet}
+        />
+      )}
     </div>
   );
 }
