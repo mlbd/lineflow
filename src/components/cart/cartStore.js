@@ -23,15 +23,17 @@ const normalizeSteps = (steps = []) =>
 const _getStepPrice = (total, regularPrice = 0, discountSteps = []) => {
   let price = toNumber(regularPrice);
   const steps = normalizeSteps(discountSteps);
-  for (const step of steps) {
-    if (total >= step.quantity) {
-      // Only update when amount is > 0 to avoid accidental zeros/empties
-      if (step.amount > 0) price = step.amount;
-    } else {
-      break;
+
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    // If total is <= this tier max, use it
+    if (total <= step.quantity) {
+      return step.amount > 0 ? step.amount : toNumber(regularPrice);
     }
   }
-  return price;
+  // Beyond highest tier, use last step’s amount
+  const last = steps[steps.length - 1];
+  return last.amount > 0 ? last.amount : toNumber(regularPrice);
 };
 
 // Unit price for Quantity-type products (per-line)

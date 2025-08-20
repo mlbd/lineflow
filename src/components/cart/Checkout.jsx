@@ -1,79 +1,135 @@
-// /src/components/CartSummary.jsx
+// /src/components/Checkout.jsx
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import { useCartItems, getTotalPrice } from './cartStore';
-import { generateCartThumbUrlFromItem } from '@/utils/cloudinaryMockup';
+import { generateHoverThumbUrlFromItem } from '@/utils/cloudinaryMockup';
 
-export default function CartSummary({ selectedShipping, coupon, userMeta = {}, companyData = {} }) {
-  // 1) Raw items from the store
+export default function Checkout({
+  selectedShipping,
+  coupon,
+  userMeta = {},
+  companyData = {},
+  pagePlacementMap = {},
+  customBackAllowedSet = {},
+}) {
+  // 1) Raw items from the cart store
   const rawItems = useCartItems();
 
+  console.log('Checkout::userMeta', { userMeta });
   // 2) Resolve logos object defensively from companyData
   const companyLogos = useMemo(() => {
-    // expect shape: { logo_darker:{url,width,height}, logo_lighter:{...}, back_darker:{...}, back_lighter:{...} }
-    return companyData?.companyLogos || companyData?.logos || companyData?.acf?.company_logos || {};
-  }, [companyData]);
+    if (!userMeta) return {};
 
-  // Optional per-page/per-product placement overrides or "back" permissions if you have them
-  const pagePlacementMap = companyData?.pagePlacementMap || undefined;
-  const customBackAllowedSet =
-    companyData?.customBackAllowedSet ||
-    (Array.isArray(companyData?.backAllowedIds)
-      ? new Set(companyData.backAllowedIds.map(String))
-      : undefined);
+    const logoTypes = ['logo_darker', 'logo_lighter', 'back_darker', 'back_lighter'];
 
-  // 3) Build a **compact + enriched** copy of items for checkout
-  const items = useMemo(() => {
-    return (rawItems || []).map((it, idx) => {
-      // Base thumbnail preference:
-      // - For Group items prefer the color's own thumbnail if present
-      // - Otherwise fall back to the product/item thumbnail
+    return logoTypes.reduce(
+      (acc, type) => ({
+        ...acc,
+        [type]: { ...userMeta[type] },
+      }),
+      {}
+    );
+  }, [userMeta]);
+
+  console.log('Checkout::companyLogos', { companyLogos });
+  console.log('Checkout::rawItems', { rawItems });
+
+  // Helper to safely read strings
+  const s = v => (v == null ? '' : String(v));
+
+  // 3) Build **products** for ml_create_order() (no PHP changes needed)
+  const products = useMemo(() => {
+    return (rawItems || []).flatMap((it, idx) => {
+      // Base thumb (what user saw)
       const baseThumb =
         it?.options?.group_type === 'Group'
           ? it?.options?.color_thumbnail_url || it?.thumbnail || ''
           : it?.thumbnail || '';
 
-      // Cloudinary mockup (logo applied on top of baseThumb using placements)
-      const mockup_url = generateCartThumbUrlFromItem(it, companyLogos, {
+      // Cloudinary mockups (square thumb + full)
+      const thumbUrl = generateHoverThumbUrlFromItem(it, companyLogos, {
         max: 400,
-        pagePlacementMap,
+        customBackAllowedSet, // ❌ no pagePlacementMap here — cart is frozen
+      });
+
+      console.log('🎨 thumbUrl', thumbUrl, it, companyLogos, customBackAllowedSet);
+
+      const fullUrl = generateHoverThumbUrlFromItem(it, companyLogos, {
+        max: 1400,
         customBackAllowedSet,
       });
 
-      // Keep only fields the backend actually needs to compute totals/order
-      // (remove heavy product snapshots/ACF blobs).
-      const compact = {
-        key: `${it.product_id}:${idx}`, // stable row key if you need it on the server
-        product_id: it.product_id,
-        name: it.name,
-        quantity: it.quantity,
-        price: it.price, // unit price
-        options: it.options || {},
-
-        // Placements (percent units). If present on the item keep them;
-        // otherwise keep minimal reference so WP can resolve by product id.
-        placement_coordinates: Array.isArray(it?.placement_coordinates)
+      // Placement → human title (e.g. "Front, Back")
+      const artItemTitle = (
+        Array.isArray(it?.placement_coordinates)
           ? it.placement_coordinates
           : Array.isArray(it?.product?.placement_coordinates)
             ? it.product.placement_coordinates
-            : [],
+            : []
+      )
+        .filter(p => p && p.active)
+        .map(p => s(p.name))
+        .filter(Boolean)
+        .join(', ');
 
-        // Thumbs
-        thumbnail: baseThumb, // original base/thumb we showed to user
-        mockup_url: mockup_url || baseThumb, // generated URL (falls back to base if not cloudinary)
-      };
+      // Try to extract color/size data commonly used in your cart options
+      const colorName = s(it?.options?.color || it?.options?.color_name);
+      const sizeName = s(it?.options?.size || it?.options?.size_name);
 
-      // Minimal product reference (id only) — handy if your WP code resolves defaults by product
-      compact.product = { id: it?.product?.id || it.product_id };
+      // Optional extras your PHP looks for (safe defaults if absent)
+      const alarnd_color_key =
+        it?.options?.color_index != null ? String(it.options.color_index) : '';
+      const alarnd_custom_color = s(it?.options?.custom_color_hex);
+      const alarnd_step_key = s(it?.options?.step_key);
+      const default_dark_logo = s(companyLogos?.logo_darker?.url);
+      const alarnd_artwork_id = s(it?.options?.artwork_id);
+      const alarnd_artwork_id2 = s(it?.options?.artwork_id2);
+      const group_type = s(it?.options?.line_type);
+      const placement_signature = s(it?.placement_signature);
 
-      return compact;
+      // Single product entry per cart line:
+      return [
+        {
+          // REQUIRED by ml_create_order loop:
+          product_id: it.product_id,
+          quantity: Number(it.quantity || 0),
+          price: Number(it.price || 0),
+
+          // Common product options (PHP adds as order item meta)
+          color: colorName,
+          size: sizeName,
+
+          // Extra keys ml_create_order reads (safe to be empty strings):
+          alarnd_color_key,
+          alarnd_custom_color,
+          alarnd_step_key,
+          art_item_title: artItemTitle,
+          default_dark_logo,
+          alarnd_artwork_id,
+          alarnd_artwork_id2,
+          placement_signature,
+          group_type,
+
+          // Cloudinary thumbs: PHP uses `_cloudinary_thumbnail` meta and also prints <img>
+          cloudinary_thumbnail: {
+            thumb: thumbUrl || baseThumb || '',
+            full: fullUrl || thumbUrl || baseThumb || '',
+          },
+
+          // (Optional) anything else you want the server to have for logs/debug
+          // placement_signature: s(it?.placement_signature),
+          // filter_was_changed: !!it?.filter_was_changed,
+        },
+      ];
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawItems, companyLogos, pagePlacementMap, customBackAllowedSet]);
 
-  // 4) Totals (unchanged) — calculated from the compact/enriched items
-  const subtotal = getTotalPrice(items);
+  // 4) Totals — calculated from the products (unit price * qty)
+  const subtotal = getTotalPrice(products);
+
+  console.log('products', products);
+  console.log('subtotal', subtotal);
 
   let couponDiscount = 0;
   let couponDescription = '';
@@ -96,13 +152,13 @@ export default function CartSummary({ selectedShipping, coupon, userMeta = {}, c
     const dummyEmail = !!userMeta?.dummy_email;
     const locked = !!userMeta?.lock_profile;
     const base = {
-      fullName: locked ? '' : userMeta?.full_name || '',
-      email: locked || dummyEmail ? '' : userMeta?.email || '',
+      fullName: locked ? '' : userMeta?.full_name || companyData?.name || '',
+      email: locked || dummyEmail ? '' : userMeta?.email_address || '',
       phone: locked ? '' : userMeta?.phone || '',
       city: locked ? '' : userMeta?.city || '',
-      streetName: locked ? '' : userMeta?.street_name || '',
+      streetName: locked ? '' : userMeta?.street_address || '',
       streetNumber: locked ? '' : userMeta?.street_number || '',
-      invoiceName: '',
+      invoiceName: locked ? '' : userMeta?.invoice || '',
     };
     if (dummyEmail) base.email = '';
     return base;
@@ -122,7 +178,7 @@ export default function CartSummary({ selectedShipping, coupon, userMeta = {}, c
   }, [form]);
 
   const hasErrors = Object.keys(errors).length > 0;
-  const isCartEmpty = !Array.isArray(items) || items.length === 0;
+  const isCartEmpty = !Array.isArray(products) || products.length === 0;
 
   // 6) Payment flow
   const [paying, setPaying] = useState(false);
@@ -130,19 +186,80 @@ export default function CartSummary({ selectedShipping, coupon, userMeta = {}, c
   const [paymentUrl, setPaymentUrl] = useState('');
   const [showPayModal, setShowPayModal] = useState(false);
 
+  // === Build ml_create_order-compatible payload ===
+  const shipping_method_info = useMemo(() => {
+    if (!selectedShipping) return {};
+    // Your PHP uses: id, title, cost
+    return {
+      id: selectedShipping.id ?? selectedShipping.method_id ?? '',
+      title: selectedShipping.title ?? selectedShipping.label ?? '',
+      cost: Number(selectedShipping.cost || 0),
+    };
+  }, [selectedShipping]);
+
+  const customerInfo = useMemo(
+    () => ({
+      customer_name: s(form.fullName),
+      customer_phone: s(form.phone),
+      customer_email: s(form.email),
+      invoice_name: s(form.invoiceName),
+      customer_city: s(form.city),
+      customer_address: s(form.streetName),
+      customer_address_number: s(form.streetNumber),
+    }),
+    [form]
+  );
+
+  // Woo set_address expects Woo keys; we provide sensible fields.
+  const shippingInfo = useMemo(
+    () => ({
+      first_name: s(form.fullName),
+      email: s(form.email),
+      phone: s(form.phone),
+      city: s(form.city),
+      address_1: `${s(form.streetName)} ${s(form.streetNumber)}`.trim(),
+      // Optional extras; Woo ignores unknown keys safely
+      address_number: s(form.streetNumber),
+      company: s(form.invoiceName),
+    }),
+    [form]
+  );
+
   async function handleSubmit() {
     setErrorMsg('');
     setPaying(true);
     try {
+      // Optional user id for PHP proof_id (updates user meta etc.)
+      const proof_id =
+        Number(userMeta?.id || userMeta?.user_id || 0) > 0
+          ? Number(userMeta?.id || userMeta?.user_id || 0)
+          : '';
+
+      // This object matches ml_create_order($data) schema
+      const wpPayload = {
+        proof_id,
+        products,
+        customerInfo,
+        shipping_method_info,
+        shippingInfo,
+        // The rest are optional in your PHP:
+        // cardNumber: '',
+        extraMeta: {},
+        response: {},
+        note: '',
+        // update: true|false  (handled by your server after payment callback)
+        // token_update: false,
+      };
+
       const resp = await fetch('/api/payments/zcredit/create-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          form,
-          // ⬇️ Send the enriched, compact array
-          items,
-          selectedShipping,
+          // What the Next.js route needs to create ZCredit session:
+          // (keep sending coupon so the API can apply it to Woo cart before order create)
           coupon: coupon?.valid ? coupon : null,
+          // And pass-through for ml_create_order (server will call it using this):
+          orderData: wpPayload,
         }),
       });
       const data = await resp.json();
@@ -241,7 +358,7 @@ export default function CartSummary({ selectedShipping, coupon, userMeta = {}, c
         <button
           type="submit"
           disabled={isCartEmpty || hasErrors || paying}
-          className={`w-full mt-4 py-3 rounded-lg font-semibold text-white transition ${
+          className={`w-full cursor-pointer mt-4 py-3 rounded-lg font-semibold text-white transition ${
             isCartEmpty || hasErrors || paying
               ? 'bg-gray-400 cursor-not-allowed'
               : 'bg-blue-600 hover:bg-blue-700'

@@ -76,6 +76,8 @@ export default function CartItem({
     customBackAllowedSet,
   ]);
 
+  console.log('cartItem', companyLogos);
+
   // Hover (bigger) cart image — also from the frozen snapshot
   useEffect(() => {
     const url = generateHoverThumbUrlFromItem(item, companyLogos, {
@@ -222,62 +224,51 @@ export default function CartItem({
     return (
       <div className="space-y-1">
         <div className="font-semibold text-skyblue text-[15px]">{item.name}</div>
-
-        {item.options?.group_type === 'Group' && (
-          <div className="space-y-1 text-sm text-gray-600">
-            <div className="flex items-center gap-2">
-              <span>צבע:</span>
-              <span
-                className="p-0.5 rounded text-xs font-medium"
-                style={{
-                  backgroundColor: item.options.color_hex_code,
-                  color: isDarkColor(item.options.color_hex_code) ? '#fff' : '#000',
-                  border: `1px solid ${isDarkColor(item.options.color_hex_code) ? '#fff' : '#000'}`,
-                  padding: '2px 6px',
-                }}
-              >
-                {item.options.color}
-              </span>
-            </div>
-            <div>
-              מידה: <span className="font-medium">{item.options.size}</span>
-            </div>
-
-            {/* ✅ Placement labels */}
-            {SHOW_PLACEMENTS_LABEL && activePlacements.length > 0 && (
-              <div className="flex items-start gap-2 flex-wrap">
-                <div className="flex gap-1 flex-wrap">
-                  {activePlacements.map(nm => (
-                    <span
-                      key={nm}
-                      className="px-2 py-0.5 rounded-full text-[11px] font-medium border border-emerald-600 text-emerald-700 bg-emerald-50"
-                      title={nm}
-                    >
-                      {nm}
-                    </span>
-                  ))}
-                </div>
+        <div className="space-y-1 text-sm text-gray-600">
+          {item.options?.group_type === 'Group' && (
+            <>
+              <div className="flex items-center gap-2">
+                <span>צבע:</span>
+                <span
+                  className="p-0.5 rounded text-xs font-medium"
+                  style={{
+                    backgroundColor: item.options.color_hex_code,
+                    color: isDarkColor(item.options.color_hex_code) ? '#fff' : '#000',
+                    border: `1px solid ${isDarkColor(item.options.color_hex_code) ? '#fff' : '#000'}`,
+                    padding: '2px 6px',
+                  }}
+                >
+                  {item.options.color}
+                </span>
               </div>
-            )}
-          </div>
-        )}
+              <div>
+                מידה: <span className="font-medium">{item.options.size}</span>
+              </div>
+            </>
+          )}
 
-        {item.options &&
-          item.options.group_type !== 'Group' &&
-          Object.keys(item.options).length > 0 && (
-            <div className="text-sm text-gray-600">
-              {Object.entries(item.options).map(([k, v]) => (
-                <div key={k}>
-                  {k}: <span className="font-medium">{String(v)}</span>
-                </div>
-              ))}
+          {/* ✅ Placement labels */}
+          {SHOW_PLACEMENTS_LABEL && activePlacements.length > 0 && (
+            <div className="flex items-start gap-2 flex-wrap">
+              <div className="flex gap-1 flex-wrap">
+                {activePlacements.map(nm => (
+                  <span
+                    key={nm}
+                    className="px-2 py-0.5 rounded-full text-[11px] font-medium border border-emerald-600 text-emerald-700 bg-emerald-50"
+                    title={nm}
+                  >
+                    {nm}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
+        </div>
       </div>
     );
   };
 
-  const totalPrice = item.price * item.quantity;
+  const totalPrice = Math.round(item.price * item.quantity * 100) / 100;
 
   return (
     <div

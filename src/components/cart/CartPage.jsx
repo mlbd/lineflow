@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useCartItems } from './cartStore';
 import CartItem from './CartItem';
-import CartSummary from './CartSummary';
+import Checkout from './Checkout';
 import CartEmpty from './CartEmpty';
 import ShippingOptions from './ShippingOptions';
 import CouponField from './CouponField';
@@ -133,11 +133,13 @@ export default function CartPage({
       <div className="py-[50px] mt-[50px] bg-white">
         <div className="mt-16 flex justify-center max-w-[900px] mx-auto w-full">
           <div className="w-8/12">
-            <CartSummary
+            <Checkout
               selectedShipping={selectedShipping}
               coupon={coupon && coupon.valid ? coupon : null}
               userMeta={acf}
               companyData={companyData}
+              pagePlacementMap={pagePlacementMap}
+              customBackAllowedSet={customBackAllowedSet}
             />
           </div>
         </div>

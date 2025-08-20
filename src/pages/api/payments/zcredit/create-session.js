@@ -21,15 +21,78 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
   }
 }
 
+/** Map ml_create_order "products" entry -> minimal "item" the WP prepare endpoint expects */
+function productToItem(p, idx) {
+  return {
+    key: `${p?.product_id ?? ''}:${idx}`,
+    ...p,
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   const id = cid();
 
   try {
-    const { form, items, selectedShipping, coupon } = req.body || {};
+    let { form, items, selectedShipping, coupon, orderData, products } = req.body || {};
+
+    console.log('ZCREDIT_CREATE_SESSION', id, {
+      form,
+      items,
+      selectedShipping,
+      coupon,
+      orderData,
+      products,
+    });
+
+    // --- Fallbacks so both client payload shapes work ---
+    if (
+      (!Array.isArray(items) || items.length === 0) &&
+      orderData &&
+      Array.isArray(orderData.products)
+    ) {
+      dlog(id, 'Adapting orderData.products -> items');
+      items = orderData.products.map(productToItem);
+      // Also adapt form/shipping from orderData if not provided:
+      if (!form && orderData.customerInfo) {
+        const c = orderData.customerInfo;
+        form = {
+          fullName: c.customer_name || '',
+          email: c.customer_email || '',
+          phone: c.customer_phone || '',
+          city: c.customer_city || '',
+          streetName: c.customer_address || '',
+          streetNumber: c.customer_address_number || '',
+          invoiceName: c.invoice_name || '',
+        };
+      }
+      if (!selectedShipping && orderData.shipping_method_info) {
+        selectedShipping = {
+          id: orderData.shipping_method_info.id || '',
+          title: orderData.shipping_method_info.title || '',
+          cost: Number(orderData.shipping_method_info.cost || 0),
+        };
+      }
+    }
+
+    console.log('ZCREDIT_CREATE_SESSION::items', items);
+
+    if (
+      (!Array.isArray(items) || items.length === 0) &&
+      Array.isArray(products) &&
+      products.length > 0
+    ) {
+      dlog(id, 'Adapting products -> items');
+      items = products.map(productToItem);
+    }
+
+    console.log('ZCREDIT_CREATE_SESSION::items::later', items);
+
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Cart is empty', cid: id });
     }
+
+    dlog(id, 'Incoming items count:', items.length);
 
     // --- WP authoritative totals (your Group/Quantity logic) ---
     dlog(id, '→ WP /checkout/prepare');
@@ -39,7 +102,7 @@ export default async function handler(req, res) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          customer: form,
+          customer: form || {},
           items,
           shipping: selectedShipping || null,
           coupon: coupon || null,
@@ -48,12 +111,12 @@ export default async function handler(req, res) {
     );
     const draft = await prep.json().catch(() => ({}));
     dlog(id, 'WP prepare status', prep.status, 'body', draft);
-    if (!prep.ok)
+    if (!prep.ok) {
       return res
         .status(400)
         .json({ error: draft?.message || 'WP prepare failed', cid: id, details: draft });
+    }
 
-    // --- Config & URL guards per Apiary spec (MUST be https) ---
     const KEY = (process.env.ZCREDIT_KEY || '').trim();
     if (!KEY)
       return res
@@ -62,14 +125,8 @@ export default async function handler(req, res) {
 
     const publicBase = (process.env.ZCREDIT_PUBLIC_BASE || '').replace(/\/$/, '');
     const notifyBase = (process.env.ZCREDIT_NOTIFY_BASE || publicBase).replace(/\/$/, '');
-    // if (!/^https:\/\//i.test(publicBase)) {
-    //   return res.status(400).json({ error: 'ZCREDIT_PUBLIC_BASE must be an HTTPS URL', cid: id });
-    // }
-    // if (!/^https:\/\//i.test(notifyBase)) {
-    //   return res.status(400).json({ error: 'ZCREDIT_NOTIFY_BASE must be an HTTPS URL', cid: id });
-    // }
 
-    // --- Dev simulator (still supported) ---
+    // Dev simulator
     if (process.env.ZCREDIT_SIMULATE === '1') {
       const sessionId = `SIM-${Date.now()}`;
       await fetchWithTimeout(
@@ -82,7 +139,7 @@ export default async function handler(req, res) {
             session_id: sessionId,
             totals: draft,
             snapshot: {
-              customer: form,
+              customer: form || {},
               items,
               shipping: selectedShipping || null,
               coupon: coupon || null,
@@ -99,34 +156,31 @@ export default async function handler(req, res) {
       });
     }
 
-    // --- Build WebCheckout CreateSession body (Apiary spec) ---
-    const LOCAL = process.env.ZCREDIT_LOCAL || 'He'; // He | En | Ru
+    // === Build Z-Credit CreateSession request (unchanged) ===
+    const LOCAL = process.env.ZCREDIT_LOCAL || 'He';
     const THEME = (process.env.ZCREDIT_THEME_COLOR || '005ebb').replace('#', '');
     const FAILS = Number(process.env.ZCREDIT_NUMBER_OF_FAILURES || 3);
     const MAXINS = Number(process.env.ZCREDIT_MAX_INSTALLMENTS || 1);
 
-    // HTTPS absolute URLs required by Z-Credit
     const SuccessUrl = `${publicBase}/payment/zcredit/iframe-success`;
     const CancelUrl = `${publicBase}/payment/zcredit/return?status=cancel`;
     const FailureRedirectUrl = `${publicBase}/payment/zcredit/return?status=error`;
     const CallbackUrl = `${notifyBase}/api/payments/zcredit/notify?t=${encodeURIComponent(process.env.ZCREDIT_WEBHOOK_SECRET || '')}&status=success`;
     const FailureCallBackUrl = `${notifyBase}/api/payments/zcredit/notify?t=${encodeURIComponent(process.env.ZCREDIT_WEBHOOK_SECRET || '')}&status=failure`;
 
-    // CartItems: single-unit price (Amount), Quantity, Currency as string
     const CartItems = Array.isArray(draft?.lines)
       ? draft.lines.map((l, i) => ({
-          Amount: Number(l?.unit_price ?? 0), // number (required)
-          Currency: 'ILS', // string (required)
-          Name: `Item ${i + 1} (#${l.product_id})`, // string (required)
+          Amount: Number(l?.unit_price ?? 0),
+          Currency: 'ILS',
+          Name: `Item ${i + 1} (#${l.product_id})`,
           Description: l?.group_type ? `${l.group_type} pricing` : '',
-          Quantity: Number(l?.quantity ?? 1), // number (required)
-          Image: '', // HTTPS image if you have one
-          IsTaxFree: false, // boolean
-          AdjustAmount: false, // boolean
+          Quantity: Number(l?.quantity ?? 1),
+          Image: '',
+          IsTaxFree: false,
+          AdjustAmount: false,
         }))
       : [];
 
-    // Optional: push shipping as a line so the hosted cart shows it too
     if (Number(draft.shipping || 0) > 0) {
       CartItems.push({
         Amount: Number(draft.shipping),
@@ -153,35 +207,26 @@ export default async function handler(req, res) {
     };
 
     const body = {
-      Key: KEY, // required
+      Key: KEY,
       Local: LOCAL,
       UniqueId: String(draft.order_draft_id || ''),
-
-      SuccessUrl, // required (HTTPS)
-      CancelUrl, // HTTPS
-      CallbackUrl, // required (HTTPS)
-      FailureCallBackUrl, // HTTPS
-      FailureRedirectUrl, // HTTPS
+      SuccessUrl,
+      CancelUrl,
+      CallbackUrl,
+      FailureCallBackUrl,
+      FailureRedirectUrl,
       NumberOfFailures: FAILS,
-
       PaymentType: 'regular',
-      CreateInvoice: false, // boolean
-      AdditionalText: draft?.order_ref || '', // optional note visible in backoffice
-      ShowCart: true, // boolean
+      CreateInvoice: false,
+      AdditionalText: draft?.order_ref || '',
+      ShowCart: true,
       ThemeColor: THEME,
       BitButtonEnabled: false,
       ApplePayButtonEnabled: false,
       GooglePayButtonEnabled: false,
-
-      Installments: {
-        Type: MAXINS > 1 ? 'regular' : 'none',
-        MinQuantity: 1,
-        MaxQuantity: MAXINS,
-      },
-
+      Installments: { Type: MAXINS > 1 ? 'regular' : 'none', MinQuantity: 1, MaxQuantity: MAXINS },
       Customer,
-      CartItems, // required
-
+      CartItems,
       FocusType: 'None',
       CardsIcons: {
         ShowVisaIcon: true,
@@ -190,10 +235,8 @@ export default async function handler(req, res) {
         ShowAmericanExpressIcon: true,
         ShowIsracardIcon: true,
       },
-
-      IssuerWhiteList: [], // pass arrays if you need to restrict
+      IssuerWhiteList: [],
       BrandWhiteList: [],
-
       UseLightMode: false,
       UseCustomCSS: false,
       BackgroundColor: 'FFFFFF',
@@ -212,7 +255,6 @@ export default async function handler(req, res) {
       dlog(id, 'CreateSession body (sanitized):', safe);
     }
 
-    // --- Call CreateSession (canonical endpoint) ---
     const base = (process.env.ZCREDIT_BASE_URL || 'https://pci.zcredit.co.il').replace(/\/$/, '');
     const url = `${base}/webcheckout/api/WebCheckout/CreateSession`;
 
@@ -232,28 +274,30 @@ export default async function handler(req, res) {
     dlog(id, 'CreateSession status', zRes.status, zBody || zText);
 
     if (!zRes.ok) {
-      return res.status(400).json({
-        error: 'Z-Credit CreateSession failed',
-        cid: id,
-        status: zRes.status,
-        details: zBody || zText || null,
-      });
+      return res
+        .status(400)
+        .json({
+          error: 'Z-Credit CreateSession failed',
+          cid: id,
+          status: zRes.status,
+          details: zBody || zText || null,
+        });
     }
 
-    // Expecting: { HasError:false, Data:{ SessionId, SessionUrl, ... }, ... }
     const hasErr = zBody?.HasError || zBody?.Data?.HasError;
     const sessionUrl = zBody?.Data?.SessionUrl || zBody?.SessionUrl || null;
     const sessionId = zBody?.Data?.SessionId || zBody?.SessionId || null;
 
     if (hasErr || !sessionUrl) {
-      return res.status(400).json({
-        error: 'Z-Credit CreateSession returned error',
-        cid: id,
-        details: zBody || zText || null,
-      });
+      return res
+        .status(400)
+        .json({
+          error: 'Z-Credit CreateSession returned error',
+          cid: id,
+          details: zBody || zText || null,
+        });
     }
 
-    // --- Store draft for notify/complete ---
     await fetchWithTimeout(
       `${process.env.NEXT_PUBLIC_WP_SITE_URL}/wp-json/mini-sites/v1/checkout/draft`,
       {
@@ -264,7 +308,7 @@ export default async function handler(req, res) {
           session_id: sessionId || null,
           totals: draft,
           snapshot: {
-            customer: form,
+            customer: form || {},
             items,
             shipping: selectedShipping || null,
             coupon: coupon || null,
@@ -275,17 +319,19 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true,
-      paymentUrl: sessionUrl, // put this in the iframe
+      paymentUrl: sessionUrl,
       sessionId,
       orderDraftId: draft.order_draft_id || null,
       cid: id,
     });
   } catch (err) {
     console.error(`[ZCREDIT][${id}] FATAL`, err);
-    return res.status(500).json({
-      error: 'Server error creating session',
-      cid: id,
-      ...(DEBUG ? { details: String(err?.message || err) } : {}),
-    });
+    return res
+      .status(500)
+      .json({
+        error: 'Server error creating session',
+        cid: id,
+        ...(DEBUG ? { details: String(err?.message || err) } : {}),
+      });
   }
 }
