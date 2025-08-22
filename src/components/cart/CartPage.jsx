@@ -1,6 +1,7 @@
+// CartPage.jsx
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useCartItems } from './cartStore';
 import CartItem from './CartItem';
 import Checkout from './Checkout';
@@ -39,10 +40,30 @@ export default function CartPage({
   const items = useCartItems();
 
   const [selectedShipping, setSelectedShipping] = useState(null);
-
   const [validating, setValidating] = useState(false);
   const [coupon, setCoupon] = useState(null);
   const [couponInput, setCouponInput] = useState('');
+
+  // 🔧 Toggle if you ever want to switch grouping off quickly
+  const GROUP_CART_BY_PRODUCT = true;
+
+  // Arrange items so that same product_id are siblings (stable by first appearance).
+  // IMPORTANT: we keep each entry's original store index so remove/update still target correctly.
+  const arranged = useMemo(() => {
+    if (!GROUP_CART_BY_PRODUCT) {
+      return (Array.isArray(items) ? items : []).map((it, idx) => ({ it, storeIndex: idx }));
+    }
+    const withIndex = (Array.isArray(items) ? items : []).map((it, idx) => ({ it, storeIndex: idx }));
+    const groups = new Map(); // pid -> entries[]
+    for (const entry of withIndex) {
+      const pid = String(entry.it?.product_id ?? '');
+      if (!groups.has(pid)) groups.set(pid, []);
+      groups.get(pid).push(entry);
+    }
+    const out = [];
+    for (const entries of groups.values()) out.push(...entries);
+    return out;
+  }, [items]);
 
   // ✅ Single "modal router": only ONE Radix Dialog mounted at a time
   //    kind: 'quick' | 'add' | null
@@ -81,22 +102,22 @@ export default function CartPage({
     setCouponInput('');
   };
 
-  // Open Quick View from cart row — preload placements AND hydrate from props
-  const onOpenQuickViewFromCart = useCallback(
+  // Open Add-To-Cart directly from the cart row (pre-populate filters + form)
+  const onOpenEditFromCart = useCallback(
     item => {
       const pid = String(item?.product_id || '');
       const placements = Array.isArray(item?.placement_coordinates)
         ? item.placement_coordinates
         : [];
 
-      // 1) Prime area filter store so Quick View shows same active areas
+      // 1) Prime area filter store so AddToCart* shows same active areas
       try {
         useAreaFilterStore.setState(s => ({
           filters: { ...(s.filters || {}), [pid]: placements },
         }));
       } catch {}
 
-      // 2) Hydrate the product without fetching
+      // 2) Hydrate product object (no fetch)
       let product = findProductLocally(pid, initialProducts, companyData);
       if (!product) {
         product = {
@@ -109,22 +130,34 @@ export default function CartPage({
         };
       }
 
+      // Ensure ACF has the right pricing arrays + group type
       const acfOut = product.acf ? { ...product.acf } : {};
+
+      // Group-type tiers
       if (
         (!acfOut.discount_steps || !acfOut.discount_steps.length) &&
         item?.pricing?.discount_steps
       ) {
         acfOut.discount_steps = item.pricing.discount_steps;
       }
+
+      // Quantity-type tiers
+      if ((!acfOut.quantity_steps || !acfOut.quantity_steps.length) && item?.pricing?.steps) {
+        acfOut.quantity_steps = item.pricing.steps;
+      }
+
+      // Ensure group_type is present
       if (!acfOut.group_type && item?.options?.group_type) {
         acfOut.group_type = item.options.group_type;
       }
+
       if (product.regular_price == null && product.price != null) {
         product = { ...product, regular_price: product.price };
       }
 
+      // 3) Open AddToCart modal directly with snapshot placements
       setModal({
-        kind: 'quick',
+        kind: 'add',
         product: { ...product, placement_coordinates: placements, acf: acfOut },
       });
     },
@@ -157,15 +190,15 @@ export default function CartPage({
                 {/* Items + shimmer overlay */}
                 <div className={`relative ${validating ? 'pointer-events-none opacity-60' : ''}`}>
                   <div className="space-y-4">
-                    {items.map((item, idx) => (
+                    {arranged.map(({ it, storeIndex }, listIdx) => (
                       <CartItem
-                        key={`${item.product_id}-${idx}`}
-                        item={item}
-                        idx={idx}
+                        key={`${it.product_id}-${storeIndex}`}
+                        item={it}
+                        idx={storeIndex}
                         companyLogos={companyLogos}
                         pagePlacementMap={pagePlacementMap}
                         customBackAllowedSet={customBackAllowedSet}
-                        onOpenQuickViewFromCart={onOpenQuickViewFromCart}
+                        onOpenEditFromCart={onOpenEditFromCart}
                       />
                     ))}
                   </div>

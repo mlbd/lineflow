@@ -291,6 +291,7 @@ export default function AddToCartQuantity({
         product_id: safeProduct.id,
         name: safeProduct.name,
         thumbnail: safeProduct.thumbnail,
+        thumbnail_meta: safeProduct.thumbnail_meta,
         quantity: q,
         price,
         pricing: { type: 'Quantity', steps },

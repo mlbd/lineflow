@@ -255,7 +255,7 @@ export const getTotalItems = items =>
 
 export const getTotalPrice = items =>
   (Array.isArray(items) ? items : []).reduce(
-    (total, item) => total + toNumber(item.price) * (parseInt(item.quantity) || 0),
+    (total, item) => total + Math.round(toNumber(item.price) * (parseInt(item.quantity) || 0) * 100) / 100,
     0
   );
 

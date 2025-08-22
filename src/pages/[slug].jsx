@@ -14,14 +14,11 @@ import { getOrFetchShipping } from '@/lib/shippingCache';
 
 const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
 
+/* ---------------------- SSG: paths & props --------------------- */
 export async function getStaticPaths() {
-  // Hardcode the slugs you want to prebuild
-  const slugs = ['sabbir'];
-
-  return {
-    paths: slugs.map(slug => ({ params: { slug } })),
-    fallback: 'blocking', // 'blocking' for ISR if you want to support others
-  };
+  // ⚡️ Don’t pre-render any dynamic pages at build (avoids slow build & "red" routes).
+  // They’ll be generated on first request thanks to fallback: 'blocking' + ISR.
+  return { paths: [], fallback: 'blocking' };
 }
 
 export async function getStaticProps({ params }) {

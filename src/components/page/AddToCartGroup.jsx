@@ -339,6 +339,7 @@ export default function AddToCartGroup({
               product_id: product.id,
               name: product.name,
               thumbnail: product.thumbnail,
+              thumbnail_meta: product.thumbnail_meta,
               price: Number(stepInfo.price) || 0, // will be repriced by store
               quantity: newQty,
               pricing: {

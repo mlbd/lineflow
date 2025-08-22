@@ -475,6 +475,8 @@ export const buildRelativeMockupUrl = ({
   const naturalW = max;
   const naturalH = getAspectHeight(baseW, baseH, max);
 
+  console.log(`=====${productId}=====`, naturalW,naturalH);
+
   placements.forEach(p => {
     const chosen = pickLogoVariant(logos, !!p.__useBack, bgIsDark);
     if (!chosen || !isCloudinaryUrl(chosen.url)) return;
@@ -533,8 +535,6 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
     __useBack: !!(p?.back && allowBack),
   }));
 
-  // console.log('generateProductImageUrl', baseW, baseH, product, opts, baseUrl);
-
   if (!opts?.max) {
     if (!baseW || !baseH) {
       return buildRelativeMockupUrl({
@@ -571,27 +571,74 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
 
 /* ---------------------- Cart / Hover thumbs (relative) ---------------------- */
 
+// Normalize line/group type (handles "Quantity", "Quanity", "qty", etc.)
+const normalizeLineType = raw => {
+  const t = String(raw || '').trim().toLowerCase();
+  if (!t) return '';
+  if (t === 'group' || t.startsWith('grp')) return 'group';
+  // treat anything that looks like "quan..." or "qty" as quantity
+  if (t.startsWith('quan') || t === 'qty' || t === 'quantity' || t === 'quanity') return 'quantity';
+  return t;
+};
+
+/** Resolve base url/hex and intrinsic dimensions for cart rows.
+ *  - Group: prefer the selected color's thumbnail (and its W/H from ACF).
+ *  - Quantity (and everything that looks like "quan"/"qty"): use product thumbnail meta.
+ */
 const resolveCartBaseFromItem = item => {
-  if (item?.options?.group_type === 'Group') {
-    if (item?.options?.color_thumbnail_url) {
-      return {
-        url: item.options.color_thumbnail_url,
-        hex: item?.options?.color_hex_code || item?.thumbnail_meta?.thumbnail_color || '#ffffff',
-      };
+  // Defaults from the line item
+  let url = item?.thumbnail || '';
+  let hex = item?.thumbnail_meta?.thumbnail_color || '#ffffff';
+  let width  = Number(item?.thumbnail_meta?.width)  || 0;
+  let height = Number(item?.thumbnail_meta?.height) || 0;
+
+  // Look for a type in several places and normalize ("Quantity" vs "Quanity" etc.)
+  const rawType =
+    item?.options?.group_type ??
+    item?.options?.line_type ??
+    item?.pricing?.type ??                 // <-- important for Quantity rows
+    item?.product?.acf?.group_type ?? '';
+  const type = normalizeLineType(rawType);
+
+  if (type === 'group') {
+    // Try the explicitly chosen color first
+    const directUrl  = item?.options?.color_thumbnail_url || '';
+    const colorTitle = item?.options?.color || '';
+
+    if (directUrl) {
+      url = directUrl;
+      hex = item?.options?.color_hex_code || hex;
     }
-    const colorTitle = item?.options?.color;
+
+    // Pull W/H from ACF color row if possible
     const colors = item?.product?.acf?.color;
-    if (colorTitle && Array.isArray(colors)) {
-      const match = colors.find(
-        c => (c?.title || '').toLowerCase() === (colorTitle || '').toLowerCase()
-      );
+    if (Array.isArray(colors)) {
+      let match = null;
+      if (directUrl) match = colors.find(c => c?.thumbnail?.url === directUrl) || null;
+      if (!match && colorTitle) {
+        const lc = s => (s || '').toLowerCase();
+        match = colors.find(c => lc(c?.title) === lc(colorTitle)) || null;
+      }
       if (match?.thumbnail?.url) {
-        return { url: match.thumbnail.url, hex: match.color_hex_code || '#ffffff' };
+        url    = match.thumbnail.url;
+        width  = Number(match?.thumbnail?.width)  || width;
+        height = Number(match?.thumbnail?.height) || height;
+        hex    = match?.color_hex_code || hex;
       }
     }
   }
-  return { url: item?.thumbnail || '', hex: item?.thumbnail_meta?.thumbnail_color || '#ffffff' };
+
+  // For QUANTITY or if dims still unknown → use product-level meta
+  if (!width || !height || !isCloudinaryUrl(url) || type === 'quantity') {
+    if (!url && item?.product?.thumbnail) url = item.product.thumbnail;
+    width  = Number(item?.product?.thumbnail_meta?.width)  || width;
+    height = Number(item?.product?.thumbnail_meta?.height) || height;
+    if (!hex) hex = item?.product?.thumbnail_meta?.thumbnail_color || hex;
+  }
+
+  return { url, hex, width, height, type };
 };
+
 
 export const generateCartThumbUrlFromItem = (
   item,
@@ -600,42 +647,81 @@ export const generateCartThumbUrlFromItem = (
 ) => {
   if (!item) return '';
 
-  const pidStr = String(item?.product_id ?? '');
+  const pid = item?.product_id || item?.product?.id || null;
+  const pidStr = String(pid ?? '');
   const base = resolveCartBaseFromItem(item);
-  if (!isCloudinaryUrl(base.url)) return base.url || item.thumbnail || '';
-
+  if (!isCloudinaryUrl(base.url)) return base.url || item?.thumbnail || '';
+  
+  // Decide placements strategy:
+  // - Quantity: mimic ProductList thumbnails exactly => use page overrides > product placements (ignore line snapshot)
+  // - Group (default): keep existing snapshot-first behavior to avoid regressions users liked
+  const isQuantity = normalizeLineType(base.type) === 'quantity';
+  
   let rawPlacements = [];
-  if (pagePlacementMap && pidStr && Array.isArray(pagePlacementMap[pidStr])) {
-    rawPlacements = pagePlacementMap[pidStr];
-  } else if (Array.isArray(item?.placement_coordinates)) {
-    rawPlacements = item.placement_coordinates;
-  } else if (Array.isArray(item?.product?.placement_coordinates)) {
-    rawPlacements = item.product.placement_coordinates;
+  if (isQuantity) {
+    // same as generateProductImageUrl
+    if (pagePlacementMap && pidStr && Array.isArray(pagePlacementMap[pidStr]) && pagePlacementMap[pidStr].length) {
+      rawPlacements = pagePlacementMap[pidStr];
+    } else if (Array.isArray(item?.product?.placement_coordinates)) {
+      rawPlacements = item.product.placement_coordinates;
+    }
+  } else {
+    // existing cart behavior
+    if (pagePlacementMap && pidStr && Array.isArray(pagePlacementMap[pidStr])) {
+      rawPlacements = pagePlacementMap[pidStr];
+    } else if (Array.isArray(item?.placement_coordinates)) {
+      rawPlacements = item.placement_coordinates;
+    } else if (Array.isArray(item?.product?.placement_coordinates)) {
+      rawPlacements = item.product.placement_coordinates;
+    }
   }
 
   rawPlacements = rawPlacements.filter(p => p?.active === true);
   if (!rawPlacements.length) return base.url;
-  if (!logos?.logo_darker?.url || !isCloudinaryUrl(logos.logo_darker.url)) return base.url;
 
+  const ItemProductID = pid;
+  console.log('ItemProductID==before', ItemProductID);
+  console.log('pid==before', pid);
+  console.log('pid==base', base);
+
+  // If we have intrinsic base dims, run the *exact* relative builder like the grid (prevents "smaller logo" effect)
+  if (base.width > 0 && base.height > 0) {
+    const allowBack = isBackAllowedForProduct(pid, { customBackAllowedSet });
+    const placements = rawPlacements.map(p => ({ ...p, __useBack: !!(p?.back && allowBack) }));
+
+    console.log('ItemProductID==after', ItemProductID);
+    console.log('pid==after', pid);
+
+    return buildRelativeMockupUrl({
+      baseUrl: base.url,
+      placements,
+      logos,
+      baseHex: base.hex,
+      max: Number(max) || 200,
+      productId: pid,
+      baseW: base.width,
+      baseH: base.height,
+    });
+  }
+
+  // Fallback: legacy square relative math (only if dims unknown)
   const parsedBase = parseCloudinaryIds(base.url);
   const cloud = ENV_CLOUD || parsedBase.cloud;
   if (!cloud || !parsedBase.baseAsset) return base.url;
 
+  if (!logos?.logo_darker?.url || !isCloudinaryUrl(logos.logo_darker.url)) return base.url;
   const bgIsDark = isDarkHex(base.hex);
-  const allowBack = Array.isArray(customBackAllowedSet)
-    ? customBackAllowedSet.map(String).includes(pidStr)
-    : !!(
-        customBackAllowedSet &&
-        typeof customBackAllowedSet.has === 'function' &&
-        customBackAllowedSet.has(pidStr)
-      );
+
+  const allowBack =
+    Array.isArray(customBackAllowedSet)
+      ? customBackAllowedSet.map(String).includes(pidStr)
+      : !!(customBackAllowedSet && typeof customBackAllowedSet.has === 'function' && customBackAllowedSet.has(pidStr));
 
   const placements = rawPlacements.map(p => ({ ...p, __useBack: !!(p?.back && allowBack) }));
   const transforms = [`f_auto,q_auto,c_fit,w_${max},h_${max}`];
 
   placements.forEach(p => {
-    if (p.xPercent == null || p.yPercent == null || p.wPercent == null || p.hPercent == null)
-      return;
+    if (p.xPercent == null || p.yPercent == null || p.wPercent == null || p.hPercent == null) return;
 
     const chosen = pickLogoVariant(logos, !!p.__useBack, bgIsDark);
     if (!chosen || !isCloudinaryUrl(chosen.url)) return;
@@ -643,42 +729,29 @@ export const generateCartThumbUrlFromItem = (
     const parsedLogo = parseCloudinaryIds(chosen.url);
     if (!parsedLogo.overlayId) return;
 
-    // NOTE: Cart/hover uses its own relative math (unchanged) – keep as-is
     const lw = Number(chosen.width) || 0;
     const lh = Number(chosen.height) || 0;
 
-    let relW = p.wPercent,
-      relH = p.hPercent;
+    let relW = p.wPercent, relH = p.hPercent;
     if (lw > 0 && lh > 0) {
-      const la = lw / lh,
-        ba = p.wPercent / p.hPercent;
-      if (la > ba) {
-        relW = p.wPercent;
-        relH = p.wPercent / la;
-      } else {
-        relH = p.hPercent;
-        relW = p.hPercent * la;
-      }
+      const la = lw / lh, ba = p.wPercent / p.hPercent;
+      if (la > ba) { relW = p.wPercent; relH = p.wPercent / la; }
+      else { relH = p.hPercent; relW = p.hPercent * la; }
     }
 
     const angleDeg = getAngleDeg(p);
-
     if (!angleDeg) {
-      // OLD behavior when not rotated
       const relX = p.xPercent + (p.wPercent - relW) / 2;
       const relY = p.yPercent + (p.hPercent - relH) / 2;
-
       transforms.push(
         `l_${parsedLogo.overlayId},c_pad,fl_relative,w_${relW.toFixed(6)},h_${relH.toFixed(6)},g_center,b_auto`,
         `fl_layer_apply,fl_relative,x_${relX.toFixed(6)},y_${relY.toFixed(6)},g_north_west`
       );
     } else {
-      // CENTER placement when rotated
       const cRelX = p.xPercent + p.wPercent / 2;
       const cRelY = p.yPercent + p.hPercent / 2;
       const offRelX = (cRelX - 0.5).toFixed(6);
       const offRelY = (cRelY - 0.5).toFixed(6);
-
       transforms.push(
         `l_${parsedLogo.overlayId},c_pad,fl_relative,w_${relW.toFixed(6)},h_${relH.toFixed(6)},g_center,b_auto,a_${angleDeg}`,
         `fl_layer_apply,fl_relative,g_center,x_${offRelX},y_${offRelY}`
@@ -687,7 +760,6 @@ export const generateCartThumbUrlFromItem = (
   });
 
   if (transforms.length <= 1) return base.url;
-
   return `https://res.cloudinary.com/${cloud}/image/upload/${transforms.join('/')}/${parsedBase.baseAsset}`;
 };
 
@@ -695,7 +767,10 @@ export const generateHoverThumbUrlFromItem = (
   item,
   logos,
   { max = 400, pagePlacementMap, customBackAllowedSet } = {}
-) => generateCartThumbUrlFromItem(item, logos, { max, pagePlacementMap, customBackAllowedSet });
+) =>
+  generateCartThumbUrlFromItem(item, logos, { max, pagePlacementMap, customBackAllowedSet });
+
+
 
 /* ---------------------- Overlay preview (color bbox fixed; logos conditional) ---------------------- */
 

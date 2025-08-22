@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import NextImage from 'next/image';
-import { Trash2 } from 'lucide-react';
-import { useRemoveItem } from './cartStore';
+import { Trash2, SquarePen } from 'lucide-react';
+import { useRemoveItem, useUpdateItemQuantity } from './cartStore';
 import { isDarkColor } from '@/utils/color';
 import {
   generateCartThumbUrlFromItem,
@@ -36,11 +36,18 @@ export default function CartItem({
   companyLogos = {},
   pagePlacementMap = {}, // intentionally unused for cart thumbs (cart is frozen)
   customBackAllowedSet = {},
-  onOpenQuickViewFromCart, // ⬅️ new
+  onOpenEditFromCart
 }) {
+  console.log('CartItem', { item, idx, companyLogos, pagePlacementMap });
   const removeItem = useRemoveItem();
+  const updateItemQuantity = useUpdateItemQuantity();
+
   const rowRef = useRef(null);
 
+  const [error, setError] = useState('');
+  const [localQuantity, setLocalQuantity] = useState(item.quantity.toString());
+
+  // Images (small for cell, larger for hover preview)
   const [thumbUrl, setThumbUrl] = useState(item.thumbnail || '');
   const [hoverUrl, setHoverUrl] = useState('');
   const [hoverReady, setHoverReady] = useState(false);
@@ -48,6 +55,11 @@ export default function CartItem({
   // Hover UI state
   const [hovering, setHovering] = useState(false);
   const [pos, setPos] = useState({ x: 0, y: 0 });
+
+  // Keep local qty in sync
+  useEffect(() => {
+    setLocalQuantity(item.quantity.toString());
+  }, [item.quantity]);
 
   // Small cart thumb (<=300) — use the FROZEN snapshot from the item only
   useEffect(() => {
@@ -70,7 +82,7 @@ export default function CartItem({
   useEffect(() => {
     const url = generateHoverThumbUrlFromItem(item, companyLogos, {
       max: 400,
-      customBackAllowedSet,
+      customBackAllowedSet, // ❌ no pagePlacementMap here — cart is frozen
     });
     setHoverUrl(url || thumbUrl || item.thumbnail || '');
     if (url) preloadImage(url).then(() => setHoverReady(true));
@@ -164,56 +176,96 @@ export default function CartItem({
     setPos({ x: nx, y: ny });
   };
 
+  // Quantity helpers
+  const minQuantity = 1;
+  const maxQuantity = 999;
+
+  const handleQuantityChange = value => {
+    let cleanValue = value.replace(/[^0-9]/g, '');
+    if (cleanValue.length > 1 && cleanValue[0] === '0') cleanValue = cleanValue.replace(/^0+/, '');
+    setLocalQuantity(cleanValue);
+
+    const numValue = parseInt(cleanValue) || 0;
+    if (!cleanValue) {
+      setError('');
+      return;
+    }
+    if (numValue < minQuantity) {
+      setError(`כמות מינימלית: ${minQuantity}`);
+      return;
+    }
+    if (numValue > maxQuantity) {
+      setError(`כמות מקסימלית: ${maxQuantity}`);
+      setLocalQuantity(maxQuantity.toString());
+      updateItemQuantity(idx, maxQuantity);
+      return;
+    }
+    setError('');
+    updateItemQuantity(idx, numValue);
+  };
+
+  const handleQuantityBlur = () => {
+    const numValue = parseInt(localQuantity) || 0;
+    if (!localQuantity || numValue < minQuantity) {
+      setLocalQuantity(minQuantity.toString());
+      updateItemQuantity(idx, minQuantity);
+      setError('');
+    }
+  };
+
   const renderProductDetails = () => {
+    // Build active placement labels from the FROZEN snapshot on the item
     const activePlacements = (
       Array.isArray(item?.placement_coordinates) ? item.placement_coordinates : []
     )
       .filter(p => p && p.name && p.active)
       .map(p => String(p.name));
 
+      console.log(`activePlacements for ${item.product_id}:`, activePlacements);
+
     return (
       <div className="space-y-1">
         <div className="font-semibold text-skyblue text-[15px]">{item.name}</div>
-        <div className="space-y-1 text-sm text-gray-600">
-          {item.options?.group_type === 'Group' && (
-            <>
-              <div className="flex items-center gap-2">
-                <span>צבע:</span>
-                <span
-                  className="p-0.5 rounded text-xs font-medium"
-                  style={{
-                    backgroundColor: item.options.color_hex_code,
-                    color: isDarkColor(item.options.color_hex_code) ? '#fff' : '#000',
-                    border: `1px solid ${isDarkColor(item.options.color_hex_code) ? '#fff' : '#000'}`,
-                    padding: '2px 6px',
-                  }}
-                >
-                  {item.options.color}
-                </span>
-              </div>
-              <div>
-                מידה: <span className="font-medium">{item.options.size}</span>
-              </div>
-            </>
-          )}
 
-          {/* ✅ Placement labels */}
-          {SHOW_PLACEMENTS_LABEL && activePlacements.length > 0 && (
-            <div className="flex items-start gap-2 flex-wrap">
-              <div className="flex gap-1 flex-wrap">
-                {activePlacements.map(nm => (
-                  <span
-                    key={nm}
-                    className="px-2 py-0.5 rounded-full text-[11px] font-medium border border-emerald-600 text-emerald-700 bg-emerald-50"
-                    title={nm}
-                  >
-                    {nm}
-                  </span>
-                ))}
-              </div>
+        {item.options?.group_type === 'Group' && (
+          <div className="space-y-1 text-sm text-gray-600">
+            <div className="flex items-center gap-2">
+              <span>צבע:</span>
+              <span
+                className="p-0.5 rounded text-xs font-medium"
+                style={{
+                  backgroundColor: item.options.color_hex_code,
+                  color: isDarkColor(item.options.color_hex_code) ? '#fff' : '#000',
+                  border: `1px solid ${isDarkColor(item.options.color_hex_code) ? '#fff' : '#000'}`,
+                  padding: '2px 6px',
+                }}
+              >
+                {item.options.color}
+              </span>
             </div>
-          )}
-        </div>
+            <div>
+              מידה: <span className="font-medium">{item.options.size}</span>
+            </div>
+          </div>
+        )}
+
+        {/* ✅ Placement labels */}
+        {SHOW_PLACEMENTS_LABEL && activePlacements.length > 0 && (
+          <div className="flex items-start gap-2 flex-wrap">
+            <div className="flex gap-1 flex-wrap">
+              {activePlacements.map(nm => (
+                <span
+                  key={nm}
+                  className="px-2 py-0.5 rounded-full text-[11px] font-medium border border-emerald-600 text-emerald-700 bg-emerald-50"
+                  title={nm}
+                >
+                  {nm}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
       </div>
     );
   };
@@ -279,17 +331,23 @@ export default function CartItem({
         )}
       </div>
 
-      {/* 4) Quantity — now a button that opens Quick View */}
+      {/* 4) Quantity (editable) */}
       <div className="text-center">
-        <button
-          type="button"
-          className="w-16 px-2 cursor-pointer py-1 text-center border rounded bg-gray-50 hover:bg-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 border-gray-300"
-          onClick={() => onOpenQuickViewFromCart?.(item, idx)}
-          aria-label="עריכת מיקומי לוגו דרך תצוגה מהירה"
-          title="פתח תצוגה מהירה (לעריכת מיקומי לוגו)"
-        >
-          {item.quantity}
-        </button>
+        <div className="space-y-1">
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={localQuantity}
+            onChange={e => handleQuantityChange(e.target.value)}
+            onBlur={handleQuantityBlur}
+            className={`w-16 px-2 py-1 text-center border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+              error ? 'border-red-400 focus:ring-red-500 focus:border-red-500' : 'border-gray-300'
+            }`}
+            maxLength="3"
+          />
+          {error && <div className="text-sm text-red-500 mt-1">{error}</div>}
+        </div>
       </div>
 
       {/* 5) Total price */}
@@ -300,13 +358,24 @@ export default function CartItem({
 
       {/* 6) Remove */}
       <div className="text-center">
-        <button
-          onClick={() => removeItem(idx)}
-          className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full transition-colors"
-          aria-label="הסר פריט"
-        >
-          <Trash2 className="w-5 h-5" />
-        </button>
+        <div className="flex gap-1">
+          <button
+            onClick={() => removeItem(idx)}
+            className="p-1 text-red-500 cursor-pointer hover:text-red-700 hover:bg-red-50 transition-colors"
+            aria-label="הסר פריט"
+          >
+            <Trash2 className="w-5 h-5" />
+          </button>
+          <button
+              type="button"
+              className="p-1 text-blue-600 cursor-pointer hover:text-blue-800 hover:bg-blue-50 transition-colors"
+              onClick={() => onOpenEditFromCart?.(item, idx)}
+              aria-label="עריכת פריט (מיקומים/כמויות)"
+              title="עריכת פריט"
+            >
+              <SquarePen className="w-5 h-5" />
+            </button>
+          </div>
       </div>
     </div>
   );
