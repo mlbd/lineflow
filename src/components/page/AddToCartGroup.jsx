@@ -433,47 +433,24 @@ export default function AddToCartGroup({
           </button>
         </DialogClose>
 
-        {/* Title + area labels (left) + invisible mirror (right) to keep title centered */}
-        <div className="grid grid-cols-[auto_1fr_auto] items-start gap-3 mb-4 mt-3">
-          {/* Left: labels flow left→right and wrap within ~200px */}
-          {activeAreaNames.length > 0 ? (
-            <div className="max-w-[200px] text-left flex flex-wrap items-center gap-1">
-              {activeAreaNames.map(nm => (
-                <span
-                  key={nm}
-                  className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium border border-emerald-600 text-emerald-700 bg-emerald-50"
-                  title={nm}
-                >
-                  {nm}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <div />
-          )}
-
-          {/* Center: title remains visually centered in the modal */}
-          <h2 className="text-xl font-bold text-center justify-self-center">{product.name}</h2>
-
-          {/* Right: invisible mirror of labels to balance layout, keeping title centered */}
-          {activeAreaNames.length > 0 ? (
-            <div
-              className="max-w-[200px] flex flex-wrap items-center gap-1 invisible"
-              aria-hidden="true"
-            >
-              {activeAreaNames.map(nm => (
-                <span
-                  key={`mirror-${nm}`}
-                  className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium border border-emerald-600 text-emerald-700 bg-emerald-50"
-                >
-                  {nm}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <div />
-          )}
+        {/* Title centered */}
+        <div className="mt-3 mb-1">
+          <h2 className="text-xl font-bold text-center">{product.name}</h2>
         </div>
+
+        {/* Active areas — below title, flow left→right and wrap, capped width */}
+        {activeAreaNames.length > 0 && (
+          <div className="mx-auto max-w-full flex flex-wrap justify-center gap-1 mb-4">
+            {activeAreaNames.map(nm => (
+              <span
+                key={nm}
+                className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium border border-emerald-600 text-emerald-700 bg-emerald-50"
+              >
+                {nm}
+              </span>
+            ))}
+          </div>
+        )}
 
         <form className="flex items-center flex-col relative allaround--group-form">
           <div
