@@ -105,7 +105,7 @@ export default function Checkout({
           alarnd_color_key,
           alarnd_custom_color,
           alarnd_step_key,
-          art_item_title: artItemTitle,
+          placement_title_map: artItemTitle,
           default_dark_logo,
           alarnd_artwork_id,
           alarnd_artwork_id2,
