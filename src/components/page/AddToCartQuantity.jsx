@@ -187,6 +187,14 @@ export default function AddToCartQuantity({
     ? normalizePlacementsForKey(effectivePlacements)
     : 'default';
 
+  const activeAreaNames = useMemo(
+    () =>
+      (Array.isArray(effectivePlacements) ? effectivePlacements : [])
+        .filter(p => p?.active && p?.name)
+        .map(p => String(p.name)),
+    [effectivePlacements]
+  );
+
   // ---- Prefill once per open (NOT conditional hooks) ----
   const didPrefillRef = useRef(false);
   useEffect(() => {
@@ -345,9 +353,51 @@ export default function AddToCartQuantity({
           </button>
         </DialogClose>
 
-        <h2 className="text-xl font-bold text-center mb-4 mt-3">{safeProduct.name || ''}</h2>
+        {/* Title + area labels (left) + invisible mirror (right) to keep title centered */}
+        <div className="grid grid-cols-[auto_1fr_auto] items-start gap-3 mb-4 mt-3 pt-2 pr-[20px]">
+          {/* Left: labels flow left→right and wrap within ~200px */}
+          {activeAreaNames.length > 0 ? (
+            <div className="max-w-[200px] text-left flex flex-wrap items-center gap-1">
+              {activeAreaNames.map(nm => (
+                <span
+                  key={nm}
+                  className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium border border-emerald-600 text-emerald-700 bg-emerald-50"
+                  title={nm}
+                >
+                  {nm}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div />
+          )}
 
-        <form className="p-[30px]">
+          {/* Center: title remains visually centered in the modal */}
+          <h2 className="text-xl font-bold text-center justify-self-center">
+            {safeProduct.name || ''}
+          </h2>
+
+          {/* Right: invisible mirror of labels to balance layout, keeping title centered */}
+          {activeAreaNames.length > 0 ? (
+            <div
+              className="max-w-[200px] flex flex-wrap items-center gap-1 invisible"
+              aria-hidden="true"
+            >
+              {activeAreaNames.map(nm => (
+                <span
+                  key={`mirror-${nm}`}
+                  className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium border border-emerald-600 text-emerald-700 bg-emerald-50"
+                >
+                  {nm}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div />
+          )}
+        </div>
+
+        <form className="px-[30px] pb-[30px] pt-[10px]">
           <div className="flex flex-col gap-2">
             {/* Custom option row */}
             <label className={clsx('flex justify-between items-center gap-3 p-1 cursor-pointer')}>
