@@ -1,8 +1,10 @@
 // src/pages/api/revalidate.js
-// Node runtime only (revalidate isn't available on Edge)
-
 export default async function handler(req, res) {
-  // Accept both GET and POST for backward compatibility
+  // 🔒 Require secret param
+  if (req.query.secret !== process.env.REVALIDATE_SECRET) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+
   try {
     const q = req.query || {};
     let b = {};
@@ -14,30 +16,19 @@ export default async function handler(req, res) {
 
     const slugs = [];
     const paths = [];
-
     const push = (arr, v) => {
       if (v !== undefined && v !== null && String(v).trim() !== '') arr.push(String(v).trim());
     };
 
-    // from query
+    // Collect from query/body
     if (q.slug) push(slugs, q.slug);
     if (q.slugs) {
-      if (Array.isArray(q.slugs)) q.slugs.forEach(v => push(slugs, v));
-      else
-        String(q.slugs)
-          .split(',')
-          .forEach(v => push(slugs, v));
+      (Array.isArray(q.slugs) ? q.slugs : String(q.slugs).split(',')).forEach(v => push(slugs, v));
     }
     if (q.path) push(paths, q.path);
     if (q.paths) {
-      if (Array.isArray(q.paths)) q.paths.forEach(v => push(paths, v));
-      else
-        String(q.paths)
-          .split(',')
-          .forEach(v => push(paths, v));
+      (Array.isArray(q.paths) ? q.paths : String(q.paths).split(',')).forEach(v => push(paths, v));
     }
-
-    // from body
     if (b.slug) push(slugs, b.slug);
     if (Array.isArray(b.slugs)) b.slugs.forEach(v => push(slugs, v));
     if (b.path) push(paths, b.path);

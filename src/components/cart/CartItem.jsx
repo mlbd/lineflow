@@ -36,7 +36,7 @@ export default function CartItem({
   companyLogos = {},
   pagePlacementMap = {}, // intentionally unused for cart thumbs (cart is frozen)
   customBackAllowedSet = {},
-  onOpenEditFromCart
+  onOpenEditFromCart,
 }) {
   console.log('CartItem', { item, idx, companyLogos, pagePlacementMap });
   const removeItem = useRemoveItem();
@@ -221,7 +221,7 @@ export default function CartItem({
       .filter(p => p && p.name && p.active)
       .map(p => String(p.name));
 
-      console.log(`activePlacements for ${item.product_id}:`, activePlacements);
+    console.log(`activePlacements for ${item.product_id}:`, activePlacements);
 
     return (
       <div className="space-y-1">
@@ -265,7 +265,6 @@ export default function CartItem({
             </div>
           </div>
         )}
-
       </div>
     );
   };
@@ -367,15 +366,15 @@ export default function CartItem({
             <Trash2 className="w-5 h-5" />
           </button>
           <button
-              type="button"
-              className="p-1 text-blue-600 cursor-pointer hover:text-blue-800 hover:bg-blue-50 transition-colors"
-              onClick={() => onOpenEditFromCart?.(item, idx)}
-              aria-label="עריכת פריט (מיקומים/כמויות)"
-              title="עריכת פריט"
-            >
-              <SquarePen className="w-5 h-5" />
-            </button>
-          </div>
+            type="button"
+            className="p-1 text-blue-600 cursor-pointer hover:text-blue-800 hover:bg-blue-50 transition-colors"
+            onClick={() => onOpenEditFromCart?.(item, idx)}
+            aria-label="עריכת פריט (מיקומים/כמויות)"
+            title="עריכת פריט"
+          >
+            <SquarePen className="w-5 h-5" />
+          </button>
+        </div>
       </div>
     </div>
   );

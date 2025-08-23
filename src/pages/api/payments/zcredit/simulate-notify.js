@@ -1,4 +1,7 @@
 // pages/api/payments/zcredit/simulate-notify.js
+
+import { wpApiFetch } from '@/lib/wpApi';
+
 export default async function handler(req, res) {
   console.log('ZCREDIT_SIMULATE', process.env.ZCREDIT_SIMULATE);
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -18,21 +21,18 @@ export default async function handler(req, res) {
 
     // Tell WP to complete the order using the stored draft.
     // We set dev_simulate=true and pass a dev secret header.
-    const wp = await fetch(
-      `${process.env.NEXT_PUBLIC_WP_SITE_URL}/wp-json/mini-sites/v1/checkout/complete`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-MS-Dev-Secret': process.env.ZCREDIT_SIMULATE_SECRET || '',
-        },
-        body: JSON.stringify({
-          payment_provider: 'zcredit',
-          dev_simulate: true,
-          zcredit: event,
-        }),
-      }
-    );
+    const wp = await wpApiFetch(`checkout/complete`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-MS-Dev-Secret': process.env.ZCREDIT_SIMULATE_SECRET || '',
+      },
+      body: JSON.stringify({
+        payment_provider: 'zcredit',
+        dev_simulate: true,
+        zcredit: event,
+      }),
+    });
     const j = await wp.json().catch(() => ({}));
     if (!wp.ok) return res.status(400).json({ error: j?.message || 'WP complete failed' });
 

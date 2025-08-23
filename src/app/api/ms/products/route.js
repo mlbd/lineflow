@@ -1,14 +1,15 @@
 // src/app/api/ms/products/route.js
 export const runtime = 'nodejs';
 import { unstable_cache } from 'next/cache';
+import { wpApiFetch } from '@/lib/wpApi';
 
 const REVALIDATE_SECONDS = 60 * 60 * 24 * 7; // 7 days
 const PER_PAGE = 50;
 const WP_URL = process.env.WP_SITE_URL || process.env.NEXT_PUBLIC_WP_SITE_URL;
 
 async function fetchProductsPage(page = 1) {
-  const res = await fetch(
-    `${WP_URL}/wp-json/mini-sites/v1/products?per_page=${PER_PAGE}&page=${page}`,
+  const res = await wpApiFetch(
+    `products?per_page=${PER_PAGE}&page=${page}`,
     { cache: 'no-store' } // always fetch fresh from WP
   );
   const json = await res.json();

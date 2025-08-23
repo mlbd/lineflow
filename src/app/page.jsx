@@ -27,6 +27,8 @@ import {
 } from '@/utils/cloudinaryMockup';
 import LogoutButton from '@/components/LogoutButton';
 
+import { wpApiFetch } from '@/lib/wpApi';
+
 const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
 const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
 
@@ -379,7 +381,7 @@ export default function HomePage() {
     setResultOpen(false);
 
     try {
-      const res = await fetch(`${WP_URL}/wp-json/mini-sites/v1/update-placement`, {
+      const res = await wpApiFetch(`update-placement`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

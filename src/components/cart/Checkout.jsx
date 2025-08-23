@@ -12,6 +12,7 @@ export default function Checkout({
   companyData = {},
   pagePlacementMap = {},
   customBackAllowedSet = {},
+  slug = '',
 }) {
   // 1) Raw items from the cart store
   const rawItems = useCartItems();
@@ -226,6 +227,7 @@ export default function Checkout({
   );
 
   async function handleSubmit() {
+    console.log('slug', slug);
     setErrorMsg('');
     setPaying(true);
     try {
@@ -247,6 +249,8 @@ export default function Checkout({
         extraMeta: {},
         response: {},
         note: '',
+        slug,
+        pageSlug: slug || null,
         // update: true|false  (handled by your server after payment callback)
         // token_update: false,
       };
@@ -258,6 +262,8 @@ export default function Checkout({
           // What the Next.js route needs to create ZCredit session:
           // (keep sending coupon so the API can apply it to Woo cart before order create)
           coupon: coupon?.valid ? coupon : null,
+          // pass page slug
+          pageSlug: slug || null,
           // And pass-through for ml_create_order (server will call it using this):
           orderData: wpPayload,
         }),
@@ -278,7 +284,7 @@ export default function Checkout({
       if (e.origin !== window.location.origin) return;
       if (e.data?.type === 'ZCREDIT_SUCCESS') {
         const id = e.data?.transactionUniqueId || '';
-        window.location.href = `/payment/zcredit/return?status=success&transactionUniqueId=${encodeURIComponent(
+        window.location.href = `/payment/zcredit/return?status=success&slug=${slug}&transactionUniqueId=${encodeURIComponent(
           id
         )}`;
       }

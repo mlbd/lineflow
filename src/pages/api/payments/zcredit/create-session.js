@@ -1,4 +1,5 @@
 // /src/pages/api/payments/zcredit/create-session.js
+import { wpApiFetch } from '@/lib/wpApi';
 
 function cid() {
   return `zc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -15,7 +16,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    return await wpApiFetch(url, { ...options, signal: controller.signal });
   } finally {
     clearTimeout(t);
   }
@@ -29,21 +30,30 @@ function productToItem(p, idx) {
   };
 }
 
+// --- NEW: sanitize a single-segment slug (matches /[slug]) ---
+function sanitizeSlug(v) {
+  const s = String(v || '')
+    .trim()
+    .toLowerCase();
+  // allow a-z, 0-9, dash, underscore only (single segment)
+  return s.replace(/[^a-z0-9_-]/g, '').slice(0, 120);
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   const id = cid();
 
   try {
-    let { form, items, selectedShipping, coupon, orderData, products } = req.body || {};
+    let { form, items, selectedShipping, coupon, orderData, products, pageSlug } = req.body || {};
 
-    console.log('ZCREDIT_CREATE_SESSION', id, {
-      form,
-      items,
-      selectedShipping,
-      coupon,
-      orderData,
-      products,
-    });
+    // Accept alternative fields (defensive)
+    if (!pageSlug && req.body?.slug) pageSlug = req.body.slug;
+    if (!pageSlug && orderData?.page_slug) pageSlug = orderData.page_slug;
+
+    const safeSlug = sanitizeSlug(pageSlug);
+    const slugParam = safeSlug ? `&slug=${encodeURIComponent(safeSlug)}` : '';
+
+    dlog(id, 'Incoming payload', { hasItems: Array.isArray(items), safeSlug });
 
     // --- Fallbacks so both client payload shapes work ---
     if (
@@ -75,8 +85,6 @@ export default async function handler(req, res) {
       }
     }
 
-    console.log('ZCREDIT_CREATE_SESSION::items', items);
-
     if (
       (!Array.isArray(items) || items.length === 0) &&
       Array.isArray(products) &&
@@ -86,29 +94,24 @@ export default async function handler(req, res) {
       items = products.map(productToItem);
     }
 
-    console.log('ZCREDIT_CREATE_SESSION::items::later', items);
-
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Cart is empty', cid: id });
     }
 
-    dlog(id, 'Incoming items count:', items.length);
-
     // --- WP authoritative totals (your Group/Quantity logic) ---
     dlog(id, '→ WP /checkout/prepare');
-    const prep = await fetchWithTimeout(
-      `${process.env.NEXT_PUBLIC_WP_SITE_URL}/wp-json/mini-sites/v1/checkout/prepare`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customer: form || {},
-          items,
-          shipping: selectedShipping || null,
-          coupon: coupon || null,
-        }),
-      }
-    );
+    const prep = await fetchWithTimeout(`checkout/prepare`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customer: form || {},
+        items,
+        shipping: selectedShipping || null,
+        coupon: coupon || null,
+        // NEW: store page slug in the draft snapshot too (handy for admin/order notes)
+        page_slug: safeSlug || null,
+      }),
+    });
     const draft = await prep.json().catch(() => ({}));
     dlog(id, 'WP prepare status', prep.status, 'body', draft);
     if (!prep.ok) {
@@ -129,42 +132,42 @@ export default async function handler(req, res) {
     // Dev simulator
     if (process.env.ZCREDIT_SIMULATE === '1') {
       const sessionId = `SIM-${Date.now()}`;
-      await fetchWithTimeout(
-        `${process.env.NEXT_PUBLIC_WP_SITE_URL}/wp-json/mini-sites/v1/checkout/draft`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            order_draft_id: draft.order_draft_id,
-            session_id: sessionId,
-            totals: draft,
-            snapshot: {
-              customer: form || {},
-              items,
-              shipping: selectedShipping || null,
-              coupon: coupon || null,
-            },
-          }),
-        }
-      ).catch(() => {});
+      await fetchWithTimeout(`checkout/draft`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_draft_id: draft.order_draft_id,
+          session_id: sessionId,
+          totals: draft,
+          snapshot: {
+            customer: form || {},
+            items,
+            shipping: selectedShipping || null,
+            coupon: coupon || null,
+            page_slug: safeSlug || null, // NEW
+          },
+        }),
+      }).catch(() => {});
       return res.status(200).json({
         ok: true,
-        paymentUrl: `${publicBase}/payment/zcredit/devpay?draft=${encodeURIComponent(draft.order_draft_id)}&sid=${encodeURIComponent(sessionId)}`,
+        // NEW: include slug in devpay URL so the return/success pages can link back home
+        paymentUrl: `${publicBase}/payment/zcredit/devpay?draft=${encodeURIComponent(draft.order_draft_id)}&sid=${encodeURIComponent(sessionId)}${slugParam}`,
         sessionId,
         orderDraftId: draft.order_draft_id || null,
         cid: id,
       });
     }
 
-    // === Build Z-Credit CreateSession request (unchanged) ===
+    // === Build Z-Credit CreateSession request ===
     const LOCAL = process.env.ZCREDIT_LOCAL || 'He';
     const THEME = (process.env.ZCREDIT_THEME_COLOR || '005ebb').replace('#', '');
     const FAILS = Number(process.env.ZCREDIT_NUMBER_OF_FAILURES || 3);
     const MAXINS = Number(process.env.ZCREDIT_MAX_INSTALLMENTS || 1);
 
-    const SuccessUrl = `${publicBase}/payment/zcredit/iframe-success`;
-    const CancelUrl = `${publicBase}/payment/zcredit/return?status=cancel`;
-    const FailureRedirectUrl = `${publicBase}/payment/zcredit/return?status=error`;
+    // NEW: append ?slug=... so the success/return pages can render a "Back to home page" link.
+    const SuccessUrl = `${publicBase}/payment/zcredit/iframe-success${slugParam ? `?${slugParam.slice(1)}` : ''}`;
+    const CancelUrl = `${publicBase}/payment/zcredit/return?status=cancel${slugParam}`;
+    const FailureRedirectUrl = `${publicBase}/payment/zcredit/return?status=error${slugParam}`;
     const CallbackUrl = `${notifyBase}/api/payments/zcredit/notify?t=${encodeURIComponent(process.env.ZCREDIT_WEBHOOK_SECRET || '')}&status=success`;
     const FailureCallBackUrl = `${notifyBase}/api/payments/zcredit/notify?t=${encodeURIComponent(process.env.ZCREDIT_WEBHOOK_SECRET || '')}&status=failure`;
 
@@ -251,6 +254,9 @@ export default async function handler(req, res) {
         ...body,
         Key: body.Key ? '[set]' : '[empty]',
         CartItemsCount: CartItems.length,
+        SuccessUrl,
+        CancelUrl,
+        FailureRedirectUrl,
       };
       dlog(id, 'CreateSession body (sanitized):', safe);
     }
@@ -294,24 +300,23 @@ export default async function handler(req, res) {
       });
     }
 
-    await fetchWithTimeout(
-      `${process.env.NEXT_PUBLIC_WP_SITE_URL}/wp-json/mini-sites/v1/checkout/draft`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          order_draft_id: draft.order_draft_id,
-          session_id: sessionId || null,
-          totals: draft,
-          snapshot: {
-            customer: form || {},
-            items,
-            shipping: selectedShipping || null,
-            coupon: coupon || null,
-          },
-        }),
-      }
-    ).catch(() => {});
+    // Store draft snapshot (with page_slug) for WP completion
+    await fetchWithTimeout(`checkout/draft`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        order_draft_id: draft.order_draft_id,
+        session_id: sessionId || null,
+        totals: draft,
+        snapshot: {
+          customer: form || {},
+          items,
+          shipping: selectedShipping || null,
+          coupon: coupon || null,
+          page_slug: safeSlug || null, // NEW
+        },
+      }),
+    }).catch(() => {});
 
     return res.status(200).json({
       ok: true,
@@ -319,6 +324,8 @@ export default async function handler(req, res) {
       sessionId,
       orderDraftId: draft.order_draft_id || null,
       cid: id,
+      // NEW: echo back the slug so the client can also keep it around if needed
+      pageSlug: safeSlug || null,
     });
   } catch (err) {
     console.error(`[ZCREDIT][${id}] FATAL`, err);

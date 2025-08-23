@@ -1,36 +1,35 @@
 // src/app/api/ms/update-cache/route.js
 export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
+import { wpApiFetch } from '@/lib/wpApi';
 
 const WP_URL = process.env.WP_SITE_URL || process.env.NEXT_PUBLIC_WP_SITE_URL;
 
 async function fetchProduct(id) {
-  const res = await fetch(`${WP_URL}/wp-json/mini-sites/v1/products?id=${id}`, {
-    cache: 'no-store',
-  });
+  const res = await wpApiFetch(`products?id=${id}`, { cache: 'no-store' });
   const json = await res.json();
   if (!res.ok) throw new Error(json?.message || `Product HTTP ${res.status}`);
-  // Expecting { products: [ ... ] }
-  const prod = Array.isArray(json?.products)
+  return Array.isArray(json?.products)
     ? json.products.find(p => Number(p.id) === Number(id))
     : null;
-  if (!prod) throw new Error(`Product #${id} not found`);
-  return prod;
 }
 
 async function fetchPage(id) {
-  const res = await fetch(`${WP_URL}/wp-json/mini-sites/v1/pages?id=${id}`, { cache: 'no-store' });
+  const res = await wpApiFetch(`pages?id=${id}`, { cache: 'no-store' });
   const json = await res.json();
   if (!res.ok) throw new Error(json?.message || `Page HTTP ${res.status}`);
-  // Expecting { pages: [ ... ] }
-  const pg = Array.isArray(json?.pages) ? json.pages.find(p => Number(p.id) === Number(id)) : null;
-  if (!pg) throw new Error(`Page #${id} not found`);
-  return pg;
+  return Array.isArray(json?.pages) ? json.pages.find(pg => Number(pg.id) === Number(id)) : null;
 }
 
 export async function POST(req) {
+  const { searchParams } = new URL(req.url);
+
+  // 🔒 Require secret param
+  if (searchParams.get('secret') !== process.env.REVALIDATE_SECRET) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
-    const { searchParams } = new URL(req.url);
     const type = searchParams.get('type');
     const id = Number(searchParams.get('id'));
 
@@ -50,7 +49,11 @@ export async function POST(req) {
       );
     }
 
-    return NextResponse.json({ ok: true, type, id, item }, { status: 200 });
+    if (!item) {
+      return NextResponse.json({ error: `${type} #${id} not found` }, { status: 404 });
+    }
+
+    return NextResponse.json({ ok: true, type, id, item });
   } catch (err) {
     return NextResponse.json({ error: err.message || 'Failed' }, { status: 500 });
   }

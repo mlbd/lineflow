@@ -13,6 +13,7 @@ import CartShimmer from './CartShimmer';
 import ProductQuickViewModal from '@/components/page/ProductQuickViewModal';
 import AddToCartModal from '@/components/page/AddToCartModal';
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
+import { wpApiFetch } from '@/lib/wpApi';
 
 function findProductLocally(id, initialProducts, companyData) {
   const pid = String(id);
@@ -36,6 +37,7 @@ export default function CartPage({
   companyLogos = {},
   pagePlacementMap = {},
   customBackAllowedSet = {},
+  slug = '',
 }) {
   const items = useCartItems();
 
@@ -53,7 +55,10 @@ export default function CartPage({
     if (!GROUP_CART_BY_PRODUCT) {
       return (Array.isArray(items) ? items : []).map((it, idx) => ({ it, storeIndex: idx }));
     }
-    const withIndex = (Array.isArray(items) ? items : []).map((it, idx) => ({ it, storeIndex: idx }));
+    const withIndex = (Array.isArray(items) ? items : []).map((it, idx) => ({
+      it,
+      storeIndex: idx,
+    }));
     const groups = new Map(); // pid -> entries[]
     for (const entry of withIndex) {
       const pid = String(entry.it?.product_id ?? '');
@@ -79,14 +84,11 @@ export default function CartPage({
     setValidating(true);
     setCoupon(null);
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_WP_SITE_URL}/wp-json/mini-sites/v1/coupon/validate`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ coupon_code: code, email: acf?.email_address || '' }),
-        }
-      );
+      const res = await wpApiFetch(`coupon/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coupon_code: code, email: acf?.email_address || '' }),
+      });
       const data = await res.json();
       setCoupon(data);
       if (!data?.valid && data?.error) onError?.(data.error);
@@ -248,6 +250,7 @@ export default function CartPage({
               companyData={companyData}
               pagePlacementMap={pagePlacementMap}
               customBackAllowedSet={customBackAllowedSet}
+              slug={slug}
             />
           </div>
         </div>

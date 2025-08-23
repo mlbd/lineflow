@@ -475,7 +475,7 @@ export const buildRelativeMockupUrl = ({
   const naturalW = max;
   const naturalH = getAspectHeight(baseW, baseH, max);
 
-  console.log(`=====${productId}=====`, naturalW,naturalH);
+  console.log(`=====${productId}=====`, naturalW, naturalH);
 
   placements.forEach(p => {
     const chosen = pickLogoVariant(logos, !!p.__useBack, bgIsDark);
@@ -573,7 +573,9 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
 
 // Normalize line/group type (handles "Quantity", "Quanity", "qty", etc.)
 const normalizeLineType = raw => {
-  const t = String(raw || '').trim().toLowerCase();
+  const t = String(raw || '')
+    .trim()
+    .toLowerCase();
   if (!t) return '';
   if (t === 'group' || t.startsWith('grp')) return 'group';
   // treat anything that looks like "quan..." or "qty" as quantity
@@ -589,20 +591,21 @@ const resolveCartBaseFromItem = item => {
   // Defaults from the line item
   let url = item?.thumbnail || '';
   let hex = item?.thumbnail_meta?.thumbnail_color || '#ffffff';
-  let width  = Number(item?.thumbnail_meta?.width)  || 0;
+  let width = Number(item?.thumbnail_meta?.width) || 0;
   let height = Number(item?.thumbnail_meta?.height) || 0;
 
   // Look for a type in several places and normalize ("Quantity" vs "Quanity" etc.)
   const rawType =
     item?.options?.group_type ??
     item?.options?.line_type ??
-    item?.pricing?.type ??                 // <-- important for Quantity rows
-    item?.product?.acf?.group_type ?? '';
+    item?.pricing?.type ?? // <-- important for Quantity rows
+    item?.product?.acf?.group_type ??
+    '';
   const type = normalizeLineType(rawType);
 
   if (type === 'group') {
     // Try the explicitly chosen color first
-    const directUrl  = item?.options?.color_thumbnail_url || '';
+    const directUrl = item?.options?.color_thumbnail_url || '';
     const colorTitle = item?.options?.color || '';
 
     if (directUrl) {
@@ -620,10 +623,10 @@ const resolveCartBaseFromItem = item => {
         match = colors.find(c => lc(c?.title) === lc(colorTitle)) || null;
       }
       if (match?.thumbnail?.url) {
-        url    = match.thumbnail.url;
-        width  = Number(match?.thumbnail?.width)  || width;
+        url = match.thumbnail.url;
+        width = Number(match?.thumbnail?.width) || width;
         height = Number(match?.thumbnail?.height) || height;
-        hex    = match?.color_hex_code || hex;
+        hex = match?.color_hex_code || hex;
       }
     }
   }
@@ -631,14 +634,13 @@ const resolveCartBaseFromItem = item => {
   // For QUANTITY or if dims still unknown → use product-level meta
   if (!width || !height || !isCloudinaryUrl(url) || type === 'quantity') {
     if (!url && item?.product?.thumbnail) url = item.product.thumbnail;
-    width  = Number(item?.product?.thumbnail_meta?.width)  || width;
+    width = Number(item?.product?.thumbnail_meta?.width) || width;
     height = Number(item?.product?.thumbnail_meta?.height) || height;
     if (!hex) hex = item?.product?.thumbnail_meta?.thumbnail_color || hex;
   }
 
   return { url, hex, width, height, type };
 };
-
 
 export const generateCartThumbUrlFromItem = (
   item,
@@ -651,16 +653,21 @@ export const generateCartThumbUrlFromItem = (
   const pidStr = String(pid ?? '');
   const base = resolveCartBaseFromItem(item);
   if (!isCloudinaryUrl(base.url)) return base.url || item?.thumbnail || '';
-  
+
   // Decide placements strategy:
   // - Quantity: mimic ProductList thumbnails exactly => use page overrides > product placements (ignore line snapshot)
   // - Group (default): keep existing snapshot-first behavior to avoid regressions users liked
   const isQuantity = normalizeLineType(base.type) === 'quantity';
-  
+
   let rawPlacements = [];
   if (isQuantity) {
     // same as generateProductImageUrl
-    if (pagePlacementMap && pidStr && Array.isArray(pagePlacementMap[pidStr]) && pagePlacementMap[pidStr].length) {
+    if (
+      pagePlacementMap &&
+      pidStr &&
+      Array.isArray(pagePlacementMap[pidStr]) &&
+      pagePlacementMap[pidStr].length
+    ) {
       rawPlacements = pagePlacementMap[pidStr];
     } else if (Array.isArray(item?.product?.placement_coordinates)) {
       rawPlacements = item.product.placement_coordinates;
@@ -712,16 +719,20 @@ export const generateCartThumbUrlFromItem = (
   if (!logos?.logo_darker?.url || !isCloudinaryUrl(logos.logo_darker.url)) return base.url;
   const bgIsDark = isDarkHex(base.hex);
 
-  const allowBack =
-    Array.isArray(customBackAllowedSet)
-      ? customBackAllowedSet.map(String).includes(pidStr)
-      : !!(customBackAllowedSet && typeof customBackAllowedSet.has === 'function' && customBackAllowedSet.has(pidStr));
+  const allowBack = Array.isArray(customBackAllowedSet)
+    ? customBackAllowedSet.map(String).includes(pidStr)
+    : !!(
+        customBackAllowedSet &&
+        typeof customBackAllowedSet.has === 'function' &&
+        customBackAllowedSet.has(pidStr)
+      );
 
   const placements = rawPlacements.map(p => ({ ...p, __useBack: !!(p?.back && allowBack) }));
   const transforms = [`f_auto,q_auto,c_fit,w_${max},h_${max}`];
 
   placements.forEach(p => {
-    if (p.xPercent == null || p.yPercent == null || p.wPercent == null || p.hPercent == null) return;
+    if (p.xPercent == null || p.yPercent == null || p.wPercent == null || p.hPercent == null)
+      return;
 
     const chosen = pickLogoVariant(logos, !!p.__useBack, bgIsDark);
     if (!chosen || !isCloudinaryUrl(chosen.url)) return;
@@ -732,11 +743,18 @@ export const generateCartThumbUrlFromItem = (
     const lw = Number(chosen.width) || 0;
     const lh = Number(chosen.height) || 0;
 
-    let relW = p.wPercent, relH = p.hPercent;
+    let relW = p.wPercent,
+      relH = p.hPercent;
     if (lw > 0 && lh > 0) {
-      const la = lw / lh, ba = p.wPercent / p.hPercent;
-      if (la > ba) { relW = p.wPercent; relH = p.wPercent / la; }
-      else { relH = p.hPercent; relW = p.hPercent * la; }
+      const la = lw / lh,
+        ba = p.wPercent / p.hPercent;
+      if (la > ba) {
+        relW = p.wPercent;
+        relH = p.wPercent / la;
+      } else {
+        relH = p.hPercent;
+        relW = p.hPercent * la;
+      }
     }
 
     const angleDeg = getAngleDeg(p);
@@ -767,10 +785,7 @@ export const generateHoverThumbUrlFromItem = (
   item,
   logos,
   { max = 400, pagePlacementMap, customBackAllowedSet } = {}
-) =>
-  generateCartThumbUrlFromItem(item, logos, { max, pagePlacementMap, customBackAllowedSet });
-
-
+) => generateCartThumbUrlFromItem(item, logos, { max, pagePlacementMap, customBackAllowedSet });
 
 /* ---------------------- Overlay preview (color bbox fixed; logos conditional) ---------------------- */
 

@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useCartItems, getTotalItems } from '@/components/cart/cartStore'; // adjust path if needed
+import { wpApiFetch } from '@/lib/wpApi';
 
 export default function TopBar({ wpUrl, onCartClick }) {
   const [menus, setMenus] = useState([]);
@@ -14,15 +15,16 @@ export default function TopBar({ wpUrl, onCartClick }) {
   useEffect(() => {
     async function fetchMenus() {
       try {
-        const res = await fetch(`${wpUrl}/wp-json/mini-sites/v1/menu?name=main-menu`);
-        const menuData = await res.json();
-        setMenus(menuData);
+        const res = await fetch('/api/ms/menu');
+        const data = await res.json();
+        setMenus(Array.isArray(data.items) ? data.items : []);
       } catch (e) {
         console.error('Failed to fetch menus:', e);
+        setMenus([]);
       }
     }
     fetchMenus();
-  }, [wpUrl]);
+  }, []);
 
   return (
     <header className="flex items-center justify-between h-16 px-4 bg-deepblue shadow z-50">

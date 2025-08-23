@@ -1,6 +1,7 @@
 // src/app/api/ms/pages/route.js
 export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
+import { wpApiFetch } from '@/lib/wpApi';
 
 const WP_URL = process.env.WP_SITE_URL || process.env.NEXT_PUBLIC_WP_SITE_URL;
 
@@ -20,8 +21,8 @@ async function fetchAllPagesFromWP() {
   const collected = [];
 
   do {
-    const url = `${WP_URL}/wp-json/mini-sites/v1/pages?per_page=${perPage}&page=${page}`;
-    const res = await fetch(url, { cache: 'no-store' });
+    const url = `pages?per_page=${perPage}&page=${page}`;
+    const res = await wpApiFetch(url, { cache: 'no-store' });
     const json = await res.json();
 
     if (!res.ok) {

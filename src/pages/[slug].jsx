@@ -11,6 +11,7 @@ import CartPage from '@/components/cart/CartPage';
 import Footer from '@/components/page/Footer';
 
 import { getOrFetchShipping } from '@/lib/shippingCache';
+import { wpApiFetch } from '@/lib/wpApi';
 
 const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
 
@@ -25,7 +26,7 @@ export async function getStaticProps({ params }) {
   try {
     console.log('⏳ Fetching company page data for slug:', WP_URL, params.slug);
 
-    const res = await fetch(`${WP_URL}/wp-json/mini-sites/v1/company-page?slug=${params.slug}`);
+    const res = await wpApiFetch(`company-page?slug=${params.slug}`);
     if (!res.ok) throw new Error('Failed to fetch company data');
 
     const data = await res.json();
@@ -41,21 +42,25 @@ export async function getStaticProps({ params }) {
     console.log('🔢 Normalized product IDs:', productIds);
 
     // SHIPPING CACHE LOGIC (runtime-safe)
-    let shippingOptions = await getOrFetchShipping(async () => {
-      const shippingRes = await fetch(`${WP_URL}/wp-json/mini-sites/v1/shipping`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ country: 'IL', postcode: '', cart: [] }),
-        // Optional: if your WP supports it, consider a short server cache there too
-      });
+    const cacheKey = `company:${data?.id || 'na'}|country:IL`;
 
-      if (!shippingRes.ok) {
-        console.warn('Shipping fetch failed with status:', shippingRes.status);
-        return [];
+    const shippingOptions = await getOrFetchShipping(
+      cacheKey,
+      async () => {
+        const shippingRes = await wpApiFetch(`shipping`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ country: 'IL', postcode: '', cart: [] }),
+        });
+        if (!shippingRes.ok) return [];
+        const json = await shippingRes.json();
+        return Array.isArray(json.shipping) ? json.shipping : [];
+      },
+      {
+        ttlSeconds: 21600, // 6h "fresh"
+        staleSeconds: 86400, // additional 24h "stale acceptable"
       }
-      const shippingData = await shippingRes.json();
-      return shippingData.shipping || [];
-    }, 3600);
+    );
     // END SHIPPING CACHE LOGIC
 
     const companyLogos = {
@@ -75,9 +80,7 @@ export async function getStaticProps({ params }) {
 
     if (productIds.length) {
       const idsParam = productIds.join(',');
-      const productRes = await fetch(
-        `${WP_URL}/wp-json/mini-sites/v1/get-products-by-ids?ids=${idsParam}`
-      );
+      const productRes = await wpApiFetch(`get-products-by-ids?ids=${idsParam}`);
       console.log('📡 GET /get-products-by-ids response status:', productRes.status);
 
       if (productRes.ok) {
@@ -218,6 +221,7 @@ export default function LandingPage({
               companyLogos={companyLogos}
               pagePlacementMap={pagePlacementMap}
               customBackAllowedSet={customBackAllowedSet}
+              slug={slug}
             />
           </div>
           <Footer />

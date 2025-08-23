@@ -1,4 +1,7 @@
 // /src/pages/api/payments/zcredit/notify.js
+
+import { wpApiFetch } from '@/lib/wpApi';
+
 export const config = { api: { bodyParser: true } };
 
 export default async function handler(req, res) {
@@ -13,14 +16,11 @@ export default async function handler(req, res) {
     const event = req.body || {};
 
     // Forward to WP – WP will verify with SOAP and build the order from the stored draft
-    const wp = await fetch(
-      `${process.env.NEXT_PUBLIC_WP_SITE_URL}/wp-json/mini-sites/v1/checkout/complete`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payment_provider: 'zcredit', zcredit: event }),
-      }
-    );
+    const wp = await wpApiFetch(`checkout/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payment_provider: 'zcredit', zcredit: event }),
+    });
 
     const wpJson = await wp.json().catch(() => ({}));
     if (!wp.ok)
