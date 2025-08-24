@@ -50,6 +50,8 @@ export default function ProductListSection({
   const handleLoadMore = () => setPage(prev => prev + 1);
   const categoryName = slug => slug;
 
+  console.log('visibleProducts', visibleProducts);
+
   return (
     <section className="w-full py-10 flex justify-center">
       <div className="max-w-[var(--site-max-width)] w-full px-4">

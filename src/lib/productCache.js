@@ -4,9 +4,6 @@
 // - SWR behavior: fresh window + stale window
 // - In-flight dedupe per ID
 // - Batch fetches true misses from WP: /wp-json/mini-sites/v1/get-products-by-ids?ids=...
-//
-// NOTE: On Vercel this cache is per region/instance and resets on cold starts.
-// If you later want durable/global cache, this module can be extended to use Redis.
 
 const g = globalThis;
 if (!g.__MS_PRODUCT_CACHE__) {
@@ -46,6 +43,7 @@ function read(id) {
   return { hit: false };
 }
 
+/** Clear one, or all (when id is undefined/null) */
 export function clearProductCache(id) {
   if (typeof id !== 'undefined' && id !== null) {
     STORE.delete(Number(id));
@@ -77,8 +75,15 @@ async function refreshOne(id, opts) {
   }
 }
 
+/** Warm a single product into cache immediately after a clear */
+export async function primeProductCache(id, opts) {
+  if (!id) return { ok: false, error: 'Missing id' };
+  await refreshOne(Number(id), opts);
+  return { ok: true, primed: Number(id) };
+}
+
 /**
- * Returns product cards in the SAME ORDER as `ids`. 
+ * Returns product cards in the SAME ORDER as `ids`.
  * Uses cache when fresh; serves stale immediately and refreshes in background.
  * Batch-fetches all true misses once.
  */
@@ -118,4 +123,9 @@ export async function getProductCardsBatch(ids, opts = {}) {
   }
 
   return ordered.map(id => results.get(id)).filter(Boolean);
+}
+
+// Optional helper for inspection
+export function _debugSnapshot() {
+  return { size: STORE.size, keys: Array.from(STORE.keys()) };
 }

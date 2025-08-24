@@ -1,3 +1,4 @@
+// src/app/page.jsx
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -85,6 +86,29 @@ function parseMaybeJsonArray(val) {
   return [];
 }
 
+// ---- Extra print price detection helpers (hoisted) ----
+function coerceNonNeg(v) {
+  if (v === null || typeof v === 'undefined') return NaN;
+  const n = parseFloat(String(v).replace(',', '.'));
+  return Number.isFinite(n) && n >= 0 ? n : NaN;
+}
+
+function findExtraPrintPriceInProduct(p) {
+  if (!p || typeof p !== 'object') return NaN;
+  const candidates = [
+    p.extra_print_price,
+    p?.meta?.extra_print_price,
+    p?.acf?.extra_print_price,
+    p?.placement_extra_print_price,
+    p?.acf?.placement_extra_print_price,
+  ];
+  for (const c of candidates) {
+    const num = coerceNonNeg(c);
+    if (Number.isFinite(num)) return num;
+  }
+  return NaN;
+}
+
 export default function HomePage() {
   const [imageUrl, setImageUrl] = useState(
     `https://res.cloudinary.com/${cloudName}/image/upload/V-Neck_L-Gray_ulfprv.jpg`
@@ -149,6 +173,14 @@ export default function HomePage() {
   const [logosManualOff, setLogosManualOff] = useState(new Set()); // names force-removed
   const [logosPreviewLoading, setLogosPreviewLoading] = useState(false);
 
+  // =========== Extra print price ===========
+  // NEW: Extra print price UI state
+  const [addExtraPrice, setAddExtraPrice] = useState(false);
+  const [extraPrice, setExtraPrice] = useState('');
+
+  // csrftoken
+  const [csrfToken, setCsrfToken] = useState('');
+
   // Reset overrides each time the modal opens
   useEffect(() => {
     if (logosMapOpen) {
@@ -189,6 +221,38 @@ export default function HomePage() {
     setHasFuturePlan(futurePlan === 'true');
   }, []);
 
+  // When the selected product object changes (e.g., after save), reflect its extra_print_price
+useEffect(() => {
+  if (!selectedProduct) {
+    setAddExtraPrice(false);
+    setExtraPrice('');
+    return;
+  }
+  const pre = findExtraPrintPriceInProduct(selectedProduct);
+  if (!onlyThisPage && Number.isFinite(pre)) {
+    setAddExtraPrice(true);
+    setExtraPrice(String(pre));
+  } else if (!addExtraPrice) {
+    // Only reset if user didn't manually toggle it on
+    setAddExtraPrice(false);
+    setExtraPrice('');
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [selectedProduct, onlyThisPage, findExtraPrintPriceInProduct]);
+
+  // once per load
+useEffect(() => {
+  let active = true;
+  (async () => {
+    try {
+      const r = await fetch('/api/editor/csrf', { method: 'GET' });
+      const j = await r.json().catch(() => ({}));
+      if (active && j?.token) setCsrfToken(j.token);
+    } catch {}
+  })();
+  return () => { active = false; };
+}, []);
+
   const handleDelete = id => {
     setMappings(prev => prev.filter(m => m.id !== id));
     if (selectedMapping?.id === id) setSelectedMapping(null);
@@ -201,6 +265,27 @@ export default function HomePage() {
       setEditOpen(true);
     }
   };
+
+  // NEW: parse & validate
+const extraPriceNumber = useMemo(() => {
+  const n = parseFloat(String(extraPrice).replace(',', '.'));
+  return Number.isFinite(n) ? n : NaN;
+}, [extraPrice]);
+
+const extraPriceValid = useMemo(
+  () => addExtraPrice && Number.isFinite(extraPriceNumber) && extraPriceNumber >= 0,
+  [addExtraPrice, extraPriceNumber]
+);
+
+// NEW: compute the update button label
+const updateBtnLabel = useMemo(() => {
+  let label =
+    onlyThisPage && selectedPage?.title
+      ? `Update for ${selectedPage.title}`
+      : 'Update Placement';
+  if (!onlyThisPage && extraPriceValid) label += ' +';
+  return label;
+}, [onlyThisPage, selectedPage?.title, extraPriceValid]);
 
   // replace your existing handleClearAll with this:
   const handleClearAll = () => {
@@ -296,6 +381,10 @@ export default function HomePage() {
     }
 
     setOnlyThisPage(true);
+
+    // NEW: Hide/clear extra price UI when scoping to page
+  setAddExtraPrice(false);
+  setExtraPrice('');
   };
 
   // Persist to localStorage for logos page
@@ -340,6 +429,34 @@ export default function HomePage() {
     }
     openFn(true);
   };
+
+  // Client-side helper: clear ONE product from the Next.js server cache
+  const clearProductCacheClient = useCallback(async (id, { prime = false } = {}) => {
+  if (!id) return;
+  if (!csrfToken) {
+    console.warn('[cache] skip: no csrfToken yet');
+    return;
+  }
+  console.log(`[cache] Clearing product #${id} from cache...`, csrfToken);
+  try {
+    const url = `/api/cache/product/clear?id=${id}${prime ? '&prime=1' : ''}`;
+    const r = await fetch(`/api/cache/product/clear${prime ? '?prime=1' : ''}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-ms-csrf': csrfToken,
+      },
+      body: JSON.stringify({ id }),
+    });
+
+    const txt = await r.text();
+    const msg = `[cache] POST ${url} -> ${r.status}`;
+    if (!r.ok) console.warn(msg, txt); else console.log(msg, txt);
+
+  } catch (e) {
+    console.warn('Product cache clear error', e);
+  }
+}, [csrfToken]);
 
   // === Update Placement (with guard for active) ===
   const handleSavePlacement = async () => {
@@ -388,6 +505,8 @@ export default function HomePage() {
           product_id: selectedProductId,
           placements: mappings,
           ...(onlyThisPage && selectedPage?.id ? { page_id: selectedPage.id } : {}),
+          // NEW: only send when not page-scoped, box is checked, and value is valid
+          ...(!onlyThisPage && extraPriceValid ? { extra_print_price: extraPriceNumber } : {}),
         }),
       });
 
@@ -411,6 +530,9 @@ export default function HomePage() {
               parsed.__ts = Date.now();
               localStorage.setItem(LS_KEY, JSON.stringify(parsed));
             }
+          }
+          if (data?.product?.id) {
+            clearProductCacheClient(data.product.id, { prime: true });
           }
         } else if (data?.saved_on === 'page' && data?.page) {
           const LS_KEY_PAGES = 'ms_cache_pages_all_v5';
@@ -817,21 +939,60 @@ export default function HomePage() {
             </div>
           )}
 
+          {/* Add extra print price (hidden if scoped to a single page) */}
+          {! updateButtonDisabled && ! onlyThisPage && (
+            <div className="px-6 mt-2">
+              <label className="flex items-center gap-2 text-sm select-none curposer-pointer">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 cursor-pointer"
+                  checked={addExtraPrice}
+                  onChange={e => setAddExtraPrice(e.target.checked)}
+                />
+                <span>Add extra print price</span>
+              </label>
+
+              {/* Slide toggle effect */}
+              <div
+                className={`transition-[max-height,opacity] duration-300 ease-in-out overflow-hidden ${
+                  addExtraPrice ? 'max-h-24 opacity-100 mt-2' : 'max-h-0 opacity-0'
+                }`}
+                aria-hidden={!addExtraPrice}
+              >
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="1"
+                  placeholder="Enter amount (e.g., 5.00)"
+                  className="w-full px-3 py-2 border rounded"
+                  value={extraPrice}
+                  onKeyDown={e => {
+                    // prevent minus/exponent chars in number input
+                    if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') e.preventDefault();
+                  }}
+                  onChange={e => {
+                    let v = e.target.value ?? '';
+                    if (v.startsWith('-')) v = v.replace('-', '');
+                    setExtraPrice(v);
+                  }}
+                />
+                {!Number.isFinite(extraPriceNumber) && addExtraPrice && (
+                  <div className="text-xs text-red-600 mt-1">Enter a non-negative number.</div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Update Placement */}
           <div className="px-6">
             <button
               className={`mt-2 w-full py-2 cursor-pointer rounded font-semibold transition
-                ${
-                  updateButtonDisabled
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                }`}
+                ${updateButtonDisabled ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
               onClick={handleSavePlacement}
               disabled={updateButtonDisabled}
             >
-              {onlyThisPage && selectedPage?.title
-                ? `Update for ${selectedPage.title}`
-                : 'Update Placement'}
+              {updateBtnLabel}
             </button>
           </div>
 
@@ -1064,6 +1225,16 @@ export default function HomePage() {
           setUsePagePlacements(false);
           setPagePlacementsCandidate([]);
           setPagePlacementsAvailable(false);
+
+          // NEW: preload extra_print_price from product (auto-check input value)
+          const pre = findExtraPrintPriceInProduct(product);
+          if (!onlyThisPage && Number.isFinite(pre)) {
+            setAddExtraPrice(true);
+            setExtraPrice(String(pre));
+          } else {
+            setAddExtraPrice(false);
+            setExtraPrice('');
+          }
 
           // Build placements if product has any
           const prodNorm = (() => {

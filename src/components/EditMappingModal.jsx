@@ -95,6 +95,12 @@ export default function EditMappingModal({
     setForm(prev => ({ ...prev, active: !!enabled }));
   };
 
+  // ADD under handleBackLogoChange + handleActiveChange
+  const handlePreventExtentChange = enabled => {
+    // Checkbox means “Prevent Extent” → set extent=false when checked, true when unchecked
+    setForm(prev => ({ ...prev, extent: enabled ? false : true }));
+  };
+
   const handleSave = () => {
     if (!form) return;
 
@@ -103,7 +109,10 @@ export default function EditMappingModal({
     const currentName = (mapping?.name || '').trim();
     const finalName = nameError ? getUniqueName(desired, existingNames, currentName) : desired;
 
-    onSave({ ...form, name: finalName });
+    const next = { ...form, name: finalName };
+  if (typeof next.extent === 'undefined') next.extent = true; // default true
+
+    onSave(next);
     onClose();
   };
 
@@ -273,6 +282,21 @@ export default function EditMappingModal({
             </Label>
             <div className="text-xs text-muted-foreground mt-1">
               Only “Active” placements are used by default in generated previews.
+            </div>
+          </div>
+          {/* Prevent Extent */}
+          <div className="mt-2">
+            <Label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={form.extent === false /* default true unless explicitly false */}
+                onChange={e => handlePreventExtentChange(e.target.checked)}
+                className="accent-blue-600"
+              />
+              Prevent Extent
+            </Label>
+            <div className="text-xs text-muted-foreground mt-1">
+              Extent defaults to <b>true</b>. Check to force it <b>false</b>.
             </div>
           </div>
         </div>

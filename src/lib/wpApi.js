@@ -1,42 +1,48 @@
+// src/lib/wpApi.js
 const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
+const isBrowser = typeof window !== 'undefined';
 
 /**
- * Wrapper for WP REST API requests
- * Returns a Response-like object so you can still use res.ok + res.json()
+ * Wrapper for WP REST API requests.
+ * On server: calls WP directly with Basic Auth (env secrets).
+ * On client: calls our Next.js API proxy to avoid exposing secrets.
  */
 export async function wpApiFetch(endpoint, options = {}) {
-  const url = `${WP_URL}/wp-json/mini-sites/v1/${endpoint.replace(/^\//, '')}`;
+  const ep = String(endpoint || '').replace(/^\//, '');
 
+  // Build URL: server -> WP directly; client -> internal proxy
+  const url = isBrowser
+    ? `/api/wp/${ep}` // our proxy
+    : `${WP_URL}/wp-json/mini-sites/v1/${ep}`;
+
+  // Base headers
   const headers = {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
   };
 
-  // Add Basic Auth if creds exist
-  if (process.env.WP_API_USER && process.env.WP_API_PASS) {
-    const token = Buffer.from(`${process.env.WP_API_USER}:${process.env.WP_API_PASS}`).toString(
-      'base64'
-    );
+  // Server-side only: attach Basic Auth directly
+  if (!isBrowser && process.env.WP_API_USER && process.env.WP_API_PASS) {
+    const token = Buffer.from(
+      `${process.env.WP_API_USER}:${process.env.WP_API_PASS}`
+    ).toString('base64');
     headers['Authorization'] = `Basic ${token}`;
   }
 
+  // Do NOT log secrets. Keep logs minimal if needed.
+  // console.log('[wpApiFetch]', { url, isBrowser });
+
   const res = await fetch(url, { ...options, headers });
 
-  // Wrap Response to keep fetch-like usage
+  // Wrap Response-like object so callers can use res.ok + res.json()
   return {
     ok: res.ok,
     status: res.status,
     headers: res.headers,
     url: res.url,
     async json() {
-      try {
-        return await res.json();
-      } catch {
-        return {};
-      }
+      try { return await res.json(); } catch { return {}; }
     },
-    async text() {
-      return await res.text();
-    },
+    async text() { return await res.text(); },
   };
 }
