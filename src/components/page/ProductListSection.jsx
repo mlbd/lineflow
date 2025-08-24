@@ -65,7 +65,7 @@ export default function ProductListSection({
                 key={value}
                 onClick={() => setSelectedCategory(value)}
                 className={`
-                  transition px-4 py-2 text-base font-semibold border-b-4 border-transparent text-primary
+                  transition cursor-pointer px-4 py-2 text-base font-semibold border-b-4 border-transparent text-primary
                   hover:text-skyblue hover:border-b-skyblue
                   ${isActive ? 'text-skyblue border-b-skyblue' : ''}
                 `}

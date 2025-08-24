@@ -1,3 +1,4 @@
+// pages/[slug].jsx
 import Head from 'next/head';
 import { useState, useRef, useEffect } from 'react';
 import { GoogleTagManager } from '@next/third-parties/google';
@@ -12,13 +13,13 @@ import Footer from '@/components/page/Footer';
 
 import { getOrFetchShipping } from '@/lib/shippingCache';
 import { wpApiFetch } from '@/lib/wpApi';
+import { getProductCardsBatch } from '@/lib/productCache'; // ⬅️ NEW
 
 const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
 
 /* ---------------------- SSG: paths & props --------------------- */
 export async function getStaticPaths() {
-  // ⚡️ Don’t pre-render any dynamic pages at build (avoids slow build & "red" routes).
-  // They’ll be generated on first request thanks to fallback: 'blocking' + ISR.
+  // Keep ISR; warm later so users don't wait.
   return { paths: [], fallback: 'blocking' };
 }
 
@@ -38,7 +39,9 @@ export async function getStaticProps({ params }) {
     console.log('🧩 Raw selected_products from ACF:', productIdsRaw);
 
     // Normalize to IDs
-    const productIds = productIdsRaw.map(p => (typeof p === 'object' ? p.id : p)).filter(Boolean);
+    const productIds = productIdsRaw
+      .map(p => (p && typeof p === 'object' ? p.id : p))
+      .filter(Boolean);
     console.log('🔢 Normalized product IDs:', productIds);
 
     // SHIPPING CACHE LOGIC (runtime-safe)
@@ -57,8 +60,8 @@ export async function getStaticProps({ params }) {
         return Array.isArray(json.shipping) ? json.shipping : [];
       },
       {
-        ttlSeconds: 21600, // 6h "fresh"
-        staleSeconds: 86400, // additional 24h "stale acceptable"
+        ttlSeconds: 21600,   // 6h fresh
+        staleSeconds: 86400, // +24h stale acceptable
       }
     );
     // END SHIPPING CACHE LOGIC
@@ -70,26 +73,18 @@ export async function getStaticProps({ params }) {
       back_lighter: data?.acf?.back_lighter || null,
     };
 
-    // Build page-level placement map: { [productId]: Placement[] }
+    // Page-level placement map for your UI
     const pagePlacementMap = data?.meta?.placement_coordinates || {};
-
-    // Build allow-list set for back logos
     const customBackAllowedSet = (data?.acf?.custom_logo_products || []).map(String);
 
-    let products = productIdsRaw;
-
+    // ✅ PRODUCTS via Next server cache (SWR + batch miss fetch)
+    let products = [];
     if (productIds.length) {
-      const idsParam = productIds.join(',');
-      const productRes = await wpApiFetch(`get-products-by-ids?ids=${idsParam}`);
-      console.log('📡 GET /get-products-by-ids response status:', productRes.status);
-
-      if (productRes.ok) {
-        const productData = await productRes.json();
-        products = productData.products || [];
-        console.log('📦 Final loaded products:', products);
-      } else {
-        console.error('❌ Failed to load products by IDs:', await productRes.text());
-      }
+      products = await getProductCardsBatch(productIds, {
+        ttlSeconds: 60 * 60 * 6,   // 6h "fresh"
+        staleSeconds: 60 * 60 * 24 // +24h stale acceptable
+      });
+      console.log('📦 initialProducts from Next cache/batch:', products?.length);
     } else {
       console.warn('⚠️ No valid product IDs found');
     }

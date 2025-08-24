@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "format": "prettier --write .",
+    "warm:isr": "node scripts/warm-isr.mjs",
     "list-files": "find . \\( -path ./node_modules -o -path ./.next -o -path ./.git \\) -prune -o -type f -print",
     "lint": "next lint"
   },
@@ -21,7 +22,6 @@
     "class-variance-authority": "^0.7.1",
     "cloudinary": "^2.7.0",
     "clsx": "^2.1.1",
-    "dotenv": "^17.2.1",
     "jose": "^6.0.12",
     "lucide-react": "^0.539.0",
     "next": "15.4.6",
@@ -36,6 +36,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "dotenv": "^17.2.1",
     "eslint": "9.33.0",
     "eslint-config-next": "15.4.6",
     "prettier": "^3.6.2",
