@@ -1,6 +1,7 @@
 // pages/api/payments/zcredit/simulate-notify.js
 
 import { wpApiFetch } from '@/lib/wpApi';
+import { limon_file_log, limon_pretty } from '@/utils/limonLogger';
 
 export default async function handler(req, res) {
   console.log('ZCREDIT_SIMULATE', process.env.ZCREDIT_SIMULATE);
@@ -9,6 +10,12 @@ export default async function handler(req, res) {
   try {
     const { approved, draft } = req.body || {};
     if (!draft) return res.status(400).json({ error: 'Missing draft id' });
+
+    limon_file_log(
+      'notify',
+      'zCredit::notify::simulate-notify',
+      limon_pretty({ approved, draft })
+    );
 
     const txId = `SIMTX-${Date.now()}`;
     const event = {
@@ -33,7 +40,15 @@ export default async function handler(req, res) {
         zcredit: event,
       }),
     });
+    
     const j = await wp.json().catch(() => ({}));
+
+    limon_file_log(
+      'notify',
+      'zCredit::notify::simulate-notify::response',
+      limon_pretty(j)
+    );
+    
     if (!wp.ok) return res.status(400).json({ error: j?.message || 'WP complete failed' });
 
     return res.status(200).json({ ok: true, transactionUniqueId: txId, order_id: j?.order_id });

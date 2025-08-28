@@ -1,6 +1,7 @@
 // pages/api/payments/zcredit/get-status.js
 
 import { wpApiFetch } from '@/lib/wpApi';
+import { limon_file_log, limon_pretty } from '@/utils/limonLogger';
 
 export default async function handler(req, res) {
   const { transactionUniqueId } = req.query || {};
@@ -14,6 +15,13 @@ export default async function handler(req, res) {
       body: JSON.stringify({ transactionUniqueId }),
     });
     const data = await r.json().catch(() => ({}));
+    limon_file_log(
+      'getStatus',
+      'zCredit::GetStatus::transactionUniqueId',
+      transactionUniqueId,
+      'zCredit::GetStatus::response',
+      limon_pretty(data)
+    );
     if (!r.ok) return res.status(400).json({ error: data?.message || 'Status query failed' });
     return res.status(200).json({ ok: true, data });
   } catch (e) {
