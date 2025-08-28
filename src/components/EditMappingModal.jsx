@@ -293,7 +293,7 @@ export default function EditMappingModal({
                 onChange={e => handlePreventExtentChange(e.target.checked)}
                 className="accent-blue-600"
               />
-              Prevent Extent
+              Prevent Area Overflow
             </Label>
             <div className="text-xs text-muted-foreground mt-1">
               Extent defaults to <b>true</b>. Check to force it <b>false</b>.
