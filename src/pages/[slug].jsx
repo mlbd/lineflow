@@ -60,7 +60,7 @@ export async function getStaticProps({ params }) {
         return Array.isArray(json.shipping) ? json.shipping : [];
       },
       {
-        ttlSeconds: 21600,   // 6h fresh
+        ttlSeconds: 21600, // 6h fresh
         staleSeconds: 86400, // +24h stale acceptable
       }
     );
@@ -81,8 +81,8 @@ export async function getStaticProps({ params }) {
     let products = [];
     if (productIds.length) {
       products = await getProductCardsBatch(productIds, {
-        ttlSeconds: 60 * 60 * 6,   // 6h "fresh"
-        staleSeconds: 60 * 60 * 24 // +24h stale acceptable
+        ttlSeconds: 60 * 60 * 6, // 6h "fresh"
+        staleSeconds: 60 * 60 * 24, // +24h stale acceptable
       });
       console.log('📦 initialProducts from Next cache/batch:', products?.length);
     } else {

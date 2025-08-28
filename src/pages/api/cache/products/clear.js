@@ -6,7 +6,11 @@ function parseJsonBody(req) {
     let data = '';
     req.on('data', c => (data += c));
     req.on('end', () => {
-      try { resolve(JSON.parse(data || '{}')); } catch { resolve({}); }
+      try {
+        resolve(JSON.parse(data || '{}'));
+      } catch {
+        resolve({});
+      }
     });
   });
 }
@@ -15,7 +19,11 @@ function sameOriginOk(req) {
   const origin = req.headers.origin || '';
   const host = req.headers.host || '';
   if (!origin || !host) return true;
-  try { return new URL(origin).host === host; } catch { return origin.endsWith(host); }
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return origin.endsWith(host);
+  }
 }
 
 export default async function handler(req, res) {
@@ -57,7 +65,10 @@ export default async function handler(req, res) {
       clearProductCache(id);
       cleared.push(id);
       if (prime) {
-        try { await primeProductCache(id); primed.push(id); } catch {}
+        try {
+          await primeProductCache(id);
+          primed.push(id);
+        } catch {}
       }
     }
     return res.json({
@@ -71,7 +82,9 @@ export default async function handler(req, res) {
   // Clear ALL — allowed with secret; with CSRF require explicit confirmation.
   const clearAllAllowed =
     useSecret ||
-    (usingCsrf && (body.all === true || req.query.all === '1') && (body.confirm === 'ALL' || req.query.confirm === 'ALL'));
+    (usingCsrf &&
+      (body.all === true || req.query.all === '1') &&
+      (body.confirm === 'ALL' || req.query.confirm === 'ALL'));
 
   if (!clearAllAllowed) {
     return res.status(400).json({

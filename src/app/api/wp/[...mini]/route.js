@@ -4,15 +4,13 @@
 
 import { NextResponse } from 'next/server';
 
-const WP_URL  = (process.env.NEXT_PUBLIC_WP_SITE_URL || '').replace(/\/$/, '');
+const WP_URL = (process.env.NEXT_PUBLIC_WP_SITE_URL || '').replace(/\/$/, '');
 const WP_USER = process.env.WP_API_USER;
 const WP_PASS = process.env.WP_API_PASS;
 
 // Optional: restrict which endpoints can be proxied (defense-in-depth)
 const ALLOW = new Set(
-  (process.env.MS_WP_PROXY_WHITELIST || 'update-placement')
-    .split(',')
-    .map(s => s.trim())
+  (process.env.MS_WP_PROXY_WHITELIST || 'update-placement').split(',').map(s => s.trim())
 );
 
 function isAllowed(endpoint) {
@@ -35,10 +33,12 @@ export async function POST(req, ctx) {
   }
 
   let payload = {};
-  try { payload = await req.json(); } catch {}
+  try {
+    payload = await req.json();
+  } catch {}
 
   const auth = Buffer.from(`${WP_USER}:${WP_PASS}`).toString('base64');
-  const url  = `${WP_URL}/wp-json/mini-sites/v1/${endpoint}`;
+  const url = `${WP_URL}/wp-json/mini-sites/v1/${endpoint}`;
 
   const wpRes = await fetch(url, {
     method: 'POST',

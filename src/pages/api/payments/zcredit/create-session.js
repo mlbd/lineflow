@@ -1,5 +1,6 @@
 // /src/pages/api/payments/zcredit/create-session.js
 import { wpApiFetch } from '@/lib/wpApi';
+import { limon_file_log, limon_pretty } from '@/utils/limonLogger';
 
 function cid() {
   return `zc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -106,6 +107,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         customer: form || {},
         items,
+        note: orderData?.note || '',
         shipping: selectedShipping || null,
         coupon: coupon || null,
         // NEW: store page slug in the draft snapshot too (handy for admin/order notes)
@@ -142,6 +144,7 @@ export default async function handler(req, res) {
           snapshot: {
             customer: form || {},
             items,
+            note: orderData?.note || '',
             shipping: selectedShipping || null,
             coupon: coupon || null,
             page_slug: safeSlug || null, // NEW
@@ -263,6 +266,15 @@ export default async function handler(req, res) {
 
     const base = (process.env.ZCREDIT_BASE_URL || 'https://pci.zcredit.co.il').replace(/\/$/, '');
     const url = `${base}/webcheckout/api/WebCheckout/CreateSession`;
+
+    dlog(id, 'CreateSession--------', url);
+    limon_file_log(
+      'CreateSession',
+      'zCredit::CreateSession::url',
+      url,
+      'zCredit::CreateSession::body',
+      limon_pretty(body)
+    );
 
     const zRes = await fetchWithTimeout(url, {
       method: 'POST',

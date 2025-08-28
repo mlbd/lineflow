@@ -11,7 +11,11 @@ function sameOriginOk(req) {
   const origin = req.headers.origin || '';
   const host = req.headers.host || '';
   if (!origin || !host) return true; // best effort in dev/tools
-  try { return new URL(origin).host === host; } catch { return origin.endsWith(host); }
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return origin.endsWith(host);
+  }
 }
 
 export default async function handler(req, res) {

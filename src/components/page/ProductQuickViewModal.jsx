@@ -8,9 +8,13 @@ import {
   DialogClose,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, X, Check } from 'lucide-react';
 import ImageGalleryOverlay from '@/components/page/ImageGalleryOverlay';
-import { generateProductImageUrl } from '@/utils/cloudinaryMockup';
+import {
+  generateProductImageUrl,
+  setForceBackOverrides,
+  clearForceBackScope,
+} from '@/utils/cloudinaryMockup';
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
 
 /* ======= Config (magnifier off by default) ======= */
@@ -45,18 +49,21 @@ function buildPlacementSignature(arr) {
   }
 }
 
+// [FORCEBACK] Include side in the signature so Default↔Back triggers a store write
 const placementsSig = arr =>
   (Array.isArray(arr) ? arr : [])
-    .map(
-      p =>
-        `${String(p?.name || '')
-          .trim()
-          .toLowerCase()}:${p?.active ? 1 : 0}`
-    )
+    .map(p => {
+      const nm = String(p?.name || '')
+        .trim()
+        .toLowerCase();
+      const act = p?.active ? 1 : 0;
+      const side = typeof p?.__forceBack === 'boolean' ? (p.__forceBack ? 'B' : 'F') : '_'; // [FORCEBACK]
+      return `${nm}:${act}:${side}`;
+    })
     .sort()
     .join('|');
 
-function PriceChart({ steps, regularPrice, currency = '₪' }) {
+function PriceChart({ steps, regularPrice, currency = '₪', extraEach = 0 }) {
   if (!Array.isArray(steps) || steps.length === 0) return null;
 
   const getRange = i => {
@@ -81,7 +88,9 @@ function PriceChart({ steps, regularPrice, currency = '₪' }) {
             const checkerBg = rowIdx % 2 === colIdx % 2 ? 'bg-bglight' : '';
             const stepAmt = parseMoney(step?.amount);
             const useRegularForFirstTier = i === 0 && stepAmt === 0 && regular > 0;
-            const display = (useRegularForFirstTier ? regular : stepAmt).toFixed(2);
+            const display = (
+              (useRegularForFirstTier ? regular : stepAmt) + (Number(extraEach) || 0)
+            ).toFixed(2);
             return (
               <div
                 key={i}
@@ -131,6 +140,12 @@ export default function ProductQuickViewModal({
   /* ====== Area filter overrides (local toggles; persisted globally) ====== */
   const [areaOn, setAreaOn] = useState(new Set());
   const [areaOff, setAreaOff] = useState(new Set());
+
+  // Back-mode per placement: 'Default' (front) or 'Back'
+  const [backChoice, setBackChoice] = useState(new Map());
+  const [openBackFor, setOpenBackFor] = useState('');
+
+  const [backScope, setBackScope] = useState('');
 
   const acf = product?.acf || {};
   const hasSlider = acf?.group_type === 'Group' && Array.isArray(acf.color) && acf.color.length > 0;
@@ -200,12 +215,53 @@ export default function ProductQuickViewModal({
     return map;
   }, [basePlacements]);
 
+  // Count actives and compute extra
+  const countActive = (arr = []) =>
+    Array.isArray(arr) ? arr.filter(p => p && p.active).length : 0;
+  const baselineActiveCount = useMemo(() => countActive(sourcePlacements), [sourcePlacements]);
+  const selectedActiveCount = useMemo(() => countActive(basePlacements), [basePlacements]);
+  const extraPrint = useMemo(
+    () => Math.max(0, Number(product?.extra_print_price) || 0),
+    [product?.extra_print_price]
+  );
+  const extraEach = useMemo(
+    () => Math.max(0, selectedActiveCount - baselineActiveCount) * extraPrint,
+    [selectedActiveCount, baselineActiveCount, extraPrint]
+  );
+
   // Reset local toggles on product/open, but DO NOT clear global store selection
   useEffect(() => {
     if (!product || !open) return;
     setAreaOn(new Set());
     setAreaOff(new Set());
+    // initialize backChoice from persisted placements if present
+    const init = new Map();
+    (basePlacements || []).forEach(p => {
+      const nm = p?.name || '';
+      if (!nm) return;
+      if (typeof p.__forceBack === 'boolean') {
+        init.set(nm, p.__forceBack ? 'Back' : 'Default');
+      }
+    });
+    // New scope token per open, isolates this flow from others
+    const token = `pqv-${product.id}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    setBackScope(token);
+    // setBackChoice(init);
+    setOpenBackFor('');
   }, [product?.id, open]);
+
+  useEffect(() => {
+    if (!product?.id || !backScope) return;
+    setForceBackOverrides(
+      product.id,
+      // convert Map<'Default'|'Back'> to name->boolean
+      Array.from(backChoice.entries()).reduce((acc, [k, v]) => {
+        acc[k] = v === 'Back' ? true : false;
+        return acc;
+      }, {}),
+      { scope: backScope }
+    );
+  }, [product?.id, backChoice, backScope]);
 
   // Toggle helper
   const toggleArea = name => {
@@ -227,6 +283,7 @@ export default function ProductQuickViewModal({
         nextOff.delete(name);
       }
     }
+    console.log('toggleArea', { name, wasActive, nextOn, nextOff });
     setAreaOn(nextOn);
     setAreaOff(nextOff);
     setSliderIdx(0);
@@ -239,9 +296,19 @@ export default function ProductQuickViewModal({
       const isAdded = areaOn.has(nm);
       const isRemoved = areaOff.has(nm);
       const effectiveActive = isRemoved ? false : isAdded ? true : !!p?.active;
-      return { ...p, active: effectiveActive };
+
+      // [FORCEBACK] Only set __forceBack when the user chose a side
+      const choice = backChoice.get(nm); // 'Back' | 'Default' | undefined
+      const sidePatch =
+        choice === 'Back'
+          ? { __forceBack: true } // [FORCEBACK]
+          : choice === 'Default'
+            ? { __forceBack: false } // [FORCEBACK]
+            : {};
+
+      return { ...p, active: effectiveActive, ...sidePatch };
     });
-  }, [basePlacements, areaOn, areaOff]);
+  }, [basePlacements, areaOn, areaOff, backChoice]);
 
   // Detect if changed vs base (not vs product default)
   // Did the user change vs source?
@@ -534,39 +601,93 @@ export default function ProductQuickViewModal({
                       const isAdded = areaOn.has(nm);
                       const isRemoved = areaOff.has(nm);
                       const effectiveActive = isRemoved ? false : isAdded ? true : orig;
+                      const canBack =
+                        !!p?.back &&
+                        !!(
+                          (companyLogos?.back_darker && companyLogos.back_darker.url) ||
+                          (companyLogos?.back_lighter && companyLogos.back_lighter.url)
+                        );
+                      const currentChoice = backChoice.get(nm) || 'Back';
                       return (
-                        <button
-                          key={nm}
-                          type="button"
-                          onClick={() => toggleArea(nm)}
-                          className={`px-3 py-1 rounded-full border text-xs font-medium transition
-                            ${
-                              effectiveActive
-                                ? 'bg-emerald-600 text-white border-emerald-600'
-                                : isAdded
-                                  ? 'bg-sky-600 text-white border-sky-600'
-                                  : isRemoved
-                                    ? 'bg-gray-300 text-gray-700 border-gray-300'
-                                    : 'bg-white text-primary border-gray-300 hover:bg-gray-50'
-                            }`}
-                          title={nm}
-                        >
-                          {nm}{' '}
-                          {effectiveActive
-                            ? '• פעיל'
-                            : isAdded
-                              ? '• נבחר'
-                              : isRemoved
-                                ? '• כבוי'
-                                : ''}
-                        </button>
+                        <div key={nm} className="relative inline-flex items-center">
+                          <button
+                            type="button"
+                            onClick={() => toggleArea(nm)}
+                            className={`${canBack ? 'pl-[20px] pr-3 py-1' : 'px-3 py-1'} rounded-full border text-xs font-medium transition relative cursor-pointer
+                             ${
+                               effectiveActive
+                                 ? 'bg-emerald-600 text-white border-emerald-600'
+                                 : isAdded
+                                   ? 'bg-sky-600 text-white border-sky-600'
+                                   : isRemoved
+                                     ? 'bg-gray-300 text-gray-700 border-gray-300'
+                                     : 'bg-white text-primary border-gray-300 hover:bg-gray-50'
+                             }`}
+                            title={nm}
+                          >
+                            <span className="mr-1">{nm}</span>
+                            {canBack && (
+                              <span
+                                className="ml-1 inline-flex items-center absolute w-[12px] h-[100%] top-0 left-0"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setOpenBackFor(openBackFor === nm ? '' : nm);
+                                  if (effectiveActive) toggleArea(nm);
+                                }}
+                                role="button"
+                                aria-label="בחר לוגו גב"
+                              >
+                                <ChevronDown className="w-3 h-3 opacity-90" />
+                              </span>
+                            )}
+                          </button>
+
+                          {/* Back-mode dropdown */}
+                          {canBack && openBackFor === nm && (
+                            <div
+                              className="absolute z-20 left-0 top-full mt-1 min-w-[140px] rounded-md border bg-white shadow-lg overflow-hidden"
+                              onMouseLeave={() => setOpenBackFor('')}
+                              role="menu"
+                              aria-label={`${nm} logo side`}
+                            >
+                              {['Default', 'Back'].map(opt => (
+                                <button
+                                  key={opt}
+                                  type="button"
+                                  className={`block cursor-pointer w-full text-left px-3 py-1 text-xs hover:bg-gray-50 ${
+                                    currentChoice === opt
+                                      ? 'text-primary font-semibold'
+                                      : 'text-gray-700'
+                                  }`}
+                                  onClick={() => {
+                                    const next = new Map(backChoice);
+                                    next.set(nm, opt);
+                                    setBackChoice(next);
+                                    setOpenBackFor('');
+                                    toggleArea(nm);
+                                  }}
+                                  role="menuitem"
+                                >
+                                  {currentChoice === opt && (
+                                    <Check className="w-[15px] h-[15px] text-emerald-600 inline-block ml-2" />
+                                  )}
+                                  {opt}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
                 </div>
               )}
 
-              <PriceChart steps={steps} regularPrice={product?.regular_price ?? product?.price} />
+              <PriceChart
+                steps={steps}
+                regularPrice={product?.regular_price ?? product?.price}
+                extraEach={extraEach}
+              />
 
               <div>
                 <button

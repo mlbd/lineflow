@@ -6,6 +6,10 @@ import { X } from 'lucide-react';
 import { useCartStore } from '@/components/cart/cartStore';
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
 
+// Cache the first non-empty baseline per product id, so user filters can't mutate it later.
+const __baselinePlacementCache =
+  typeof window !== 'undefined' ? (window.__baselinePlacementCache ||= new Map()) : new Map();
+
 const toNumber = v => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
   if (v == null) return 0;
@@ -148,12 +152,12 @@ export default function AddToCartGroup({
   const clearFilter = useAreaFilterStore(s => s.clearFilter);
   const mode = useAreaFilterStore(s => s.mode);
 
-  const { total, stepInfo } = useMemo(() => {
+  // Local matrix total (what the user is about to set for THIS signature)
+  const localTotal = useMemo(() => {
     let t = 0;
     for (const row of quantities) for (const val of row) t += parseInt(val || 0);
-    const info = resolveStepPricing(t, regularPrice, discountSteps);
-    return { total: t, stepInfo: info };
-  }, [quantities, discountSteps, regularPrice]);
+    return t;
+  }, [quantities]);
 
   // cart store fns
   const addOrUpdateItem = useCartStore(s => s.addOrUpdateItem);
@@ -222,15 +226,115 @@ export default function AddToCartGroup({
     product?.id,
   ]);
 
+  // —— Baseline placements (FIRST non-empty snapshot from product.placement_coordinates; cached per product id) ——
+  const baselinePlacementsRef = useMemo(() => {
+    const key = String(product?.id || '');
+    const cached = __baselinePlacementCache.get(key);
+    if (cached && Array.isArray(cached) && cached.length) return cached;
+    const raw = Array.isArray(product?.placement_coordinates)
+      ? product.placement_coordinates
+      : coercePlacementArray(product?.placement_coordinates, product?.id);
+    const hasActive = Array.isArray(raw) && raw.some(p => p?.active);
+    if (hasActive) {
+      const clone = JSON.parse(JSON.stringify(raw)); // deep clone to avoid external mutation
+      __baselinePlacementCache.set(key, clone);
+      return clone;
+    }
+    // fall back to cached (if any) or empty array
+    return Array.isArray(raw) ? raw : [];
+  }, [product?.id]); // IMPORTANT: depend only on product id
+
   const placementSignature = useMemo(
     () => buildPlacementSignature(effectivePlacements),
     [effectivePlacements]
   );
   const baselineSignature = useMemo(
-    () => buildPlacementSignature(baselinePlacements),
-    [baselinePlacements]
+    () => buildPlacementSignature(baselinePlacementsRef),
+    [product?.id]
   );
+
   const filterWasChanged = placementSignature !== baselineSignature;
+
+  // ----- Price preview must reflect pooled quantity across cart (same product_id) -----
+  // Build signatures for pricing ONLY (avoid interfering with later merge logic)
+  const placementSignatureForPrice = useMemo(
+    () => buildPlacementSignature(effectivePlacements),
+    [effectivePlacements]
+  );
+  const baselineSignatureForPrice = useMemo(
+    () => buildPlacementSignature(baselinePlacementsRef),
+    [product?.id]
+  );
+  const filterWasChangedForPrice = placementSignatureForPrice !== baselineSignatureForPrice;
+  const expectedSigForPrice = filterWasChangedForPrice ? placementSignatureForPrice : 'default';
+
+  // Pool sizes across ALL Group lines for this product id; exclude the current signature being edited
+  const { cartAllQtyForPrice, cartThisSigQtyForPrice } = useMemo(() => {
+    let all = 0;
+    let thisSig = 0;
+    (Array.isArray(cartItems) ? cartItems : []).forEach(it => {
+      if (String(it?.product_id || '') !== pid) return;
+      if (it?.options?.group_type !== 'Group') return;
+      const q = parseInt(it.quantity) || 0;
+      all += q;
+      const sig = effectiveSigForCartItem(it);
+      if (sig === expectedSigForPrice) thisSig += q;
+    });
+    return { cartAllQtyForPrice: all, cartThisSigQtyForPrice: thisSig };
+  }, [cartItems, pid, expectedSigForPrice]);
+
+  // Preview pool after this submission: replace current-sig qty with matrix total
+  const previewPooledTotal = useMemo(
+    () => Math.max(0, cartAllQtyForPrice - cartThisSigQtyForPrice) + localTotal,
+    [cartAllQtyForPrice, cartThisSigQtyForPrice, localTotal]
+  );
+
+  // Final step info (for pricing UI) based on the pooled preview
+  const stepInfo = useMemo(
+    () => resolveStepPricing(previewPooledTotal, regularPrice, discountSteps),
+    [previewPooledTotal, regularPrice, discountSteps]
+  );
+
+  // "Other in cart" = total for this product in cart - qty of this signature in cart
+  // Note: depends ONLY on cart state for this product; does NOT use local form totals,
+  // so it won't change when the user types in the matrix.
+  const otherQtyInCart = useMemo(
+    () => Math.max(0, (cartAllQtyForPrice || 0) - (cartThisSigQtyForPrice || 0)),
+    [cartAllQtyForPrice, cartThisSigQtyForPrice]
+  );
+
+  // --- extra_print_price per extra placement (selected - default) ---
+  const countActive = arr => (Array.isArray(arr) ? arr.filter(p => p?.active).length : 0);
+  const baselineActiveCount = useMemo(
+    () => countActive(baselinePlacementsRef),
+    [product?.id] // recompute baseline count only when product changes
+  );
+  const selectedActiveCount = useMemo(
+    () => countActive(effectivePlacements),
+    [effectivePlacements]
+  );
+  const extraPrint = useMemo(
+    () => Math.max(0, toNumber(product?.extra_print_price)),
+    [product?.extra_print_price]
+  );
+  const extraEach = useMemo(
+    () => Math.max(0, selectedActiveCount - baselineActiveCount) * extraPrint,
+    [selectedActiveCount, baselineActiveCount, extraPrint]
+  );
+  const unitWithExtra = useMemo(
+    () => toNumber(stepInfo.price) + extraEach,
+    [stepInfo.price, extraEach]
+  );
+  const hasExtraSelection = selectedActiveCount > baselineActiveCount;
+
+  const nextStepAmountWithExtra = useMemo(
+    () => (stepInfo?.nextStep ? toNumber(stepInfo.nextStep.amount) + extraEach : 0),
+    [stepInfo?.nextStep, extraEach]
+  );
+
+  console.log(`[${product?.id}] baselinePlacementsRef`, baselinePlacementsRef);
+  console.log(`[${product?.id}] product?.placement_coordinates`, product?.placement_coordinates);
+  console.log(`[${product?.id}] effectivePlacements`, effectivePlacements);
 
   // —— PRE-FILL GRID from cart if same product + same signature ——
   const prefillMatrix = useMemo(() => {
@@ -291,6 +395,13 @@ export default function AddToCartGroup({
       matches.forEach(i => removeItem(i));
       onCartAddSuccess?.();
       onClose();
+
+      // Clear all area filters after successful add
+      try {
+        const resetAll = useAreaFilterStore.getState().resetAll;
+        resetAll?.();
+      } catch {}
+
       if (mode === 'temp' && filterWasChanged) clearFilter(pid);
       return;
     }
@@ -348,7 +459,8 @@ export default function AddToCartGroup({
               name: product.name,
               thumbnail: product.thumbnail,
               thumbnail_meta: product.thumbnail_meta,
-              price: Number(stepInfo.price) || 0, // will be repriced by store
+              price: Number(unitWithExtra) || 0, // will be repriced by store
+              extra_unit_add: Number(extraEach) || 0,
               quantity: newQty,
               pricing: {
                 type: 'Group',
@@ -363,6 +475,12 @@ export default function AddToCartGroup({
                 acf: { color: Array.isArray(product?.acf?.color) ? product.acf.color : [] },
               },
               filter_was_changed: filterWasChanged,
+              // NEW: extra-print grouping metadata (used by cart repricer)
+              baseline_active_count: baselineActiveCount,
+              selected_active_count: selectedActiveCount,
+              has_extra_selection: hasExtraSelection,
+              extra_print_price: Number(product?.extra_print_price) || 0,
+              pricing_group_key: hasExtraSelection ? `sig:${placementSignature}` : 'default',
               options: {
                 group_type: 'Group',
                 color: color.title,
@@ -452,6 +570,13 @@ export default function AddToCartGroup({
           </div>
         )}
 
+        {/* Other quantity in cart (stable; unaffected by form typing) */}
+        {otherQtyInCart > 0 && (
+          <div className="text-center text-xs text-gray-600 -mt-2 mb-3">
+            עוד {otherQtyInCart} בעגלה
+          </div>
+        )}
+
         <form className="flex items-center flex-col relative allaround--group-form">
           <div
             className={clsx(
@@ -536,14 +661,16 @@ export default function AddToCartGroup({
               <div className="text-pink text-xl pt-[10px] text-center mb-2 flex flex-col">
                 <span>
                   הוסיפו {stepInfo.unitsToNext} פריטים נוספים להורדת המחיר ל-{' '}
-                  <b>{stepInfo.nextStep.amount}₪</b> ליחידה
+                  <b>{nextStepAmountWithExtra.toFixed(2)}₪</b> ליחידה
                 </span>
-                <span className="line-through current_price">(כרגע {stepInfo.price}₪)</span>
+                <span className="line-through current_price">
+                  (כרגע {unitWithExtra.toFixed(2)}₪)
+                </span>
               </div>
             ) : (
               flatTotalFromMatrix(quantities) > 0 && (
                 <div className="text-green-600 text-center mb-2">
-                  {`מחיר ליחידה: ${stepInfo.price}₪`}
+                  {`מחיר ליחידה: ${unitWithExtra.toFixed(2)}₪`}
                 </div>
               )
             )}
@@ -565,7 +692,7 @@ export default function AddToCartGroup({
                 <div className="alarnd--price-by-shirt text-center my-4">
                   <p className="alarnd--group-price text-lg font-semibold">
                     <span>
-                      <span className="current_price">{stepInfo.price}</span>
+                      <span className="current_price">{unitWithExtra.toFixed(2)}</span>
                       <span className="woocommerce-Price-currencySymbol">₪</span>
                     </span>{' '}
                     / {acf.first_line_keyword || 'תיק'}
@@ -581,7 +708,7 @@ export default function AddToCartGroup({
                     <span>
                       <span className="current_total_price">
                         {quantities.flat().reduce((s, v) => s + (parseInt(v || 0) || 0), 0) *
-                          stepInfo.price}
+                          unitWithExtra.toFixed(2)}
                       </span>
                       <span className="woocommerce-Price-currencySymbol">₪</span>
                     </span>

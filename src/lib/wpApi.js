@@ -23,9 +23,9 @@ export async function wpApiFetch(endpoint, options = {}) {
 
   // Server-side only: attach Basic Auth directly
   if (!isBrowser && process.env.WP_API_USER && process.env.WP_API_PASS) {
-    const token = Buffer.from(
-      `${process.env.WP_API_USER}:${process.env.WP_API_PASS}`
-    ).toString('base64');
+    const token = Buffer.from(`${process.env.WP_API_USER}:${process.env.WP_API_PASS}`).toString(
+      'base64'
+    );
     headers['Authorization'] = `Basic ${token}`;
   }
 
@@ -41,8 +41,14 @@ export async function wpApiFetch(endpoint, options = {}) {
     headers: res.headers,
     url: res.url,
     async json() {
-      try { return await res.json(); } catch { return {}; }
+      try {
+        return await res.json();
+      } catch {
+        return {};
+      }
     },
-    async text() { return await res.text(); },
+    async text() {
+      return await res.text();
+    },
   };
 }

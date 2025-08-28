@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useCartItems } from './cartStore';
+import { useCartItems, useCustomerNote, useSetCustomerNote } from './cartStore';
 import CartItem from './CartItem';
 import Checkout from './Checkout';
 import CartEmpty from './CartEmpty';
@@ -40,6 +40,8 @@ export default function CartPage({
   slug = '',
 }) {
   const items = useCartItems();
+  const customerNote = useCustomerNote();
+  const setCustomerNote = useSetCustomerNote();
 
   const [selectedShipping, setSelectedShipping] = useState(null);
   const [validating, setValidating] = useState(false);
@@ -166,8 +168,6 @@ export default function CartPage({
     [initialProducts, companyData]
   );
 
-  if (!items.length) return <CartEmpty />;
-
   return (
     <div className="relative bg-bglight">
       <div className="mt-16 max-w-[900px] mx-auto w-full">
@@ -181,28 +181,37 @@ export default function CartPage({
               {/* Cart Section */}
               <div className="md:w-[70%] w-full">
                 {/* Header */}
-                <div className="grid grid-cols-7 gap-0 p-4 bg-gray-50 border border-gray-200 rounded-lg mb-4">
-                  <div className="text-center font-semibold text-gray-700"></div>
-                  <div className="col-span-2 font-semibold text-gray-700">מוצר</div>
-                  <div className="text-center font-semibold text-gray-700">מחיר</div>
-                  <div className="text-center font-semibold text-gray-700">כמות</div>
-                  <div className="text-center font-semibold text-gray-700">סה&quot;כ</div>
-                </div>
+                {arranged.length > 0 && (
+                  <div className="grid grid-cols-7 gap-0 p-4 bg-gray-50 border border-gray-200 rounded-lg mb-4">
+                    <div className="text-center font-semibold text-gray-700"></div>
+                    <div className="col-span-2 font-semibold text-gray-700">מוצר</div>
+                    <div className="text-center font-semibold text-gray-700">מחיר</div>
+                    <div className="text-center font-semibold text-gray-700">כמות</div>
+                    <div className="text-center font-semibold text-gray-700">סה&quot;כ</div>
+                  </div>
+                )}
 
                 {/* Items + shimmer overlay */}
                 <div className={`relative ${validating ? 'pointer-events-none opacity-60' : ''}`}>
                   <div className="space-y-4">
-                    {arranged.map(({ it, storeIndex }, listIdx) => (
-                      <CartItem
-                        key={`${it.product_id}-${storeIndex}`}
-                        item={it}
-                        idx={storeIndex}
-                        companyLogos={companyLogos}
-                        pagePlacementMap={pagePlacementMap}
-                        customBackAllowedSet={customBackAllowedSet}
-                        onOpenEditFromCart={onOpenEditFromCart}
-                      />
-                    ))}
+                    {arranged.length > 0 ? (
+                      arranged.map(({ it, storeIndex }) => (
+                        <CartItem
+                          key={`${it.product_id}-${storeIndex}`}
+                          item={it}
+                          idx={storeIndex}
+                          companyLogos={companyLogos}
+                          pagePlacementMap={pagePlacementMap}
+                          customBackAllowedSet={customBackAllowedSet}
+                          onOpenEditFromCart={onOpenEditFromCart}
+                        />
+                      ))
+                    ) : (
+                      // Show the empty-state inside the items section
+                      <div className="py-6">
+                        <CartEmpty />
+                      </div>
+                    )}
                   </div>
 
                   {validating && (
@@ -213,14 +222,29 @@ export default function CartPage({
                 </div>
 
                 {/* Coupon */}
-                <CouponField
-                  couponInput={couponInput}
-                  setCouponInput={setCouponInput}
-                  onValidate={handleValidateCoupon}
-                  validating={validating}
-                  couponDetails={coupon}
-                  onRemoveCoupon={handleRemoveCoupon}
-                />
+                {arranged.length > 0 && (
+                  <>
+                    <CouponField
+                      couponInput={couponInput}
+                      setCouponInput={setCouponInput}
+                      onValidate={handleValidateCoupon}
+                      validating={validating}
+                      couponDetails={coupon}
+                      onRemoveCoupon={handleRemoveCoupon}
+                    />
+
+                    {/* Customer Note */}
+                    <div className="mt-4">
+                      <textarea
+                        value={customerNote}
+                        onChange={e => setCustomerNote(e.target.value)}
+                        placeholder="כל הערה שקיימת בנוגע להזמנה מוזמנים להקליד כאן."
+                        className="w-full border rounded px-3 py-2 outline-none border-gray-300 min-h-[80px] bg-white text-gray-700"
+                        rows={3}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Shipping / Summary */}

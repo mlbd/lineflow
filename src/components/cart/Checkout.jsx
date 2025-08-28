@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useCartItems, getTotalPrice } from './cartStore';
+import { useCartItems, getTotalPrice, useCustomerNote } from './cartStore';
 import { generateHoverThumbUrlFromItem } from '@/utils/cloudinaryMockup';
 
 export default function Checkout({
@@ -16,6 +16,7 @@ export default function Checkout({
 }) {
   // 1) Raw items from the cart store
   const rawItems = useCartItems();
+  const customerNote = useCustomerNote();
 
   console.log('Checkout::userMeta', { userMeta });
   // 2) Resolve logos object defensively from companyData
@@ -248,7 +249,7 @@ export default function Checkout({
         // cardNumber: '',
         extraMeta: {},
         response: {},
-        note: '',
+        note: customerNote || '',
         slug,
         pageSlug: slug || null,
         // update: true|false  (handled by your server after payment callback)

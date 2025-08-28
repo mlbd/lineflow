@@ -110,7 +110,7 @@ export default function EditMappingModal({
     const finalName = nameError ? getUniqueName(desired, existingNames, currentName) : desired;
 
     const next = { ...form, name: finalName };
-  if (typeof next.extent === 'undefined') next.extent = true; // default true
+    if (typeof next.extent === 'undefined') next.extent = true; // default true
 
     onSave(next);
     onClose();

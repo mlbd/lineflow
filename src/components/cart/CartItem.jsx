@@ -9,6 +9,7 @@ import {
   generateCartThumbUrlFromItem,
   generateHoverThumbUrlFromItem,
 } from '@/utils/cloudinaryMockup';
+import Tooltip from '@/components/ui/Tooltip';
 
 const SHOW_PLACEMENTS_LABEL = true;
 const SHOW_FILTER_CHANGED_LABEL = false;
@@ -213,6 +214,39 @@ export default function CartItem({
     }
   };
 
+  // [PATCH] Contrast-safe border color for color chip
+  const bgHex = item?.options?.color_hex_code || '#ffffff';
+  const textColor = isDarkColor(bgHex) ? '#fff' : '#000';
+
+  // Tiny helper to detect “similar” colors (Euclidean RGB distance)
+  const colorsAreSimilar = (a, b, threshold = 28) => {
+    const norm = hex => {
+      const h = String(hex || '').replace('#', '');
+      const v =
+        h.length === 3
+          ? h
+              .split('')
+              .map(c => c + c)
+              .join('')
+          : h.padEnd(6, '0');
+      return [
+        parseInt(v.slice(0, 2), 16),
+        parseInt(v.slice(2, 4), 16),
+        parseInt(v.slice(4, 6), 16),
+      ];
+    };
+    const [r1, g1, b1] = norm(a);
+    const [r2, g2, b2] = norm(b);
+    const dist = Math.hypot(r1 - r2, g1 - g2, b1 - b2);
+    return dist < threshold; // smaller = more similar
+  };
+
+  let borderColor = textColor;
+  // [PATCH] If text color and background are same/similar, flip the border to the opposite
+  if (colorsAreSimilar(borderColor, bgHex)) {
+    borderColor = textColor === '#fff' ? '#000' : '#fff';
+  }
+
   const renderProductDetails = () => {
     // Build active placement labels from the FROZEN snapshot on the item
     const activePlacements = (
@@ -221,29 +255,31 @@ export default function CartItem({
       .filter(p => p && p.name && p.active)
       .map(p => String(p.name));
 
-    console.log(`activePlacements for ${item.product_id}:`, activePlacements);
+    // console.log(`activePlacements for ${item.product_id}:`, activePlacements);
 
     return (
       <div className="space-y-1">
-        <div className="font-semibold text-skyblue text-[15px]">{item.name}</div>
+        <div className="font-semibold text-skyblue text-[15px] text-center md:text-right">
+          {item.name}
+        </div>
 
         {item.options?.group_type === 'Group' && (
-          <div className="space-y-1 text-sm text-gray-600">
-            <div className="flex items-center gap-2">
+          <div className="space-y-1 text-sm text-gray-600 flex gap-0 md:gap-0 mb-2 md:mb-2 flex-col">
+            <div className="flex items-center gap-2 mx-auto md:mx-0">
               <span>צבע:</span>
               <span
                 className="p-0.5 rounded text-xs font-medium"
                 style={{
-                  backgroundColor: item.options.color_hex_code,
-                  color: isDarkColor(item.options.color_hex_code) ? '#fff' : '#000',
-                  border: `1px solid ${isDarkColor(item.options.color_hex_code) ? '#fff' : '#000'}`,
+                  backgroundColor: bgHex,
+                  color: textColor,
+                  border: `1px solid ${borderColor}`,
                   padding: '2px 6px',
                 }}
               >
                 {item.options.color}
               </span>
             </div>
-            <div>
+            <div className="mx-auto md:mx-0">
               מידה: <span className="font-medium">{item.options.size}</span>
             </div>
           </div>
@@ -271,10 +307,12 @@ export default function CartItem({
 
   const totalPrice = Math.round(item.price * item.quantity * 100) / 100;
 
+  console.log('item', item);
+
   return (
     <div
       ref={rowRef}
-      className="grid grid-cols-7 gap-4 p-4 border border-gray-200 rounded-lg bg-white items-center"
+      className="p-4 border border-gray-200 rounded-lg bg-white items-center flex flex-col gap-3 md:grid md:grid-cols-7 md:gap-4"
     >
       {/* 1) Thumbnail + hover preview */}
       <div
@@ -323,10 +361,59 @@ export default function CartItem({
 
       {/* 3) Unit price */}
       <div className="text-center">
-        <div className="text-sm font-semibold text-gray-900">{item.price} ₪</div>
+        <div className="text-sm font-semibold text-gray-900">{Number(item.price).toFixed(2)} ₪</div>
         <div className="text-xs text-gray-500">ליחידה</div>
         {SHOW_FILTER_CHANGED_LABEL && item.filter_was_changed && (
           <div className="text-xs text-red-500">⚠ מיקומי לוגו שונו</div>
+        )}
+
+        {/* Extra per-unit chip with tooltip */}
+        {Number(item?.extra_unit_add) > 0 && (
+          <div className="mt-1">
+            <Tooltip
+              placement="bottom"
+              content={
+                <div className="space-y-1">
+                  <div className="font-medium">פירוט תוספת הדפסה</div>
+                  {(() => {
+                    const unit = Number(item?.price) || 0;
+                    const base =
+                      Number(item?.price_base ?? unit - Number(item?.extra_unit_add || 0)) || 0;
+                    const extra = Number(item?.extra_unit_add || 0);
+                    const baseCnt = Number(item?.baseline_active_count || 0);
+                    const selCnt = Number(item?.selected_active_count || 0);
+                    const extrasN = selCnt > baseCnt ? selCnt - baseCnt : null;
+                    const xPrice = Number(item?.extra_print_price || 0);
+                    return (
+                      <>
+                        <div>
+                          <span className="tabular-nums">{base.toFixed(2)} ₪</span> בסיס
+                        </div>
+                        <div>
+                          + <span className="tabular-nums">{extra.toFixed(2)} ₪</span> תוספת
+                          {extrasN != null && xPrice > 0 && (
+                            <span className="text-gray-500">
+                              {' '}
+                              ({extrasN}×{xPrice.toFixed(2)} ₪)
+                            </span>
+                          )}
+                        </div>
+                        <div className="my-1 border-t border-gray-200" />
+                        <div>
+                          = <span className="font-semibold tabular-nums">{unit.toFixed(2)} ₪</span>{' '}
+                          ליחידה
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              }
+            >
+              <span className="inline-flex items-center text-[11px] text-amber-600 px-1.5 py-0.5 rounded border border-amber-200 hover:bg-amber-50 cursor-help select-none">
+                +{Number(item.extra_unit_add).toFixed(2)} ₪
+              </span>
+            </Tooltip>
+          </div>
         )}
       </div>
 

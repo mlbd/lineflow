@@ -23,10 +23,12 @@ export default function handler(req, res) {
       `ms_csrf=${token}`,
       'Path=/',
       'SameSite=Strict',
-      isProd ? 'Secure' : null,  // only on HTTPS
+      isProd ? 'Secure' : null, // only on HTTPS
       // Leave HttpOnly off for double-submit pattern
-      `Max-Age=${maxAge}`        // optional: rotate periodically
-    ].filter(Boolean).join('; ')
+      `Max-Age=${maxAge}`, // optional: rotate periodically
+    ]
+      .filter(Boolean)
+      .join('; '),
   ]);
 
   return res.json({ ok: true, token });

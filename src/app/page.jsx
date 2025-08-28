@@ -222,36 +222,38 @@ export default function HomePage() {
   }, []);
 
   // When the selected product object changes (e.g., after save), reflect its extra_print_price
-useEffect(() => {
-  if (!selectedProduct) {
-    setAddExtraPrice(false);
-    setExtraPrice('');
-    return;
-  }
-  const pre = findExtraPrintPriceInProduct(selectedProduct);
-  if (!onlyThisPage && Number.isFinite(pre)) {
-    setAddExtraPrice(true);
-    setExtraPrice(String(pre));
-  } else if (!addExtraPrice) {
-    // Only reset if user didn't manually toggle it on
-    setAddExtraPrice(false);
-    setExtraPrice('');
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [selectedProduct, onlyThisPage, findExtraPrintPriceInProduct]);
+  useEffect(() => {
+    if (!selectedProduct) {
+      setAddExtraPrice(false);
+      setExtraPrice('');
+      return;
+    }
+    const pre = findExtraPrintPriceInProduct(selectedProduct);
+    if (!onlyThisPage && Number.isFinite(pre)) {
+      setAddExtraPrice(true);
+      setExtraPrice(String(pre));
+    } else if (!addExtraPrice) {
+      // Only reset if user didn't manually toggle it on
+      setAddExtraPrice(false);
+      setExtraPrice('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProduct, onlyThisPage, findExtraPrintPriceInProduct]);
 
   // once per load
-useEffect(() => {
-  let active = true;
-  (async () => {
-    try {
-      const r = await fetch('/api/editor/csrf', { method: 'GET' });
-      const j = await r.json().catch(() => ({}));
-      if (active && j?.token) setCsrfToken(j.token);
-    } catch {}
-  })();
-  return () => { active = false; };
-}, []);
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const r = await fetch('/api/editor/csrf', { method: 'GET' });
+        const j = await r.json().catch(() => ({}));
+        if (active && j?.token) setCsrfToken(j.token);
+      } catch {}
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleDelete = id => {
     setMappings(prev => prev.filter(m => m.id !== id));
@@ -267,25 +269,23 @@ useEffect(() => {
   };
 
   // NEW: parse & validate
-const extraPriceNumber = useMemo(() => {
-  const n = parseFloat(String(extraPrice).replace(',', '.'));
-  return Number.isFinite(n) ? n : NaN;
-}, [extraPrice]);
+  const extraPriceNumber = useMemo(() => {
+    const n = parseFloat(String(extraPrice).replace(',', '.'));
+    return Number.isFinite(n) ? n : NaN;
+  }, [extraPrice]);
 
-const extraPriceValid = useMemo(
-  () => addExtraPrice && Number.isFinite(extraPriceNumber) && extraPriceNumber >= 0,
-  [addExtraPrice, extraPriceNumber]
-);
+  const extraPriceValid = useMemo(
+    () => addExtraPrice && Number.isFinite(extraPriceNumber) && extraPriceNumber >= 0,
+    [addExtraPrice, extraPriceNumber]
+  );
 
-// NEW: compute the update button label
-const updateBtnLabel = useMemo(() => {
-  let label =
-    onlyThisPage && selectedPage?.title
-      ? `Update for ${selectedPage.title}`
-      : 'Update Placement';
-  if (!onlyThisPage && extraPriceValid) label += ' +';
-  return label;
-}, [onlyThisPage, selectedPage?.title, extraPriceValid]);
+  // NEW: compute the update button label
+  const updateBtnLabel = useMemo(() => {
+    let label =
+      onlyThisPage && selectedPage?.title ? `Update for ${selectedPage.title}` : 'Update Placement';
+    if (!onlyThisPage && extraPriceValid) label += ' +';
+    return label;
+  }, [onlyThisPage, selectedPage?.title, extraPriceValid]);
 
   // replace your existing handleClearAll with this:
   const handleClearAll = () => {
@@ -383,8 +383,8 @@ const updateBtnLabel = useMemo(() => {
     setOnlyThisPage(true);
 
     // NEW: Hide/clear extra price UI when scoping to page
-  setAddExtraPrice(false);
-  setExtraPrice('');
+    setAddExtraPrice(false);
+    setExtraPrice('');
   };
 
   // Persist to localStorage for logos page
@@ -431,32 +431,35 @@ const updateBtnLabel = useMemo(() => {
   };
 
   // Client-side helper: clear ONE product from the Next.js server cache
-  const clearProductCacheClient = useCallback(async (id, { prime = false } = {}) => {
-  if (!id) return;
-  if (!csrfToken) {
-    console.warn('[cache] skip: no csrfToken yet');
-    return;
-  }
-  console.log(`[cache] Clearing product #${id} from cache...`, csrfToken);
-  try {
-    const url = `/api/cache/product/clear?id=${id}${prime ? '&prime=1' : ''}`;
-    const r = await fetch(`/api/cache/product/clear${prime ? '?prime=1' : ''}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-ms-csrf': csrfToken,
-      },
-      body: JSON.stringify({ id }),
-    });
+  const clearProductCacheClient = useCallback(
+    async (id, { prime = false } = {}) => {
+      if (!id) return;
+      if (!csrfToken) {
+        console.warn('[cache] skip: no csrfToken yet');
+        return;
+      }
+      console.log(`[cache] Clearing product #${id} from cache...`, csrfToken);
+      try {
+        const url = `/api/cache/product/clear?id=${id}${prime ? '&prime=1' : ''}`;
+        const r = await fetch(`/api/cache/product/clear${prime ? '?prime=1' : ''}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-ms-csrf': csrfToken,
+          },
+          body: JSON.stringify({ id }),
+        });
 
-    const txt = await r.text();
-    const msg = `[cache] POST ${url} -> ${r.status}`;
-    if (!r.ok) console.warn(msg, txt); else console.log(msg, txt);
-
-  } catch (e) {
-    console.warn('Product cache clear error', e);
-  }
-}, [csrfToken]);
+        const txt = await r.text();
+        const msg = `[cache] POST ${url} -> ${r.status}`;
+        if (!r.ok) console.warn(msg, txt);
+        else console.log(msg, txt);
+      } catch (e) {
+        console.warn('Product cache clear error', e);
+      }
+    },
+    [csrfToken]
+  );
 
   // === Update Placement (with guard for active) ===
   const handleSavePlacement = async () => {
@@ -940,7 +943,7 @@ const updateBtnLabel = useMemo(() => {
           )}
 
           {/* Add extra print price (hidden if scoped to a single page) */}
-          {! updateButtonDisabled && ! onlyThisPage && (
+          {!updateButtonDisabled && !onlyThisPage && (
             <div className="px-6 mt-2">
               <label className="flex items-center gap-2 text-sm select-none curposer-pointer">
                 <input
@@ -969,7 +972,8 @@ const updateBtnLabel = useMemo(() => {
                   value={extraPrice}
                   onKeyDown={e => {
                     // prevent minus/exponent chars in number input
-                    if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') e.preventDefault();
+                    if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+')
+                      e.preventDefault();
                   }}
                   onChange={e => {
                     let v = e.target.value ?? '';

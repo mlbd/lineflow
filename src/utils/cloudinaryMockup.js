@@ -4,12 +4,82 @@
 const ENV_CLOUD =
   process.env.NEXT_PUBLIC_CLD_CLOUD || process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
 
+/** Optional gating for `back` logo usage.
+ * When false (default): we do NOT check the per-product allow list;
+ *                      a placement with `back:true` can use the back logo (unless user forces otherwise).
+ * When true:           we require the product to be in the allow list (existing behavior).
+ */
+export const ENABLE_ALLOW_BACK_GATE = false;
+
 /** Toggle the new "step-scaling" logic.
  * Set NEXT_PUBLIC_ENABLE_LOGO_STEP_SCALING=0 to disable.
  */
 export const ENABLE_LOGO_STEP_SCALING = '1';
 
 /* --------------------- shared helpers --------------------- */
+
+// ------------------- transient, SCOPED in-memory overrides -------------------
+// Map<scopeToken, Map<productId, Map<placementName, boolean>>>.
+const FORCE_BACK_OVERRIDES = new Map();
+
+function keyPID(pid) {
+  return String(pid || '');
+}
+function keyName(n) {
+  return String(n || '');
+}
+function keyScope(s) {
+  return String(s || '');
+}
+
+export function setForceBackOverrides(productId, byName, { scope } = {}) {
+  const pid = keyPID(productId);
+  if (!pid) return;
+  const sc = keyScope(scope || '__global__'); // if you truly want global, you can omit scope
+  let scopeMap = FORCE_BACK_OVERRIDES.get(sc);
+  if (!scopeMap) {
+    scopeMap = new Map();
+    FORCE_BACK_OVERRIDES.set(sc, scopeMap);
+  }
+  let prodMap = scopeMap.get(pid);
+  if (!prodMap) {
+    prodMap = new Map();
+    scopeMap.set(pid, prodMap);
+  }
+  const assign = (name, val) => {
+    if (val === 'Back') prodMap.set(keyName(name), true);
+    else if (val === 'Default') prodMap.set(keyName(name), false);
+    else if (typeof val === 'boolean') prodMap.set(keyName(name), val);
+  };
+  if (byName instanceof Map) {
+    byName.forEach((val, name) => assign(name, val));
+  } else if (byName && typeof byName === 'object') {
+    Object.entries(byName).forEach(([name, val]) => assign(name, val));
+  }
+}
+
+export function clearForceBackOverrides(productId, { scope } = {}) {
+  const pid = keyPID(productId);
+  const sc = keyScope(scope || '__global__');
+  const scopeMap = FORCE_BACK_OVERRIDES.get(sc);
+  if (!scopeMap) return;
+  scopeMap.delete(pid);
+  if (scopeMap.size === 0) FORCE_BACK_OVERRIDES.delete(sc);
+}
+
+export function clearForceBackScope(scope) {
+  const sc = keyScope(scope || '__global__');
+  FORCE_BACK_OVERRIDES.delete(sc);
+}
+
+function getOverrideFor(productId, name, scope) {
+  const sc = keyScope(scope || '__global__');
+  const scopeMap = FORCE_BACK_OVERRIDES.get(sc);
+  if (!scopeMap) return undefined;
+  const prodMap = scopeMap.get(keyPID(productId));
+  if (!prodMap) return undefined;
+  return prodMap.get(keyName(name));
+}
 
 export const isCloudinaryUrl = url =>
   !!url && typeof url === 'string' && url.includes('res.cloudinary.com');
@@ -84,8 +154,50 @@ const isDarkHex = hex => brightnessFromHex(hex) < 128;
 
 const validLogo = obj => !!obj?.url && isCloudinaryUrl(obj.url);
 
-const pickLogoVariant = (logos, useBack, bgIsDark) => {
+// Normalize "Lighter"/"Darker" → "lighter"/"darker" or '' if invalid
+const normalizeShade = s => {
+  const v = String(s || '')
+    .trim()
+    .toLowerCase();
+  if (v === 'lighter' || v === 'darker') return v;
+  return '';
+};
+
+const pickLogoVariant = (logos, useBack, bgIsDark, baseShade = '') => {
+  const shade = normalizeShade(baseShade);
   const get = k => logos?.[k] || null;
+
+  // If baseShade is valid, force that variant and ignore bgIsDark
+  if (shade) {
+    const forcedKey = useBack
+      ? shade === 'lighter'
+        ? 'back_lighter'
+        : 'back_darker'
+      : shade === 'lighter'
+        ? 'logo_lighter'
+        : 'logo_darker';
+
+    const forced = get(forcedKey);
+    if (validLogo(forced)) return forced;
+
+    // If the forced asset is missing, fall back sensibly within the same "side"
+    const altKey = useBack
+      ? shade === 'lighter'
+        ? 'back_darker'
+        : 'back_lighter'
+      : shade === 'lighter'
+        ? 'logo_darker'
+        : 'logo_lighter';
+    const alt = get(altKey);
+    if (validLogo(alt)) return alt;
+
+    // Last resorts (front side)
+    if (validLogo(get('logo_darker'))) return get('logo_darker');
+    if (validLogo(get('logo_lighter'))) return get('logo_lighter');
+    return null;
+  }
+
+  // Original behavior (no override)
   const want = useBack
     ? bgIsDark
       ? get('back_lighter')
@@ -126,8 +238,10 @@ const percentDiff = (a, b) => {
  * INPUTS
  * - overlayId  : Cloudinary public ID of the logo layer (already parsed, no file extension).
  * - logoW/H    : Natural (pixel) size of the chosen logo asset.
- * - placement  : { xPercent, yPercent, wPercent, hPercent, rotation/angle... }
+ * - placement  : { xPercent, yPercent, wPercent, hPercent, rotation/angle..., extent?: boolean }
  *                Coordinates are normalized (0..1) relative to the base image.
+ *                When placement.extent === false (or placement.extend === false), we DO NOT upscale
+ *                the fitted logo beyond the placement box (no step-scaling, no legacy bump).
  * - naturalW/H : The pixel size of the base render canvas the percentages map onto.
  * - useRelative: When true, we write "fl_relative" on both overlay and apply segments.
  *
@@ -142,8 +256,8 @@ const percentDiff = (a, b) => {
  *     overlay: ... , a_<angle>
  *     apply  : fl_layer_apply, g_center, x_<offset-from-center>, y_<offset-from-center>
  * - If no rotation, we position by top-left (north_west) and center the fitted logo inside the box.
- * - NEW: Optional step-scaling heuristic (ENABLE_LOGO_STEP_SCALING) adjusts fitted size for logos
- *        that are not "very" horizontal/vertical, using thresholds at 80% / 60% / 40%.
+ * - Optional step-scaling heuristic (ENABLE_LOGO_STEP_SCALING) adjusts fitted size for logos
+ *   that are not "very" horizontal/vertical — but this is DISABLED when extent === false.
  */
 const buildLogoPlacementTransforms = ({
   overlayId,
@@ -154,7 +268,8 @@ const buildLogoPlacementTransforms = ({
   naturalH,
   useRelative = false,
 }) => {
-  // --- Basic guards: we can't build anything without an overlay, a placement, or a canvas size.
+  // console.log('buildLogoPlacementTransforms:::placement', placement);
+  // --- Basic guards
   if (!overlayId || !placement) return [];
   const { xPercent, yPercent, wPercent, hPercent } = placement;
   if (
@@ -168,184 +283,118 @@ const buildLogoPlacementTransforms = ({
     return [];
   }
 
-  // --- Normalize logo dimensions (defensive: default to 0 if NaN/undefined).
-  const lw = Number(logoW) || 0; // logo natural width in px
-  const lh = Number(logoH) || 0; // logo natural height in px
+  // console.log('buildLogoPlacementTransforms::placement', placement);
 
-  // --- Convert normalized placement (% of base) to absolute pixels on the render canvas.
-  //     e.g. if xPercent=0.25 and naturalW=2000, x becomes 500 px.
-  const x = Math.round(xPercent * naturalW); // placement left (px)
-  const y = Math.round(yPercent * naturalH); // placement top  (px)
-  const w = Math.round(wPercent * naturalW); // placement width (px)
-  const h = Math.round(hPercent * naturalH); // placement height(px)
+  // Respect extent flag (also accept legacy 'extend' typo just in case)
+  const preventExtent = placement?.extent === false || placement?.extend === false;
 
-  // --- Determine orientations for both logo and box.
-  //     getOrientation returns 'horizontal' | 'vertical' | 'square' using aspect thresholds.
+  // --- Normalize logo dimensions
+  const lw = Number(logoW) || 0;
+  const lh = Number(logoH) || 0;
+
+  // --- Convert normalized placement to absolute pixels on the render canvas
+  const x = Math.round(xPercent * naturalW);
+  const y = Math.round(yPercent * naturalH);
+  const w = Math.round(wPercent * naturalW);
+  const h = Math.round(hPercent * naturalH);
+
+  // --- Orientations
   const logoOrientation = getOrientation(lw, lh);
   const boxOrientation = getOrientation(w, h);
 
-  // --- Aspect ratios for fit decision: we "c_pad" the logo into the box.
-  const logoAspect = lw / lh; // >1 means wider than tall
-  const boxAspect = w / h; // >1 means wider than tall
+  // --- Aspect ratios
+  const logoAspect = lw / lh;
+  const boxAspect = w / h;
 
-  // --- Aspect-fit into the placement rectangle (no cropping).
-  //     If logo is relatively "wider" than the box, we fit by width; otherwise by height.
-  //     This reproduces Cloudinary c_pad behavior we want to reflect explicitly in size.
+  // --- Aspect-fit (no crop): start always <= box
   let fitW, fitH;
   if (logoAspect >= boxAspect) {
-    fitW = w; // take the full box width
-    fitH = Math.round(w / logoAspect); // compute height to preserve logo aspect
+    fitW = w;
+    fitH = Math.round(w / logoAspect);
   } else {
-    fitH = h; // take the full box height
-    fitW = Math.round(h * logoAspect); // compute width to preserve logo aspect
+    fitH = h;
+    fitW = Math.round(h * logoAspect);
   }
 
-  // --- Legacy "cross-orientation" scaling:
-  //     If logo orientation mismatches the box orientation by a big margin,
-  //     gently scale it up (SCALE_UP_FACTOR) to visually fill better.
-  const doScaleUp = logoOrientation !== boxOrientation;
-  const aspectDiff = Math.abs(logoAspect - boxAspect) / Math.max(logoAspect, boxAspect);
-  if (doScaleUp && aspectDiff > ASPECT_DIFF_THRESHOLD) {
-    fitW = Math.round(fitW * SCALE_UP_FACTOR);
-    fitH = Math.round(fitH * SCALE_UP_FACTOR);
+  // --- Legacy scale-up for cross-orientation → ONLY if extent is allowed
+  if (!preventExtent) {
+    const doScaleUp = logoOrientation !== boxOrientation;
+    const aspectDiff = Math.abs(logoAspect - boxAspect) / Math.max(logoAspect, boxAspect);
+    if (doScaleUp && aspectDiff > ASPECT_DIFF_THRESHOLD) {
+      fitW = Math.round(fitW * SCALE_UP_FACTOR);
+      fitH = Math.round(fitH * SCALE_UP_FACTOR);
+    }
   }
 
-  // ======================================================================
-  // NEW: Step-scaling heuristic (gated by ENABLE_LOGO_STEP_SCALING)
-  // ----------------------------------------------------------------------
-  // Why: Some logos are only *slightly* wider (or taller) than they are high (or wide),
-  // which can look undersized after a strict aspect-fit. We apply extra scaling for:
-  // - Horizontal boxes: if the logo isn't *strongly* horizontal (W>H but not by much),
-  //   reduce the scaling percentages by 20%, then step up size if the fitted width is
-  //   less than 80%/60%/40% of the box width (scale_40/60/80).
-  // - Vertical boxes: same idea but measured against height ratios.
-  // Expectations:
-  // - Logos that are clearly horizontal/vertical remain mostly unchanged.
-  // - Logos near-square in a strong orientation box get a tasteful size boost.
-  // - Disabled entirely when NEXT_PUBLIC_ENABLE_LOGO_STEP_SCALING=0.
-  // ======================================================================
-  if (ENABLE_LOGO_STEP_SCALING) {
-    // Reduction multipliers: default 1.0 (no reduction); become 0.8 (reduce 20%) when triggered.
+  // --- Step-scaling heuristic → ONLY if extent is allowed
+  if (ENABLE_LOGO_STEP_SCALING && !preventExtent) {
     let horizontalReduce = 1.0;
     let verticalReduce = 1.0;
 
     if (boxOrientation === 'horizontal') {
-      // "width-to-height difference percentage of the logo"
-      // We treat `percentDiff(lw, lh)` ~ (H/W) bounded to [0..1]. Smaller => more horizontal.
       if (lw > lh) {
         const diff = percentDiff(lw, lh);
-        // If logo is wider than tall but not *very* wide (<= 80%), dampen step multipliers by 20%.
         if (diff <= 0.8) horizontalReduce = 0.8;
       }
-
-      // Width-based step thresholds: compare fitted width vs box width.
       const widthRatio = fitW / w;
-
-      // If fitted width < 80% of box width → scale_40 (multiply by 1.4, reduced by horizontalReduce).
       if (fitW < w && widthRatio < 0.8) {
         fitW = Math.round(fitW * (1.4 * horizontalReduce));
         fitH = Math.round(fitH * (1.4 * horizontalReduce));
       }
-      // If still < 60% → scale_60 (upgrade from previous 1.4 to 1.6; we revert then reapply).
       if (fitW < w && widthRatio < 0.6) {
         fitW = Math.round((fitW / (1.4 * horizontalReduce)) * (1.6 * horizontalReduce));
         fitH = Math.round((fitH / (1.4 * horizontalReduce)) * (1.6 * horizontalReduce));
       }
-      // If still < 40% → scale_80 (upgrade from previous 1.6 to 1.8; revert then reapply).
       if (fitW < w && widthRatio < 0.4) {
         fitW = Math.round((fitW / (1.6 * horizontalReduce)) * (1.8 * horizontalReduce));
         fitH = Math.round((fitH / (1.6 * horizontalReduce)) * (1.8 * horizontalReduce));
       }
     } else if (boxOrientation === 'vertical') {
-      // "height-to-width difference percentage of the logo"
-      // We treat `percentDiff(lh, lw)` ~ (W/H) bounded to [0..1]. Smaller => more vertical.
       if (lh > lw) {
         const diff = percentDiff(lh, lw);
-        // If logo is taller than wide but not *very* tall (<= 80%), dampen step multipliers by 20%.
         if (diff <= 0.8) verticalReduce = 0.8;
       }
-
-      // Height-based step thresholds: compare fitted height vs box height.
       const heightRatio = fitH / h;
-
-      // If fitted height < 80% of box height → scale_40 (multiply by 1.4, reduced by verticalReduce).
       if (fitH < h && heightRatio < 0.8) {
         fitW = Math.round(fitW * (1.4 * verticalReduce));
         fitH = Math.round(fitH * (1.4 * verticalReduce));
       }
-      // If still < 60% → scale_60 (upgrade from previous 1.4 to 1.6; we revert then reapply).
       if (fitH < h && heightRatio < 0.6) {
         fitW = Math.round((fitW / (1.4 * verticalReduce)) * (1.6 * verticalReduce));
         fitH = Math.round((fitH / (1.4 * verticalReduce)) * (1.6 * verticalReduce));
       }
-      // If still < 40% → scale_80 (upgrade from previous 1.6 to 1.8; revert then reapply).
       if (fitH < h && heightRatio < 0.4) {
         fitW = Math.round((fitW / (1.6 * verticalReduce)) * (1.8 * verticalReduce));
         fitH = Math.round((fitH / (1.6 * verticalReduce)) * (1.8 * verticalReduce));
       }
     }
-    // For 'square' boxes we intentionally do nothing: the base aspect-fit is visually acceptable.
   }
 
-  // --- Rotation handling: we compute the angle (deg). 0 means "no rotation".
-  const angleDeg = getAngleDeg(placement);
+  // --- Final clamp: if extent is prevented, NEVER exceed the box
+  if (preventExtent) {
+    fitW = Math.min(fitW, w);
+    fitH = Math.min(fitH, h);
+  }
 
-  // --- Relative flag: when true, we add "fl_relative," to both segments.
+  // --- Rotation handling
+  const angleDeg = getAngleDeg(placement);
   const maybeRel = useRelative ? 'fl_relative,' : '';
 
   if (!angleDeg) {
-    // =========================
-    // NON-ROTATED PLACEMENT
-    // -------------------------
-    // We want the logo centered inside the placement rectangle (x,y,w,h).
-    // Since Cloudinary `c_pad,g_center` fits the content inside the requested w/h,
-    // we position the final fitted size by offsetting from the top-left corner:
-    //   logoX = x + (w - fitW)/2
-    //   logoY = y + (h - fitH)/2
+    // NON-ROTATED: top-left positioning, centered in (x,y,w,h)
     const logoX = x + Math.round((w - fitW) / 2);
     const logoY = y + Math.round((h - fitH) / 2);
-
-    // Segment 1 (overlay): build the layer with size and pad fit.
-    // - l_<overlayId> : select the overlay asset
-    // - c_pad         : pad-fit (no crop), honoring the specified w_/h_
-    // - g_center      : center within that box
-    // - b_auto        : auto background for padding (invisible when composited)
-    // - w_/h_         : target box for pad-fit (our computed fitW/fitH already aspect-safe)
     const overlay = `l_${overlayId},c_pad,${maybeRel}w_${fitW},h_${fitH},g_center,b_auto`;
-
-    // Segment 2 (apply): place the already-prepared overlay onto the base image.
-    // - fl_layer_apply : commit the overlay onto the base
-    // - g_north_west   : interpret x/y from the top-left corner of the base image
-    // - x_/y_          : offset in pixels (or relative units if fl_relative) from g_north_west
     const apply = `fl_layer_apply,${maybeRel}x_${logoX},y_${logoY},g_north_west`;
-
     return [overlay, apply];
   } else {
-    // ======================
-    // ROTATED PLACEMENT
-    // ----------------------
-    // When rotation is applied, using top-left (north_west) tends to "drift."
-    // Instead, we:
-    // 1) Prepare the fitted overlay with the angle.
-    // 2) Apply it relative to the center of the base image (g_center).
-    // 3) Translate by the delta from image center to the *center of the placement box*.
-    //
-    // Center of placement box in absolute px:
+    // ROTATED: center positioning to avoid drift
     const cx = x + Math.round(w / 2);
     const cy = y + Math.round(h / 2);
-
-    // Offsets from the base image center:
     const offX = cx - Math.round(naturalW / 2);
     const offY = cy - Math.round(naturalH / 2);
-
-    // Segment 1 (overlay): same pad-fit, but include rotation (a_<deg>).
     const overlay = `l_${overlayId},c_pad,${maybeRel}w_${fitW},h_${fitH},g_center,b_auto,a_${angleDeg}`;
-
-    // Segment 2 (apply): place via image center to avoid drift.
-    // - g_center : (0,0) now refers to the center of the base image.
-    // - x_/y_    : signed offsets from the center to land the logo at the placement center.
     const apply = `fl_layer_apply,${maybeRel}g_center,x_${offX},y_${offY}`;
-
     return [overlay, apply];
   }
 };
@@ -381,20 +430,14 @@ export const buildCloudinaryMockupUrl = ({
   placements = [],
   logos = {},
   productId = null,
+  baseShade = '',
 }) => {
-  // console.log('buildCloudinaryMockupUrl', {
-  //   baseUrl,
-  //   baseW,
-  //   baseH,
-  //   baseHex,
-  //   placements,
-  //   logos,
-  //   productId,
-  // });
   if (!isCloudinaryUrl(baseUrl)) return baseUrl;
   if (!Array.isArray(placements) || placements.length === 0) return baseUrl;
   if (!validLogo(logos?.logo_darker)) return baseUrl;
   if (!baseW || !baseH) return baseUrl;
+
+  // console.log(`logos:${productId}`, logos);
 
   const parsedBase = parseCloudinaryIds(baseUrl);
   const cloud = ENV_CLOUD || parsedBase.cloud;
@@ -407,7 +450,7 @@ export const buildCloudinaryMockupUrl = ({
   const naturalH = baseH;
 
   placements.forEach(p => {
-    const parsedLogoObj = pickLogoVariant(logos, !!p.__useBack, bgIsDark);
+    const parsedLogoObj = pickLogoVariant(logos, !!p.__useBack, bgIsDark, baseShade);
     if (!parsedLogoObj) return;
 
     const parsedLogo = parseCloudinaryIds(parsedLogoObj.url);
@@ -441,21 +484,15 @@ export const buildRelativeMockupUrl = ({
   productId = null,
   baseW = 0,
   baseH = 0,
+  baseShade = '',
 }) => {
-  // console.log('buildRelativeMockupUrl', {
-  //   baseUrl,
-  //   placements,
-  //   logos,
-  //   baseHex,
-  //   max,
-  //   maxH,
-  //   productId,
-  // });
   if (!isCloudinaryUrl(baseUrl)) return baseUrl;
   if (!Array.isArray(placements) || placements.length === 0) return baseUrl;
   if (!validLogo(logos?.logo_darker)) return baseUrl;
   // if !max and baseW, baseH zero then return baseUrl but if max is set then continue, also if !max and baseW, baseH set then continue
   if (!max && (!baseW || !baseH)) return baseUrl;
+
+  // console.log(`logos:${productId}`, logos);
 
   // if max is not set then use baseW
   if (!max) {
@@ -475,10 +512,8 @@ export const buildRelativeMockupUrl = ({
   const naturalW = max;
   const naturalH = getAspectHeight(baseW, baseH, max);
 
-  console.log(`=====${productId}=====`, naturalW, naturalH);
-
   placements.forEach(p => {
-    const chosen = pickLogoVariant(logos, !!p.__useBack, bgIsDark);
+    const chosen = pickLogoVariant(logos, !!p.__useBack, bgIsDark, baseShade);
     if (!chosen || !isCloudinaryUrl(chosen.url)) return;
 
     const parsedLogo = parseCloudinaryIds(chosen.url);
@@ -513,6 +548,7 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
   let baseW = Number(product?.thumbnail_meta?.width) || 0;
   let baseH = Number(product?.thumbnail_meta?.height) || 0;
   let baseHex = product?.thumbnail_meta?.thumbnail_color || '#ffffff';
+  let baseShade = ''; // <— NEW
 
   if (product?.acf?.group_type === 'Group' && Array.isArray(product?.acf?.color)) {
     const idx = Number(opts?.colorIndex ?? 0);
@@ -523,17 +559,24 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
       baseH = Number(clr?.thumbnail?.height) || baseH;
       baseHex = clr?.color_hex_code || baseHex;
     }
+    baseShade = normalizeShade(clr?.lightdark); // <— NEW ('' if invalid)
   }
 
   const rawPlacements = resolvePlacements(product, opts);
-  const allowBack = isBackAllowedForProduct(product?.id, opts);
+  // Gate can be disabled globally
+  const allowBack = ENABLE_ALLOW_BACK_GATE ? isBackAllowedForProduct(product?.id, opts) : true;
 
   const activePlacements = rawPlacements.filter(p => p?.active === true);
 
-  const placements = activePlacements.map(p => ({
-    ...p,
-    __useBack: !!(p?.back && allowBack),
-  }));
+  const placements = activePlacements.map(p => {
+    const forced =
+      typeof p.__forceBack === 'boolean'
+        ? p.__forceBack
+        : getOverrideFor(product?.id, p?.name, opts.overrideScope);
+    const defaultBack = !!(p?.back && (ENABLE_ALLOW_BACK_GATE ? allowBack : true));
+    const __useBack = typeof forced === 'boolean' ? forced : defaultBack;
+    return { ...p, __useBack };
+  });
 
   if (!opts?.max) {
     if (!baseW || !baseH) {
@@ -544,6 +587,7 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
         baseHex,
         max: 900,
         productId: product?.id || null,
+        baseShade, // <— NEW
       });
     }
     return buildCloudinaryMockupUrl({
@@ -554,6 +598,7 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
       placements,
       logos,
       productId: product?.id || null,
+      baseShade, // <— NEW
     });
   }
 
@@ -566,6 +611,7 @@ export const generateProductImageUrl = (product, logos, opts = {}) => {
     productId: product?.id || null,
     baseW,
     baseH,
+    baseShade, // <— NEW
   });
 };
 
@@ -593,6 +639,7 @@ const resolveCartBaseFromItem = item => {
   let hex = item?.thumbnail_meta?.thumbnail_color || '#ffffff';
   let width = Number(item?.thumbnail_meta?.width) || 0;
   let height = Number(item?.thumbnail_meta?.height) || 0;
+  let baseShade = ''; // <— NEW
 
   // Look for a type in several places and normalize ("Quantity" vs "Quanity" etc.)
   const rawType =
@@ -607,10 +654,12 @@ const resolveCartBaseFromItem = item => {
     // Try the explicitly chosen color first
     const directUrl = item?.options?.color_thumbnail_url || '';
     const colorTitle = item?.options?.color || '';
+    const colorLightdarkOpt = item?.options?.color_lightdark || item?.options?.lightdark || ''; // optional fallback
 
     if (directUrl) {
       url = directUrl;
       hex = item?.options?.color_hex_code || hex;
+      baseShade = normalizeShade(colorLightdarkOpt); // may still be ''
     }
 
     // Pull W/H from ACF color row if possible
@@ -627,6 +676,8 @@ const resolveCartBaseFromItem = item => {
         width = Number(match?.thumbnail?.width) || width;
         height = Number(match?.thumbnail?.height) || height;
         hex = match?.color_hex_code || hex;
+        // Prefer ACF lightdark if present
+        baseShade = normalizeShade(match?.lightdark) || baseShade;
       }
     }
   }
@@ -639,13 +690,13 @@ const resolveCartBaseFromItem = item => {
     if (!hex) hex = item?.product?.thumbnail_meta?.thumbnail_color || hex;
   }
 
-  return { url, hex, width, height, type };
+  return { url, hex, width, height, type, baseShade };
 };
 
 export const generateCartThumbUrlFromItem = (
   item,
   logos,
-  { max = 200, pagePlacementMap, customBackAllowedSet } = {}
+  { max = 200, pagePlacementMap, customBackAllowedSet, overrideScope } = {}
 ) => {
   if (!item) return '';
 
@@ -686,18 +737,25 @@ export const generateCartThumbUrlFromItem = (
   rawPlacements = rawPlacements.filter(p => p?.active === true);
   if (!rawPlacements.length) return base.url;
 
-  const ItemProductID = pid;
-  console.log('ItemProductID==before', ItemProductID);
-  console.log('pid==before', pid);
-  console.log('pid==base', base);
+  // console.log(`generateCartThumbUrlFromItem::rawPlacements::${item?.product?.id}`, rawPlacements);
 
-  // If we have intrinsic base dims, run the *exact* relative builder like the grid (prevents "smaller logo" effect)
+  // If we have intrinsic base dims, run the exact relative builder like the grid
   if (base.width > 0 && base.height > 0) {
-    const allowBack = isBackAllowedForProduct(pid, { customBackAllowedSet });
-    const placements = rawPlacements.map(p => ({ ...p, __useBack: !!(p?.back && allowBack) }));
+    const allowBack = ENABLE_ALLOW_BACK_GATE
+      ? isBackAllowedForProduct(pid, { customBackAllowedSet })
+      : true;
+    const placements = rawPlacements.map(p => {
+      const forced =
+        typeof p.__forceBack === 'boolean'
+          ? p.__forceBack
+          : getOverrideFor(pid, p?.name, overrideScope);
+      const defaultBack = !!(p?.back && (ENABLE_ALLOW_BACK_GATE ? allowBack : true));
+      const __useBack = typeof forced === 'boolean' ? forced : defaultBack;
+      // console.log(`generateCartThumbUrlFromItem::::${item?.product?.id}`, p, `forced:${forced}`, `defaultBack:${defaultBack}`, `__useBack:${__useBack}`);
+      return { ...p, __useBack };
+    });
 
-    console.log('ItemProductID==after', ItemProductID);
-    console.log('pid==after', pid);
+    // console.log(`generateCartThumbUrlFromItem::placements::${item?.product?.id}`, placements);
 
     return buildRelativeMockupUrl({
       baseUrl: base.url,
@@ -708,6 +766,7 @@ export const generateCartThumbUrlFromItem = (
       productId: pid,
       baseW: base.width,
       baseH: base.height,
+      baseShade: base.baseShade,
     });
   }
 
@@ -719,7 +778,7 @@ export const generateCartThumbUrlFromItem = (
   if (!logos?.logo_darker?.url || !isCloudinaryUrl(logos.logo_darker.url)) return base.url;
   const bgIsDark = isDarkHex(base.hex);
 
-  const allowBack = Array.isArray(customBackAllowedSet)
+  const allowBackRaw = Array.isArray(customBackAllowedSet)
     ? customBackAllowedSet.map(String).includes(pidStr)
     : !!(
         customBackAllowedSet &&
@@ -727,14 +786,21 @@ export const generateCartThumbUrlFromItem = (
         customBackAllowedSet.has(pidStr)
       );
 
-  const placements = rawPlacements.map(p => ({ ...p, __useBack: !!(p?.back && allowBack) }));
+  const allowBack = ENABLE_ALLOW_BACK_GATE ? allowBackRaw : true;
+  const placements = rawPlacements.map(p => {
+    const forced = typeof p.__forceBack === 'boolean' ? p.__forceBack : undefined;
+    const defaultBack = !!(p?.back && allowBack);
+    const __useBack = typeof forced === 'boolean' ? forced : defaultBack;
+    return { ...p, __useBack };
+  });
+
   const transforms = [`f_auto,q_auto,c_fit,w_${max},h_${max}`];
 
   placements.forEach(p => {
     if (p.xPercent == null || p.yPercent == null || p.wPercent == null || p.hPercent == null)
       return;
 
-    const chosen = pickLogoVariant(logos, !!p.__useBack, bgIsDark);
+    const chosen = pickLogoVariant(logos, !!p.__useBack, bgIsDark, base.baseShade);
     if (!chosen || !isCloudinaryUrl(chosen.url)) return;
 
     const parsedLogo = parseCloudinaryIds(chosen.url);
@@ -743,6 +809,8 @@ export const generateCartThumbUrlFromItem = (
     const lw = Number(chosen.width) || 0;
     const lh = Number(chosen.height) || 0;
 
+    // This legacy path already strictly aspect-fits and never upsizes beyond the box,
+    // so extent=false is naturally respected here.
     let relW = p.wPercent,
       relH = p.hPercent;
     if (lw > 0 && lh > 0) {
@@ -803,11 +871,11 @@ export const generateProductImageUrlWithOverlay = (
 ) => {
   if (!product) return '';
 
-  // base image
   let baseUrl = product.thumbnail;
   let baseHex = product?.thumbnail_meta?.thumbnail_color || '#ffffff';
   let baseW = Number(product?.thumbnail_meta?.width) || 0;
   let baseH = Number(product?.thumbnail_meta?.height) || 0;
+  let baseShade = ''; // <— NEW
 
   if (product?.acf?.group_type === 'Group' && Array.isArray(product?.acf?.color)) {
     const clr = product.acf.color[Number(colorIndex) || 0] || product.acf.color[0];
@@ -815,12 +883,20 @@ export const generateProductImageUrlWithOverlay = (
       baseUrl = clr.thumbnail.url;
       baseHex = clr?.color_hex_code || baseHex;
     }
+    baseShade = normalizeShade(clr?.lightdark); // <— NEW
   }
 
   const rawPlacements = resolvePlacements(product, { pagePlacementMap });
-
-  // Only active placements
   const placementsActive = rawPlacements.filter(p => p?.active === true);
+  // const allowBack = ENABLE_ALLOW_BACK_GATE
+  //   ? isBackAllowedForProduct(product?.id, { customBackAllowedSet })
+  //   : true;
+  // const placements = placementsActive.map(p => {
+  //   const forced = typeof p.__forceBack === 'boolean' ? p.__forceBack : undefined;
+  //   const defaultBack = !!(p?.back && allowBack);
+  //   const __useBack = typeof forced === 'boolean' ? forced : defaultBack;
+  //   return { ...p, __useBack };
+  // });
 
   const allowBack = isBackAllowedForProduct(product?.id, { customBackAllowedSet });
   const placements = placementsActive.map(p => ({ ...p, __useBack: !!(p?.back && allowBack) }));
@@ -836,26 +912,22 @@ export const generateProductImageUrlWithOverlay = (
   const hex = (overlayHex || '#000000').replace('#', '');
   const op = Math.max(0, Math.min(overlayOpacity, 100));
 
-  // --- Colorized rectangle: with rotation support ---
+  // Colorized bbox (unchanged)...
   placements.forEach(p => {
     const { xPercent, yPercent, wPercent, hPercent } = p || {};
     if (xPercent == null || yPercent == null || wPercent == null || hPercent == null) return;
-
     const angleDeg = getAngleDeg(p);
 
     if (!angleDeg) {
-      // No rotation: use original top-left positioning
       transforms.push(
         `l_one_pixel_s4c3vt,fl_relative,w_${wPercent.toFixed(6)},h_${hPercent.toFixed(6)}`,
         `co_rgb:${hex},e_colorize:100,o_${op},fl_layer_apply,fl_relative,x_${xPercent.toFixed(6)},y_${yPercent.toFixed(6)},g_north_west`
       );
     } else {
-      // With rotation: use center positioning to avoid drift (same logic as logo)
       const cRelX = xPercent + wPercent / 2;
       const cRelY = yPercent + hPercent / 2;
       const offRelX = (cRelX - 0.5).toFixed(6);
       const offRelY = (cRelY - 0.5).toFixed(6);
-
       transforms.push(
         `l_one_pixel_s4c3vt,fl_relative,w_${wPercent.toFixed(6)},h_${hPercent.toFixed(6)},a_${angleDeg}`,
         `co_rgb:${hex},e_colorize:100,o_${op},fl_layer_apply,fl_relative,g_center,x_${offRelX},y_${offRelY}`
@@ -863,30 +935,13 @@ export const generateProductImageUrlWithOverlay = (
     }
   });
 
-  // --- Logo overlays: conditional placement (no-rotation: old; rotation: center) ---
+  // Logos with override-aware pick
   const bgIsDark = isDarkHex(baseHex);
-
   const naturalW = max;
   const naturalH = getAspectHeight(baseW, baseH, naturalW);
 
   placements.forEach(p => {
-    const choose = (logosObj, useBack, dark) => {
-      const get = k => logosObj?.[k] || null;
-      const want = useBack
-        ? dark
-          ? get('back_lighter')
-          : get('back_darker')
-        : dark
-          ? get('logo_lighter')
-          : get('logo_darker');
-      const ok = v => !!v?.url && isCloudinaryUrl(v.url);
-      if (ok(want)) return want;
-      if (ok(get('logo_darker'))) return get('logo_darker');
-      if (ok(get('logo_lighter'))) return get('logo_lighter');
-      return null;
-    };
-
-    const chosen = choose(logos, !!p.__useBack, bgIsDark);
+    const chosen = pickLogoVariant(logos, !!p.__useBack, bgIsDark, baseShade); // <— NEW
     if (!chosen || !isCloudinaryUrl(chosen.url)) return;
 
     const parsedLogo = parseCloudinaryIds(chosen.url);
@@ -899,7 +954,7 @@ export const generateProductImageUrlWithOverlay = (
       placement: p,
       naturalW,
       naturalH,
-      useRelative: false, // keep original (no fl_relative) here
+      useRelative: false,
     });
     if (segs.length) transforms.push(...segs);
   });

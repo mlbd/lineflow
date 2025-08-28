@@ -9,10 +9,13 @@ const g = globalThis;
 if (!g.__MS_PRODUCT_CACHE__) {
   g.__MS_PRODUCT_CACHE__ = { store: new Map(), inflight: new Map() };
 }
-const STORE = g.__MS_PRODUCT_CACHE__.store;     // id -> { data, freshUntil, staleUntil }
+const STORE = g.__MS_PRODUCT_CACHE__.store; // id -> { data, freshUntil, staleUntil }
 const INFLIGHT = g.__MS_PRODUCT_CACHE__.inflight;
 
-const WP_URL  = (process.env.WP_SITE_URL || process.env.NEXT_PUBLIC_WP_SITE_URL || '').replace(/\/$/, '');
+const WP_URL = (process.env.WP_SITE_URL || process.env.NEXT_PUBLIC_WP_SITE_URL || '').replace(
+  /\/$/,
+  ''
+);
 const WP_USER = process.env.WP_API_USER || '';
 const WP_PASS = process.env.WP_API_PASS || '';
 
@@ -62,7 +65,7 @@ async function fetchProductsFromWP(ids) {
   const res = await fetch(url, { headers: { Accept: 'application/json', ...authHeader() } });
   if (!res.ok) throw new Error(`WP ${res.status} for ${url}`);
   const json = await res.json().catch(() => ({}));
-  return Array.isArray(json?.products) ? json.products : (Array.isArray(json) ? json : []);
+  return Array.isArray(json?.products) ? json.products : Array.isArray(json) ? json : [];
 }
 
 async function refreshOne(id, opts) {
@@ -101,11 +104,11 @@ export async function getProductCardsBatch(ids, opts = {}) {
       continue;
     }
     if (r.hit && !r.fresh) {
-      results.set(id, r.data);                 // serve stale now
+      results.set(id, r.data); // serve stale now
       if (!INFLIGHT.has(id)) INFLIGHT.set(id, refreshOne(id, opts)); // refresh in bg
       continue;
     }
-    misses.push(id);                            // true miss
+    misses.push(id); // true miss
   }
 
   if (misses.length) {
