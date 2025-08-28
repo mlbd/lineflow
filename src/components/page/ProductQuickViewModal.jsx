@@ -66,11 +66,23 @@ const placementsSig = arr =>
 function PriceChart({ steps, regularPrice, currency = '₪', extraEach = 0 }) {
   if (!Array.isArray(steps) || steps.length === 0) return null;
 
+  console.log('===>>steps', steps);
+
   const getRange = i => {
     const thisQty = Number(steps[i]?.quantity);
-    const nextQty = steps[i + 1] ? Number(steps[i + 1].quantity) : null;
-    if (i === 0 && nextQty !== null) return `כמות: 1-${nextQty - 1}`;
-    if (i < steps.length - 1 && nextQty !== null) return `כמות: ${thisQty}-${nextQty - 1}`;
+
+    // First tier: always from 1 to thisQty
+    if (i === 0) {
+      return `כמות: 1-${thisQty}`;
+    }
+
+    // Middle tiers: from (previousQty + 1) to thisQty
+    if (i < steps.length - 1) {
+      const prevQty = Number(steps[i - 1]?.quantity);
+      return `כמות: ${prevQty + 1}-${thisQty}`;
+    }
+
+    // Last tier: thisQty+
     return `כמות: ${thisQty}+`;
   };
 
