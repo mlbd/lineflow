@@ -66,8 +66,6 @@ const placementsSig = arr =>
 function PriceChart({ steps, regularPrice, currency = '₪', extraEach = 0 }) {
   if (!Array.isArray(steps) || steps.length === 0) return null;
 
-  console.log('===>>steps', steps);
-
   const getRange = i => {
     const thisQty = Number(steps[i]?.quantity);
 

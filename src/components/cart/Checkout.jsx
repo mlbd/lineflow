@@ -149,13 +149,15 @@ export default function Checkout({
   const shippingCost = Number(selectedShipping?.cost || 0);
   const total = Math.max(0, subtotal - couponDiscount + shippingCost);
 
+  console.log("userMeta", userMeta);
+
   // 5) Form (keeps your lock_profile / dummy_email behavior)
   const initialForm = useMemo(() => {
     const dummyEmail = !!userMeta?.dummy_email;
     const locked = !!userMeta?.lock_profile;
     const base = {
       fullName: locked ? '' : userMeta?.full_name || companyData?.name || '',
-      email: locked || dummyEmail ? '' : userMeta?.email_address || '',
+      email: locked || dummyEmail ? '' : userMeta?.email_address || userMeta?.email_adress || '',
       phone: locked ? '' : userMeta?.phone || '',
       city: locked ? '' : userMeta?.city || '',
       streetName: locked ? '' : userMeta?.street_address || '',
