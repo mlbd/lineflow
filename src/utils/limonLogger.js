@@ -34,18 +34,19 @@ const LEVELS = {
 };
 
 const IS_BROWSER = typeof window !== 'undefined';
-const IS_PROD = (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production') || false;
+const IS_PROD =
+  (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production') || false;
 
 /* --------------------------- Storage Helpers -------------------------- */
 
 const LS_KEYS = {
-  ns: 'limon:ns',       // namespaces for console logging
+  ns: 'limon:ns', // namespaces for console logging
   level: 'limon:level', // global level
 };
 
 const LS_KEYS_FILE = {
-  on: 'limon:file',     // "1" to enable file transport
-  ns: 'limon:file_ns',  // namespaces for file logging
+  on: 'limon:file', // "1" to enable file transport
+  ns: 'limon:file_ns', // namespaces for file logging
 };
 
 function lsGet(key) {
@@ -172,7 +173,7 @@ function nsColorCss(ns) {
 }
 const ANSI = {
   reset: '\x1b[0m',
-  fg: (n) => `\x1b[38;5;${n}m`,
+  fg: n => `\x1b[38;5;${n}m`,
 };
 function nsColorAnsi(ns) {
   const n = (hashColor(ns) % 36) + 1; // 1..37
@@ -306,7 +307,7 @@ function allowed(ns, level) {
 
 function stringifyArgs(arr) {
   return arr
-    .map((a) => {
+    .map(a => {
       try {
         if (typeof a === 'string') return a;
         return JSON.stringify(a);
@@ -324,7 +325,7 @@ function stringifyArgs(arr) {
 function resolveEndpointForRuntime(endpoint) {
   const isAbsolute = /^https?:\/\//i.test(endpoint || '');
   if (IS_BROWSER) {
-    return isAbsolute ? endpoint : (endpoint || '/api/limon-log');
+    return isAbsolute ? endpoint : endpoint || '/api/limon-log';
   }
   // Server: needs absolute URL
   if (isAbsolute) return endpoint;
@@ -344,7 +345,11 @@ async function sendToFile(ns, level, args) {
   // Browser: try Beacon first
   const endpoint = resolveEndpointForRuntime(FILE_LOG.endpoint || '/api/limon-log');
 
-  if (IS_BROWSER && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+  if (
+    IS_BROWSER &&
+    typeof navigator !== 'undefined' &&
+    typeof navigator.sendBeacon === 'function'
+  ) {
     try {
       const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
       navigator.sendBeacon(endpoint, blob);
@@ -391,10 +396,10 @@ export function createLogger(namespace) {
 
   return {
     debug: (...a) => base('debug', a),
-    info:  (...a) => base('info', a),
-    warn:  (...a) => base('warn', a),
+    info: (...a) => base('info', a),
+    warn: (...a) => base('warn', a),
     error: (...a) => base('error', a),
-    log:   (...a) => base('debug', a), // alias
+    log: (...a) => base('debug', a), // alias
   };
 }
 
@@ -455,7 +460,7 @@ export async function limon_file_log(namespace, ...args) {
   endpoint = resolveEndpointForRuntime(endpoint);
 
   // Token only from server env (do not leak to client)
-  const token = IS_BROWSER ? '' : (envGet('LIMON_LOG_TOKEN') || '');
+  const token = IS_BROWSER ? '' : envGet('LIMON_LOG_TOKEN') || '';
 
   try {
     const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -487,8 +492,8 @@ if (IS_BROWSER) {
       setLevel: setLogLevel,
       getLevel: getLogLevel,
       // namespaces
-      enable,        // set console namespaces
-      getEnabled,    // read console namespaces
+      enable, // set console namespaces
+      getEnabled, // read console namespaces
       // file transport controls
       fileEnable: enableFileLog,
       fileDisable: disableFileLog,

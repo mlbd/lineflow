@@ -11,11 +11,7 @@ export default async function handler(req, res) {
     const { approved, draft } = req.body || {};
     if (!draft) return res.status(400).json({ error: 'Missing draft id' });
 
-    limon_file_log(
-      'notify',
-      'zCredit::notify::simulate-notify',
-      limon_pretty({ approved, draft })
-    );
+    limon_file_log('notify', 'zCredit::notify::simulate-notify', limon_pretty({ approved, draft }));
 
     const txId = `SIMTX-${Date.now()}`;
     const event = {
@@ -40,15 +36,11 @@ export default async function handler(req, res) {
         zcredit: event,
       }),
     });
-    
+
     const j = await wp.json().catch(() => ({}));
 
-    limon_file_log(
-      'notify',
-      'zCredit::notify::simulate-notify::response',
-      limon_pretty(j)
-    );
-    
+    limon_file_log('notify', 'zCredit::notify::simulate-notify::response', limon_pretty(j));
+
     if (!wp.ok) return res.status(400).json({ error: j?.message || 'WP complete failed' });
 
     return res.status(200).json({ ok: true, transactionUniqueId: txId, order_id: j?.order_id });
