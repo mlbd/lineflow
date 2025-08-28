@@ -8,18 +8,19 @@
  *  - Safe defaults: production = silent; development = debug but NO namespaces enabled by default
  *  - LocalStorage + URL query overrides (limon_level, limon_ns)
  *  - Quick drop-in: limon_log('Namespace', 'message', data)
- *  - Optional file transport: send selected logs to /api/limon-log → public/logs/limon-debug.log
+ *  - File transport (optional): send selected logs to API (/api/limon-log) → server writes to disk
  *    Controls via limon_file (on/off), limon_file_ns (patterns), limon_file_api (endpoint)
  *
- * Client console styling & Node ANSI colors included.
+ * This version intentionally avoids all NEXT_PUBLIC_* envs.
  *
- * ENV (optional):
- *  - NEXT_PUBLIC_LIMON_LEVEL / LIMON_LEVEL: one of silent|error|warn|info|debug
- *  - NEXT_PUBLIC_LIMON_NS / LIMON_NS: e.g. "CartItem,AddToCart*,-CartShimmer"
- *  - NEXT_PUBLIC_LIMON_FILE / LIMON_FILE: "1"/"true" to enable file logging
- *  - NEXT_PUBLIC_LIMON_FILE_NS / LIMON_FILE_NS: namespaces for file logging
- *  - NEXT_PUBLIC_LIMON_LOG_API: API endpoint (default /api/limon-log)
- *  - NEXT_PUBLIC_LIMON_LOG_TOKEN: token sent as x-limon-token (server should verify with LIMON_LOG_TOKEN)
+ * ENV (server-only, optional):
+ *  - LIMON_LEVEL: one of silent|error|warn|info|debug
+ *  - LIMON_NS: e.g. "CartItem,AddToCart*,-CartShimmer"
+ *  - LIMON_FILE: "1"/"true" to enable file logging
+ *  - LIMON_FILE_NS: namespaces for file logging
+ *  - LIMON_LOG_API: API endpoint (absolute or relative, default /api/limon-log)
+ *  - LIMON_LOG_TOKEN: token sent as x-limon-token for write authorization (prod)
+ *  - SITE_URL: base URL used on server to make absolute requests (e.g., https://example.com)
  */
 
 /* ----------------------------- Constants ------------------------------ */
@@ -33,19 +34,18 @@ const LEVELS = {
 };
 
 const IS_BROWSER = typeof window !== 'undefined';
-const IS_PROD =
-  (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production') || false;
+const IS_PROD = (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production') || false;
 
 /* --------------------------- Storage Helpers -------------------------- */
 
 const LS_KEYS = {
-  ns: 'limon:ns', // namespaces for console logging
+  ns: 'limon:ns',       // namespaces for console logging
   level: 'limon:level', // global level
 };
 
 const LS_KEYS_FILE = {
-  on: 'limon:file', // "1" to enable file transport
-  ns: 'limon:file_ns', // namespaces for file logging
+  on: 'limon:file',     // "1" to enable file transport
+  ns: 'limon:file_ns',  // namespaces for file logging
 };
 
 function lsGet(key) {
@@ -94,21 +94,23 @@ function boolFrom(v) {
 
 /* ------------------------ Initial Console Config ---------------------- */
 
+// [PATCH] uses only LIMON_LEVEL (no NEXT_PUBLIC*)
 function getInitialLevel() {
   const qs = (readQSParam('limon_level') || '').toLowerCase();
-  if (qs && LEVELS.hasOwnProperty(qs)) {
+  if (qs && Object.prototype.hasOwnProperty.call(LEVELS, qs)) {
     lsSet(LS_KEYS.level, qs);
     return qs;
   }
   const ls = (lsGet(LS_KEYS.level) || '').toLowerCase();
-  if (ls && LEVELS.hasOwnProperty(ls)) return ls;
+  if (ls && Object.prototype.hasOwnProperty.call(LEVELS, ls)) return ls;
 
-  const env = (envGet('NEXT_PUBLIC_LIMON_LEVEL') || envGet('LIMON_LEVEL') || '').toLowerCase();
-  if (env && LEVELS.hasOwnProperty(env)) return env;
+  const env = (envGet('LIMON_LEVEL') || '').toLowerCase();
+  if (env && Object.prototype.hasOwnProperty.call(LEVELS, env)) return env;
 
   return IS_PROD ? 'silent' : 'debug';
 }
 
+// [PATCH] uses only LIMON_NS (no NEXT_PUBLIC*)
 function getInitialNamespaces() {
   const qs = readQSParam('limon_ns');
   if (qs != null) {
@@ -118,7 +120,7 @@ function getInitialNamespaces() {
   const ls = lsGet(LS_KEYS.ns);
   if (ls != null) return ls;
 
-  return envGet('NEXT_PUBLIC_LIMON_NS') || envGet('LIMON_NS') || '';
+  return envGet('LIMON_NS') || '';
 }
 
 /* --------------------------- Glob Matchers ---------------------------- */
@@ -149,7 +151,6 @@ function compileMatcher(spec) {
 }
 
 function nsAllowed(ns, matcher) {
-  // If includes contains a '*' pattern, it will simply match everything
   const inInc = matcher.includes.length > 0 ? matcher.includes.some(r => r.test(ns)) : false;
   const inExc = matcher.excludes.some(r => r.test(ns));
   return inInc && !inExc;
@@ -171,7 +172,7 @@ function nsColorCss(ns) {
 }
 const ANSI = {
   reset: '\x1b[0m',
-  fg: n => `\x1b[38;5;${n}m`,
+  fg: (n) => `\x1b[38;5;${n}m`,
 };
 function nsColorAnsi(ns) {
   const n = (hashColor(ns) % 36) + 1; // 1..37
@@ -194,6 +195,7 @@ let MATCHER = compileMatcher(CURRENT_NS_SPEC);
 
 /* --------------------- File Transport Initial State ------------------- */
 
+// [PATCH] uses only LIMON_FILE, LIMON_FILE_NS, LIMON_LOG_API, LIMON_LOG_TOKEN
 function getInitialFileEnabled() {
   const qs = readQSParam('limon_file');
   if (qs != null) {
@@ -204,7 +206,7 @@ function getInitialFileEnabled() {
   const ls = lsGet(LS_KEYS_FILE.on);
   if (ls != null) return boolFrom(ls);
 
-  const env = envGet('NEXT_PUBLIC_LIMON_FILE') || envGet('LIMON_FILE');
+  const env = envGet('LIMON_FILE');
   return boolFrom(env);
 }
 function getInitialFileNamespaces() {
@@ -216,13 +218,14 @@ function getInitialFileNamespaces() {
   const ls = lsGet(LS_KEYS_FILE.ns);
   if (ls != null) return ls;
 
-  return envGet('NEXT_PUBLIC_LIMON_FILE_NS') || envGet('LIMON_FILE_NS') || '';
+  return envGet('LIMON_FILE_NS') || '';
 }
 function getInitialFileEndpoint() {
-  return readQSParam('limon_file_api') || envGet('NEXT_PUBLIC_LIMON_LOG_API') || '/api/limon-log';
+  // relative path is OK in browser; server will convert to absolute when needed
+  return readQSParam('limon_file_api') || envGet('LIMON_LOG_API') || '/api/limon-log';
 }
 function getInitialFileToken() {
-  return envGet('NEXT_PUBLIC_LIMON_LOG_TOKEN') || undefined;
+  return envGet('LIMON_LOG_TOKEN') || undefined;
 }
 
 let FILE_LOG = {
@@ -236,7 +239,7 @@ let FILE_MATCHER = compileMatcher(FILE_LOG.namespaces);
 /* ------------------------- Public API (console) ----------------------- */
 
 export function setLogLevel(level) {
-  if (!LEVELS.hasOwnProperty(level)) return;
+  if (!Object.prototype.hasOwnProperty.call(LEVELS, level)) return;
   CURRENT_LEVEL = level;
   lsSet(LS_KEYS.level, level);
 }
@@ -303,7 +306,7 @@ function allowed(ns, level) {
 
 function stringifyArgs(arr) {
   return arr
-    .map(a => {
+    .map((a) => {
       try {
         if (typeof a === 'string') return a;
         return JSON.stringify(a);
@@ -318,33 +321,39 @@ function stringifyArgs(arr) {
     .join(' ');
 }
 
+function resolveEndpointForRuntime(endpoint) {
+  const isAbsolute = /^https?:\/\//i.test(endpoint || '');
+  if (IS_BROWSER) {
+    return isAbsolute ? endpoint : (endpoint || '/api/limon-log');
+  }
+  // Server: needs absolute URL
+  if (isAbsolute) return endpoint;
+  const base = (envGet('SITE_URL') || 'http://localhost:3000').replace(/\/$/, '');
+  return base + (endpoint?.startsWith('/') ? endpoint : `/${endpoint || 'api/limon-log'}`);
+}
+
+/* -------------------- File Transport (console hook) ------------------- */
+
+// [PATCH] Build absolute URL on server; use only server token (if present)
 async function sendToFile(ns, level, args) {
   if (!FILE_LOG.enabled) return;
   if (!nsAllowed(ns, FILE_MATCHER)) return;
 
-  const payload = {
-    ns,
-    level,
-    ts: new Date().toISOString(),
-    args,
-  };
+  const payload = { ns, level, ts: new Date().toISOString(), args };
 
   // Browser: try Beacon first
-  if (
-    IS_BROWSER &&
-    typeof navigator !== 'undefined' &&
-    typeof navigator.sendBeacon === 'function'
-  ) {
+  const endpoint = resolveEndpointForRuntime(FILE_LOG.endpoint || '/api/limon-log');
+
+  if (IS_BROWSER && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
     try {
       const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-      navigator.sendBeacon(FILE_LOG.endpoint, blob);
+      navigator.sendBeacon(endpoint, blob);
       return;
     } catch {}
   }
 
-  // Fallback: fetch (also works in Node 18+ / Next)
   try {
-    await fetch(FILE_LOG.endpoint, {
+    await fetch(endpoint, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -382,10 +391,10 @@ export function createLogger(namespace) {
 
   return {
     debug: (...a) => base('debug', a),
-    info: (...a) => base('info', a),
-    warn: (...a) => base('warn', a),
+    info:  (...a) => base('info', a),
+    warn:  (...a) => base('warn', a),
     error: (...a) => base('error', a),
-    log: (...a) => base('debug', a), // alias
+    log:   (...a) => base('debug', a), // alias
   };
 }
 
@@ -395,27 +404,6 @@ export function createLogger(namespace) {
  */
 export function limon_log(namespace, ...args) {
   createLogger(namespace).debug(...args);
-}
-
-/* ------------------------- Window Debug Bridge ------------------------ */
-
-if (IS_BROWSER) {
-  try {
-    window.limonDebug = Object.assign({}, window.limonDebug || {}, {
-      // levels
-      setLevel: setLogLevel,
-      getLevel: getLogLevel,
-      // namespaces
-      enable, // set console namespaces
-      getEnabled, // read console namespaces
-      // file transport controls
-      fileEnable: enableFileLog,
-      fileDisable: disableFileLog,
-      fileSetNamespaces: setFileLogNamespaces,
-      fileSetEndpoint: setFileLogEndpoint,
-      fileSetToken: setFileLogToken,
-    });
-  } catch {}
 }
 
 /**
@@ -429,7 +417,7 @@ if (IS_BROWSER) {
 export function limon_pretty(value) {
   try {
     if (typeof value === 'object' && value !== null) {
-      return JSON.stringify(value, null, 2); // 2-space indentation
+      return JSON.stringify(value, null, 2);
     }
     return String(value);
   } catch (e) {
@@ -443,11 +431,17 @@ export function limon_pretty(value) {
 
 /**
  * Force log to file (bypasses namespace/level checks).
- * Always writes to /api/limon-log.
+ * Always writes to the API (default /api/limon-log).
  *
  * Example:
  *   limon_file_log('CartItem', 'this will always be in the file');
+ *
+ * Notes:
+ *  - In production, your /api/limon-log route will require LIMON_LOG_TOKEN.
+ *    Calls from server code (API routes, server actions) will include that token.
+ *  - Client calls in prod will be rejected unless you intentionally expose a token (not recommended).
  */
+// [PATCH] No NEXT_PUBLIC vars; builds absolute URL on server; token only from LIMON_LOG_TOKEN
 export async function limon_file_log(namespace, ...args) {
   const payload = {
     ns: namespace,
@@ -456,43 +450,68 @@ export async function limon_file_log(namespace, ...args) {
     args,
   };
 
+  // Endpoint resolution
+  let endpoint = envGet('LIMON_LOG_API') || '/api/limon-log';
+  endpoint = resolveEndpointForRuntime(endpoint);
+
+  // Token only from server env (do not leak to client)
+  const token = IS_BROWSER ? '' : (envGet('LIMON_LOG_TOKEN') || '');
+
   try {
-    // Figure out the endpoint (absolute for Node, relative for browser)
-    let endpoint = '/api/limon-log';
-    if (!IS_BROWSER) {
-      // Use environment variable for server-side logging
-      const base =
-        process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || `http://localhost:3000`;
-      endpoint = base.replace(/\/$/, '') + '/api/limon-log';
-    }
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const t = ctrl ? setTimeout(() => ctrl.abort(), 8000) : null;
 
     await fetch(endpoint, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        ...(process.env.NEXT_PUBLIC_LIMON_LOG_TOKEN
-          ? { 'x-limon-token': process.env.NEXT_PUBLIC_LIMON_LOG_TOKEN }
-          : process.env.LIMON_LOG_TOKEN
-            ? { 'x-limon-token': process.env.LIMON_LOG_TOKEN }
-            : {}),
+        ...(token ? { 'x-limon-token': token } : {}),
       },
       body: JSON.stringify(payload),
+      ...(ctrl ? { signal: ctrl.signal } : {}),
     });
+
+    if (t) clearTimeout(t);
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error('Failed to write to file log', e);
   }
 }
 
+/* ------------------------- Window Debug Bridge ------------------------ */
+
+if (IS_BROWSER) {
+  try {
+    window.limonDebug = Object.assign({}, window.limonDebug || {}, {
+      // levels
+      setLevel: setLogLevel,
+      getLevel: getLogLevel,
+      // namespaces
+      enable,        // set console namespaces
+      getEnabled,    // read console namespaces
+      // file transport controls
+      fileEnable: enableFileLog,
+      fileDisable: disableFileLog,
+      fileSetNamespaces: setFileLogNamespaces,
+      fileSetEndpoint: setFileLogEndpoint,
+      fileSetToken: setFileLogToken, // note: token on client is for dev only; prod writes require server token
+    });
+  } catch {}
+}
+
 /* -------------------------------- Usage --------------------------------
  * In a file:
- *   import { createLogger, limon_log } from '@/utils/limonLogger';
+ *   import { createLogger, limon_log, limon_file_log, limon_pretty } from '@/utils/limonLogger';
  *
  *   const log = createLogger('CartItem');
  *   log.debug('render', { qty, price });
  *   limon_log('AddToCartGroup', 'selected', selection);
  *
- * Enable logs in browser:
+ * Pretty format:
+ *   limon_log('Cart', limon_pretty(orderData));
+ *   limon_file_log('Checkout', 'payload', limon_pretty(orderData));
+ *
+ * Enable console logs in browser:
  *   localStorage.setItem('limon:ns', 'CartItem'); location.reload();
  *   // or ?limon_ns=CartItem
  *
@@ -502,8 +521,8 @@ export async function limon_file_log(namespace, ...args) {
  * Levels:
  *   localStorage.setItem('limon:level', 'info'); location.reload();
  *
- * File logging (writes via /api/limon-log to public/logs/limon-debug.log):
+ * File logging (selected namespaces via console logger):
  *   localStorage.setItem('limon:file', '1');
  *   localStorage.setItem('limon:file_ns', 'CartItem'); location.reload();
- *   // optional override endpoint: ?limon_file_api=/api/limon-log
+ *   // optional override endpoint (dev only): ?limon_file_api=/api/limon-log
  */
