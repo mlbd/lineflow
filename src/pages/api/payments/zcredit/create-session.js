@@ -13,11 +13,30 @@ function toAmountString(n) {
   return Number.isFinite(x) ? x.toFixed(2) : '0.00';
 }
 
+// [PATCH] Added: detect absolute URLs so we use native fetch (not wpApiFetch) for externals
+function isAbsoluteUrl(u) {
+  return typeof u === 'string' && /^https?:\/\//i.test(u);
+}
+
+// [PATCH] Added: optional Basic Auth header (if your gateway is protected)
+// Set ZCREDIT_BASIC_AUTH="user:pass"  OR  ZCREDIT_BASIC_FROM_KEY="1" (uses KEY as user and empty pass)
+function getZcreditAuthHeader() {
+  const basic = (process.env.ZCREDIT_BASIC_AUTH || '').trim(); // "user:pass"
+  if (basic) try { return `Basic ${Buffer.from(basic, 'utf8').toString('base64')}`; } catch {}
+  if (process.env.ZCREDIT_BASIC_FROM_KEY === '1') {
+    const key = (process.env.ZCREDIT_KEY || '').trim();
+    if (key) return `Basic ${Buffer.from(`${key}:`, 'utf8').toString('base64')}`;
+  }
+  return '';
+}
+
+// [PATCH] Updated: use fetch for absolute URLs; wpApiFetch for relative WP routes
 async function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await wpApiFetch(url, { ...options, signal: controller.signal });
+    const call = isAbsoluteUrl(url) ? fetch : wpApiFetch;
+    return await call(url, { ...options, signal: controller.signal });
   } finally {
     clearTimeout(t);
   }
@@ -115,6 +134,9 @@ export default async function handler(req, res) {
       }),
     });
     const draft = await prep.json().catch(() => ({}));
+
+    limon_file_log('create-session', 'zCredit::create-session::checkout/prepare', limon_pretty(draft));
+
     dlog(id, 'WP prepare status', prep.status, 'body', draft);
     if (!prep.ok) {
       return res
@@ -178,7 +200,7 @@ export default async function handler(req, res) {
       ? draft.lines.map((l, i) => ({
           Amount: Number(l?.unit_price ?? 0),
           Currency: 'ILS',
-          Name: `Item ${i + 1} (#${l.product_id})`,
+          Name: `${((l?.name ?? '') + '').trim() || `Item ${i + 1}`} (#${l.product_id})`,
           Description: l?.group_type ? `${l.group_type} pricing` : '',
           Quantity: Number(l?.quantity ?? 1),
           Image: '',
@@ -276,9 +298,30 @@ export default async function handler(req, res) {
       limon_pretty(body)
     );
 
+    // [PATCH] Updated: build headers and (optionally) add Authorization for Z-Credit
+    const zHeaders = {
+      'Content-Type': 'application/json; charset=utf-8',
+      Accept: 'application/json',
+      // 'Accept-Language': 'he-IL', // optional
+    };
+    // [PATCH] Added: optional Basic auth support via env
+    const auth = getZcreditAuthHeader();
+    limon_file_log(
+      'CreateSession',
+      'zCredit::CreateSession::auth',
+      limon_pretty(auth),
+    );
+    if (auth) zHeaders.Authorization = auth;
+
+    limon_file_log(
+      'CreateSession',
+      'zCredit::CreateSession::zHeaders',
+      limon_pretty(zHeaders)
+    );
+
     const zRes = await fetchWithTimeout(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=utf-8', Accept: 'application/json' },
+      headers: zHeaders, // [PATCH] Updated
       body: JSON.stringify(body),
     });
 
@@ -304,9 +347,18 @@ export default async function handler(req, res) {
     const sessionUrl = zBody?.Data?.SessionUrl || zBody?.SessionUrl || null;
     const sessionId = zBody?.Data?.SessionId || zBody?.SessionId || null;
 
+    limon_file_log(
+      'CreateSession',
+      'zCredit::CreateSession::return',
+      limon_pretty(hasErr),
+      limon_pretty(sessionUrl),
+      limon_pretty(sessionId),
+      limon_pretty(zBody),
+    );
+
     if (hasErr || !sessionUrl) {
       return res.status(400).json({
-        error: 'Z-Credit CreateSession returned error',
+        error: zBody?.Data?.ReturnMessage || zBody?.ReturnMessage || 'Z-Credit CreateSession returned error',
         cid: id,
         details: zBody || zText || null,
       });
