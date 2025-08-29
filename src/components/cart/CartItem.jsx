@@ -249,13 +249,22 @@ export default function CartItem({
 
   const renderProductDetails = () => {
     // Build active placement labels from the FROZEN snapshot on the item
+    // [PATCH] Expanded: include extraPrice and keep forceBack
     const activePlacements = (
       Array.isArray(item?.placement_coordinates) ? item.placement_coordinates : []
     )
       .filter(p => p && p.name && p.active)
-      .map(p => String(p.name));
+      .map(p => ({
+        name: String(p.name),
+        forceBack: !!p.__forceBack,
+        extraPrice: !!p.extraPrice,
+      }));
 
-    // console.log(`activePlacements for ${item.product_id}:`, activePlacements);
+    // [PATCH] Extra print price for right chip
+    const uiExtraPrint = Math.max(0, Number(item?.extra_print_price || 0));
+
+    console.log(`activePlacements for ${item.product_id}:`, item);
+    console.log(`activePlacements for ${item.product_id}:`, activePlacements);
 
     return (
       <div className="space-y-1">
@@ -286,17 +295,35 @@ export default function CartItem({
         )}
 
         {/* ✅ Placement labels */}
+        {/* ✅ Placement labels */}
         {SHOW_PLACEMENTS_LABEL && activePlacements.length > 0 && (
           <div className="flex items-start gap-2 flex-wrap">
             <div className="flex gap-1 flex-wrap">
-              {activePlacements.map(nm => (
-                <span
-                  key={nm}
-                  className="px-2 py-0.5 rounded-full text-[11px] font-medium border border-emerald-600 text-emerald-700 bg-emerald-50"
-                  title={nm}
+              {activePlacements.map(pl => (
+                <div
+                  key={pl.name}
+                  className="inline-flex flex-row-reverse items-stretch px-0 py-0 rounded-full leading-[10px] text-[10px] font-medium border border-emerald-600 text-emerald-700 bg-emerald-50 overflow-hidden"
+                  title={pl.name}
                 >
-                  {nm}
-                </span>
+                  {/* Left: Back badge */}
+                  {pl.forceBack && (
+                    <div className="bg-black text-white flex items-center justify-center px-1.5">
+                      <span className="font-bold">B</span>
+                    </div>
+                  )}
+
+                  {/* Middle: Name */}
+                  <div className="px-1.5 py-1">
+                    <span className="text-emerald-700 font-medium">{pl.name}</span>
+                  </div>
+
+                  {/* Right: Extra price */}
+                  {uiExtraPrint > 0 && pl.extraPrice === true && (
+                    <div className="bg-green-600 text-white flex items-center justify-center px-1.5">
+                      <span className="font-bold">{uiExtraPrint}₪</span>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           </div>
@@ -307,7 +334,7 @@ export default function CartItem({
 
   const totalPrice = Math.round(item.price * item.quantity * 100) / 100;
 
-  console.log('item', item);
+  // console.log('item', item);
 
   return (
     <div
@@ -376,14 +403,21 @@ export default function CartItem({
                 <div className="space-y-1">
                   <div className="font-medium">פירוט תוספת הדפסה</div>
                   {(() => {
+                    console.log(`item::${item.product_id}`, item);
                     const unit = Number(item?.price) || 0;
                     const base =
                       Number(item?.price_base ?? unit - Number(item?.extra_unit_add || 0)) || 0;
                     const extra = Number(item?.extra_unit_add || 0);
-                    const baseCnt = Number(item?.baseline_active_count || 0);
-                    const selCnt = Number(item?.selected_active_count || 0);
-                    const extrasN = selCnt > baseCnt ? selCnt - baseCnt : null;
+
+                    // [PATCH] Use new meta if present; otherwise recompute from frozen coordinates
+                    const metaCount = item?.selected_extra_price_count;
+                    const recomputedCount = Array.isArray(item?.placement_coordinates)
+                      ? item.placement_coordinates.filter(p => p?.active && p?.extraPrice === true)
+                          .length
+                      : 0;
+                    const extrasN = metaCount != null ? Number(metaCount) : recomputedCount; // [PATCH] Updated
                     const xPrice = Number(item?.extra_print_price || 0);
+
                     return (
                       <>
                         <div>
@@ -391,12 +425,13 @@ export default function CartItem({
                         </div>
                         <div>
                           + <span className="tabular-nums">{extra.toFixed(2)} ₪</span> תוספת
-                          {extrasN != null && xPrice > 0 && (
-                            <span className="text-gray-500">
-                              {' '}
-                              ({extrasN}×{xPrice.toFixed(2)} ₪)
-                            </span>
-                          )}
+                          {xPrice > 0 &&
+                            extrasN > 0 && ( // [PATCH] Updated condition to show only when count > 0
+                              <span className="text-gray-500">
+                                {' '}
+                                ({extrasN}×{xPrice.toFixed(2)} ₪)
+                              </span>
+                            )}
                         </div>
                         <div className="my-1 border-t border-gray-200" />
                         <div>

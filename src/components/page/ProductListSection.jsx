@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ProductPriceLabel from '@/components/page/ProductPriceLabel';
@@ -38,6 +38,25 @@ export default function ProductListSection({
         : products.filter(p => (p.categories || []).some(cat => cat.slug === selectedCategory));
     return filtered.slice(0, page * PRODUCT_PER_PAGE);
   }, [products, page, selectedCategory]);
+
+  useEffect(() => {
+    console.log('visibleProducts=====>>>>', visibleProducts);
+    // Preload only first PRODUCT_PER_PAGE thumbnails
+    visibleProducts.forEach(p => {
+      const override = filters?.[String(p.id)] || null;
+      const productForThumb = override ? { ...p, placement_coordinates: override } : p;
+
+      const url = generateProductImageUrl(productForThumb, companyLogos, {
+        max: 300,
+        ...(override ? {} : { pagePlacementMap }),
+        customBackAllowedSet,
+      });
+
+      // 👇 Use native browser Image, not `next/image`
+      const img = new window.Image();
+      img.src = url;
+    });
+  }, [visibleProducts, filters, companyLogos, pagePlacementMap, customBackAllowedSet]);
 
   const hasMore = useMemo(() => {
     const filtered =
@@ -80,14 +99,14 @@ export default function ProductListSection({
 
         {/* Product Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {visibleProducts.map(p => {
+          {visibleProducts.map((p, idx) => {
             // 🚩 Overwrite placements if user selected any for this product
             const override = filters?.[String(p.id)] || null;
             const productForThumb = override ? { ...p, placement_coordinates: override } : p;
 
             // If override exists, DO NOT pass pagePlacementMap (so it doesn't override the override)
             const url = generateProductImageUrl(productForThumb, companyLogos, {
-              max: 500,
+              max: 300,
               ...(override ? {} : { pagePlacementMap }),
               customBackAllowedSet,
             });
@@ -104,8 +123,8 @@ export default function ProductListSection({
                       alt={p.name}
                       fill
                       className="object-contain"
-                      loading="lazy"
-                      unoptimized
+                      loading={idx < 6 ? 'eager' : 'lazy'}
+                      priority={idx < 6}
                     />
                   </div>
                 </div>

@@ -6,6 +6,7 @@ import { applyBumpPrice } from '@/utils/price';
 import { X } from 'lucide-react';
 import { useCartStore } from '@/components/cart/cartStore';
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
+import { buildPlacementSignature, normalizePlacementsForKey } from '@/utils/placements';
 
 // Cache the first non-empty baseline per product id, so user filters can't mutate it later.
 const __baselinePlacementCache =
@@ -14,17 +15,6 @@ const __baselinePlacementCache =
 const QTY_LIMIT = 50000;
 
 /* ---------------- helpers: signature + placements ---------------- */
-function buildPlacementSignature(placements) {
-  try {
-    const actives = (Array.isArray(placements) ? placements : [])
-      .filter(p => !!p && !!p.active && p.name)
-      .map(p => String(p.name).trim().toLowerCase());
-    if (!actives.length) return 'default';
-    return actives.sort().join('|');
-  } catch {
-    return 'default';
-  }
-}
 
 function coercePlacementArray(val, pid) {
   if (Array.isArray(val)) return val;
@@ -45,31 +35,6 @@ function coercePlacementArray(val, pid) {
     if (Array.isArray(val.placements)) return val.placements;
   }
   return [];
-}
-
-/** order-insensitive normalized placements for exact-same-selection checks */
-function normalizePlacementsForKey(placements = []) {
-  const norm = (Array.isArray(placements) ? placements : [])
-    .map(p => ({
-      name: String(p?.name ?? ''),
-      active: !!p?.active,
-      x: Math.round(Number(p?.xPercent ?? 0) * 10000) / 10000,
-      y: Math.round(Number(p?.yPercent ?? 0) * 10000) / 10000,
-      w: Math.round(Number(p?.wPercent ?? 0) * 10000) / 10000,
-      h: Math.round(Number(p?.hPercent ?? 0) * 10000) / 10000,
-      r: Math.round(Number(p?.rotate ?? 0) * 10000) / 10000,
-    }))
-    .sort(
-      (a, b) =>
-        a.name.localeCompare(b.name) ||
-        a.x - b.x ||
-        a.y - b.y ||
-        a.w - b.w ||
-        a.h - b.h ||
-        a.r - b.r ||
-        (a.active === b.active ? 0 : a.active ? -1 : 1)
-    );
-  return JSON.stringify(norm);
 }
 
 export default function AddToCartQuantity({
@@ -159,11 +124,18 @@ export default function AddToCartQuantity({
   }, [product?.id]); // depend only on product id
 
   // --- extra_print_price per extra placement (selected - default) ---
+  // [PATCH] Updated: extra_print_price counts ONLY extraPrice===true & active placements
   const countActive = arr => (Array.isArray(arr) ? arr.filter(p => p?.active).length : 0);
-  const baselineActive = countActive(baselinePlacementsRef);
-  const selectedActive = countActive(effectivePlacements);
+  const baselineActive = countActive(baselinePlacementsRef); // kept for meta / BC
+  const selectedActive = countActive(effectivePlacements); // kept for meta / BC
   const extraPrice = Math.max(0, Number(safeProduct?.extra_print_price) || 0);
-  const extraEach = Math.max(0, selectedActive - baselineActive) * extraPrice;
+
+  // [PATCH] Added
+  const countExtraSelected = arr =>
+    Array.isArray(arr) ? arr.filter(p => p?.active && p?.extraPrice === true).length : 0;
+
+  const extraPricePlaceCount = countExtraSelected(effectivePlacements); // [PATCH] Added
+  const extraEach = extraPricePlaceCount * extraPrice; // [PATCH] Updated
 
   const minStep = visibleSteps[0] ? parseInt(visibleSteps[0].quantity) : 1;
   const customQtyNum = parseInt(customQty || 0) || 0;
@@ -194,6 +166,25 @@ export default function AddToCartQuantity({
         .filter(p => p?.active && p?.name)
         .map(p => String(p.name)),
     [effectivePlacements]
+  );
+
+  // [PATCH] Added richer placement list for UI: name + __forceBack + extraPrice
+  const activePlacementsUI = useMemo(
+    () =>
+      (Array.isArray(effectivePlacements) ? effectivePlacements : [])
+        .filter(p => p?.active && p?.name)
+        .map(p => ({
+          name: String(p.name),
+          forceBack: !!p.__forceBack,
+          extraPrice: !!p.extraPrice,
+        })),
+    [effectivePlacements]
+  );
+
+  // [PATCH] Extra print price for rendering the right green chip
+  const uiExtraPrint = useMemo(
+    () => Math.max(0, Number(safeProduct?.extra_print_price) || 0),
+    [safeProduct?.extra_print_price]
   );
 
   // Find existing matching line (for prefill AND pooled math)
@@ -370,12 +361,12 @@ export default function AddToCartQuantity({
         product: { id: safeProduct.id, placement_coordinates: effectivePlacements },
         filter_was_changed: filterWasChanged,
         // mirror metadata for consistency
-        baseline_active_count: baselineActive,
-        selected_active_count: selectedActive,
-        has_extra_selection: selectedActive > baselineActive,
+        baseline_active_count: baselineActive, // [PATCH] Kept for backward-compat display
+        selected_active_count: selectedActive, // [PATCH] Kept for backward-compat display
+        selected_extra_price_count: extraPricePlaceCount, // [PATCH] Added
+        has_extra_selection: extraPricePlaceCount > 0, // [PATCH] Updated logic
         extra_print_price: Number(safeProduct?.extra_print_price) || 0,
-        pricing_group_key:
-          selectedActive > baselineActive ? `sig:${placementSignature}` : 'default',
+        pricing_group_key: extraPricePlaceCount > 0 ? `sig:${placementSignature}` : 'default', // [PATCH] Updated logic
         options: { line_type: 'Quantity', placement_merge_key: expectedMergeKey },
       });
     }
@@ -427,15 +418,33 @@ export default function AddToCartQuantity({
 
         <div className="mb-4 flex flex-col gap-1">
           {/* Active areas — below title, flow left→right and wrap, capped width */}
-          {activeAreaNames.length > 0 && (
+          {activePlacementsUI.length > 0 && (
             <div className="mx-auto max-w-[200px] flex flex-wrap justify-center gap-1">
-              {activeAreaNames.map(nm => (
-                <span
-                  key={nm}
-                  className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium border border-emerald-600 text-emerald-700 bg-emerald-50"
+              {activePlacementsUI.map(pl => (
+                <div
+                  key={pl.name}
+                  className="inline-flex flex-row-reverse items-stretch px-0 py-0 rounded-full leading-[10px] text-[10px] font-medium border border-emerald-600 text-emerald-700 bg-emerald-50 overflow-hidden"
+                  title={pl.name}
                 >
-                  {nm}
-                </span>
+                  {/* Left: Back badge */}
+                  {pl.forceBack && (
+                    <div className="bg-black text-white flex items-center justify-center px-1.5">
+                      <span className="font-bold">B</span>
+                    </div>
+                  )}
+
+                  {/* Middle: Name */}
+                  <div className="px-1.5 py-1">
+                    <span className="text-emerald-700 font-medium">{pl.name}</span>
+                  </div>
+
+                  {/* Right: Extra price */}
+                  {uiExtraPrint > 0 && pl.extraPrice === true && (
+                    <div className="bg-green-600 text-white flex items-center justify-center px-1.5">
+                      <span className="font-bold">{uiExtraPrint}₪</span>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           )}

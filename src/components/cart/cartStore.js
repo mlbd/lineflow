@@ -1,6 +1,7 @@
 // components/cart/cartStore.js
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { buildPlacementSignature } from '@/utils/placements';
 
 /* ===========================
    Currency-safe number utils
@@ -45,20 +46,6 @@ const _getQuantityUnitPrice = (q, steps = [], fallback = 0) => {
     else if (q < s.quantity) break;
   }
   return p;
-};
-
-/* ===========================
-   Placement signature helpers
-   =========================== */
-const buildPlacementSignature = placements => {
-  try {
-    const actives = (Array.isArray(placements) ? placements : [])
-      .filter(p => p && p.name && p.active)
-      .map(p => String(p.name).trim().toLowerCase());
-    return actives.length ? actives.sort().join('|') : 'default';
-  } catch {
-    return 'default';
-  }
 };
 
 // NEW: helper to determine pricing group key for Group-line repricing

@@ -299,6 +299,23 @@ export default function EditMappingModal({
               Extent defaults to <b>true</b>. Check to force it <b>false</b>.
             </div>
           </div>
+          {/* Added "Extra Price" checkbox UI (lines ~302-311 inserted) */}
+          <div className="mt-2">
+            <Label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                // when checked we store a boolean on the placement object itself
+                checked={!!form.extraPrice} // [PATCH] Added extraPrice state binding
+                onChange={e => update('extraPrice', !!e.target.checked)} // [PATCH] Added updater
+                className="accent-blue-600"
+              />
+              Extra Price
+            </Label>
+            <div className="text-xs text-muted-foreground mt-1">
+              When checked, this placement will be marked with a <b>+</b> and treated as an
+              extra-price area.
+            </div>
+          </div>
         </div>
 
         <DialogFooter>

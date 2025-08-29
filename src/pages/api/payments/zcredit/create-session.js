@@ -22,7 +22,10 @@ function isAbsoluteUrl(u) {
 // Set ZCREDIT_BASIC_AUTH="user:pass"  OR  ZCREDIT_BASIC_FROM_KEY="1" (uses KEY as user and empty pass)
 function getZcreditAuthHeader() {
   const basic = (process.env.ZCREDIT_BASIC_AUTH || '').trim(); // "user:pass"
-  if (basic) try { return `Basic ${Buffer.from(basic, 'utf8').toString('base64')}`; } catch {}
+  if (basic)
+    try {
+      return `Basic ${Buffer.from(basic, 'utf8').toString('base64')}`;
+    } catch {}
   if (process.env.ZCREDIT_BASIC_FROM_KEY === '1') {
     const key = (process.env.ZCREDIT_KEY || '').trim();
     if (key) return `Basic ${Buffer.from(`${key}:`, 'utf8').toString('base64')}`;
@@ -135,7 +138,11 @@ export default async function handler(req, res) {
     });
     const draft = await prep.json().catch(() => ({}));
 
-    limon_file_log('create-session', 'zCredit::create-session::checkout/prepare', limon_pretty(draft));
+    limon_file_log(
+      'create-session',
+      'zCredit::create-session::checkout/prepare',
+      limon_pretty(draft)
+    );
 
     dlog(id, 'WP prepare status', prep.status, 'body', draft);
     if (!prep.ok) {
@@ -306,18 +313,10 @@ export default async function handler(req, res) {
     };
     // [PATCH] Added: optional Basic auth support via env
     const auth = getZcreditAuthHeader();
-    limon_file_log(
-      'CreateSession',
-      'zCredit::CreateSession::auth',
-      limon_pretty(auth),
-    );
+    limon_file_log('CreateSession', 'zCredit::CreateSession::auth', limon_pretty(auth));
     if (auth) zHeaders.Authorization = auth;
 
-    limon_file_log(
-      'CreateSession',
-      'zCredit::CreateSession::zHeaders',
-      limon_pretty(zHeaders)
-    );
+    limon_file_log('CreateSession', 'zCredit::CreateSession::zHeaders', limon_pretty(zHeaders));
 
     const zRes = await fetchWithTimeout(url, {
       method: 'POST',
@@ -353,12 +352,15 @@ export default async function handler(req, res) {
       limon_pretty(hasErr),
       limon_pretty(sessionUrl),
       limon_pretty(sessionId),
-      limon_pretty(zBody),
+      limon_pretty(zBody)
     );
 
     if (hasErr || !sessionUrl) {
       return res.status(400).json({
-        error: zBody?.Data?.ReturnMessage || zBody?.ReturnMessage || 'Z-Credit CreateSession returned error',
+        error:
+          zBody?.Data?.ReturnMessage ||
+          zBody?.ReturnMessage ||
+          'Z-Credit CreateSession returned error',
         cid: id,
         details: zBody || zText || null,
       });

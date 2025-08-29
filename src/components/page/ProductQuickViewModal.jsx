@@ -16,6 +16,7 @@ import {
   clearForceBackScope,
 } from '@/utils/cloudinaryMockup';
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
+import { buildPlacementSignature } from '@/utils/placements';
 
 /* ======= Config (magnifier off by default) ======= */
 const DISPLAY_MAX = 640;
@@ -36,18 +37,6 @@ const parseMaybeArray = val => {
   }
   return [];
 };
-
-// Signature of active placements to compare
-function buildPlacementSignature(arr) {
-  try {
-    const actives = (Array.isArray(arr) ? arr : [])
-      .filter(p => p && p.name && p.active)
-      .map(p => String(p.name).trim().toLowerCase());
-    return actives.length ? actives.sort().join('|') : 'default';
-  } catch {
-    return 'default';
-  }
-}
 
 // [FORCEBACK] Include side in the signature so Default↔Back triggers a store write
 const placementsSig = arr =>
@@ -228,15 +217,27 @@ export default function ProductQuickViewModal({
   // Count actives and compute extra
   const countActive = (arr = []) =>
     Array.isArray(arr) ? arr.filter(p => p && p.active).length : 0;
-  const baselineActiveCount = useMemo(() => countActive(sourcePlacements), [sourcePlacements]);
-  const selectedActiveCount = useMemo(() => countActive(basePlacements), [basePlacements]);
+  const baselineActiveCount = useMemo(() => countActive(sourcePlacements), [sourcePlacements]); // [PATCH] kept (not used for extra math)
+  const selectedActiveCount = useMemo(() => countActive(basePlacements), [basePlacements]); // [PATCH] kept (not used for extra math)
+
   const extraPrint = useMemo(
     () => Math.max(0, Number(product?.extra_print_price) || 0),
     [product?.extra_print_price]
   );
+
+  // [PATCH] Added: count active placements flagged extraPrice=true among CURRENT selection
+  const extraPricePlaceCount = useMemo(
+    () =>
+      Array.isArray(basePlacements)
+        ? basePlacements.filter(p => p?.active && p?.extraPrice === true).length
+        : 0,
+    [basePlacements]
+  );
+
+  // [PATCH] Updated formula: ignore baseline entirely
   const extraEach = useMemo(
-    () => Math.max(0, selectedActiveCount - baselineActiveCount) * extraPrint,
-    [selectedActiveCount, baselineActiveCount, extraPrint]
+    () => extraPricePlaceCount * extraPrint,
+    [extraPricePlaceCount, extraPrint]
   );
 
   // Reset local toggles on product/open, but DO NOT clear global store selection
@@ -296,6 +297,25 @@ export default function ProductQuickViewModal({
     console.log('toggleArea', { name, wasActive, nextOn, nextOff });
     setAreaOn(nextOn);
     setAreaOff(nextOff);
+    // [PATCH] Added: if this placement supports back and will be active AFTER the toggle,
+    // and no explicit choice was made yet, set default choice to "Back".
+    const targetP = (basePlacements || []).find(pp => (pp?.name || '') === name);
+    const canBackHere =
+      !!targetP?.back &&
+      !!(
+        (companyLogos?.back_darker && companyLogos.back_darker.url) ||
+        (companyLogos?.back_lighter && companyLogos.back_lighter.url)
+      );
+
+    if (canBackHere && !backChoice.has(name)) {
+      // compute effectiveActive AFTER this toggle
+      const effectiveAfter = wasActive ? !nextOff.has(name) : nextOn.has(name);
+      if (effectiveAfter) {
+        const nextMap = new Map(backChoice);
+        nextMap.set(name, 'Back'); // default to Back
+        setBackChoice(nextMap); // [PATCH] ensure setForceBackOverrides sees it immediately
+      }
+    }
     setSliderIdx(0);
   };
 
@@ -308,13 +328,24 @@ export default function ProductQuickViewModal({
       const effectiveActive = isRemoved ? false : isAdded ? true : !!p?.active;
 
       // [FORCEBACK] Only set __forceBack when the user chose a side
+      // [PATCH] Updated: default to __forceBack: true when canBack && effectiveActive && no explicit choice
+      const canBackHere =
+        !!p?.back &&
+        !!(
+          (companyLogos?.back_darker && companyLogos.back_darker.url) ||
+          (companyLogos?.back_lighter && companyLogos.back_lighter.url)
+        );
+
       const choice = backChoice.get(nm); // 'Back' | 'Default' | undefined
-      const sidePatch =
-        choice === 'Back'
-          ? { __forceBack: true } // [FORCEBACK]
-          : choice === 'Default'
-            ? { __forceBack: false } // [FORCEBACK]
-            : {};
+
+      let sidePatch = {};
+      if (choice === 'Back') {
+        sidePatch = { __forceBack: true }; // explicit Back
+      } else if (choice === 'Default') {
+        sidePatch = { __forceBack: false }; // explicit Default
+      } else if (canBackHere && effectiveActive) {
+        sidePatch = { __forceBack: true }; // [PATCH] default Back when active and no explicit choice
+      }
 
       return { ...p, active: effectiveActive, ...sidePatch };
     });

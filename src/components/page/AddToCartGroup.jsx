@@ -5,6 +5,7 @@ import { applyBumpPrice, applyBumpToRegular } from '@/utils/price';
 import { X } from 'lucide-react';
 import { useCartStore } from '@/components/cart/cartStore';
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
+import { buildPlacementSignature } from '@/utils/placements';
 
 // Cache the first non-empty baseline per product id, so user filters can't mutate it later.
 const __baselinePlacementCache =
@@ -33,18 +34,6 @@ function getLuminance(hex) {
 }
 function isDarkColor(hex) {
   return getLuminance(hex) < 140;
-}
-
-function buildPlacementSignature(placements) {
-  try {
-    const actives = (Array.isArray(placements) ? placements : [])
-      .filter(p => !!p && !!p.active && p.name)
-      .map(p => String(p.name).trim().toLowerCase());
-    if (!actives.length) return 'default';
-    return actives.sort().join('|');
-  } catch {
-    return 'default';
-  }
 }
 
 const QTY_LIMIT = 999;
@@ -205,26 +194,24 @@ export default function AddToCartGroup({
     [effectivePlacements]
   );
 
-  const baselinePlacements = useMemo(() => {
-    if (
-      pagePlacementMap &&
-      typeof pagePlacementMap === 'object' &&
-      !Array.isArray(pagePlacementMap) &&
-      pid in pagePlacementMap
-    ) {
-      return coercePlacementArray(pagePlacementMap[pid], product?.id);
-    }
-    return coercePlacementArray(
-      product?.meta?.placement_coordinates ?? product?.acf?.placement_coordinates ?? [],
-      product?.id
-    );
-  }, [
-    pagePlacementMap,
-    pid,
-    product?.meta?.placement_coordinates,
-    product?.acf?.placement_coordinates,
-    product?.id,
-  ]);
+  // [PATCH] Added richer placement list for UI: name + __forceBack + extraPrice
+  const activePlacementsUI = useMemo(
+    () =>
+      (Array.isArray(effectivePlacements) ? effectivePlacements : [])
+        .filter(p => p?.active && p?.name)
+        .map(p => ({
+          name: String(p.name),
+          forceBack: !!p.__forceBack,
+          extraPrice: !!p.extraPrice,
+        })),
+    [effectivePlacements]
+  );
+
+  // [PATCH] Extra print price for rendering the right green chip
+  const uiExtraPrint = useMemo(
+    () => Math.max(0, toNumber(product?.extra_print_price)),
+    [product?.extra_print_price]
+  );
 
   // —— Baseline placements (FIRST non-empty snapshot from product.placement_coordinates; cached per product id) ——
   const baselinePlacementsRef = useMemo(() => {
@@ -303,38 +290,48 @@ export default function AddToCartGroup({
     [cartAllQtyForPrice, cartThisSigQtyForPrice]
   );
 
-  // --- extra_print_price per extra placement (selected - default) ---
+  // [PATCH] Updated: extra_print_price counts ONLY placements flagged extraPrice===true AND active
   const countActive = arr => (Array.isArray(arr) ? arr.filter(p => p?.active).length : 0);
   const baselineActiveCount = useMemo(
     () => countActive(baselinePlacementsRef),
-    [product?.id] // recompute baseline count only when product changes
+    [product?.id] // keep for backward-compat displays / meta
   );
   const selectedActiveCount = useMemo(
     () => countActive(effectivePlacements),
     [effectivePlacements]
   );
+
+  // [PATCH] Added: count of selected placements that are extraPrice=true
+  const countExtraSelected = arr =>
+    Array.isArray(arr) ? arr.filter(p => p?.active && p?.extraPrice === true).length : 0;
+
+  const extraPricePlaceCount = useMemo(
+    () => countExtraSelected(effectivePlacements),
+    [effectivePlacements]
+  );
+
   const extraPrint = useMemo(
     () => Math.max(0, toNumber(product?.extra_print_price)),
     [product?.extra_print_price]
   );
+
+  // [PATCH] Updated: derive from extraPricePlaceCount (ignore baseline entirely)
   const extraEach = useMemo(
-    () => Math.max(0, selectedActiveCount - baselineActiveCount) * extraPrint,
-    [selectedActiveCount, baselineActiveCount, extraPrint]
+    () => extraPricePlaceCount * extraPrint,
+    [extraPricePlaceCount, extraPrint]
   );
+
   const unitWithExtra = useMemo(
     () => toNumber(stepInfo.price) + extraEach,
     [stepInfo.price, extraEach]
   );
-  const hasExtraSelection = selectedActiveCount > baselineActiveCount;
+
+  const hasExtraSelection = extraPricePlaceCount > 0; // [PATCH] Updated logic
 
   const nextStepAmountWithExtra = useMemo(
     () => (stepInfo?.nextStep ? toNumber(stepInfo.nextStep.amount) + extraEach : 0),
     [stepInfo?.nextStep, extraEach]
   );
-
-  console.log(`[${product?.id}] baselinePlacementsRef`, baselinePlacementsRef);
-  console.log(`[${product?.id}] product?.placement_coordinates`, product?.placement_coordinates);
-  console.log(`[${product?.id}] effectivePlacements`, effectivePlacements);
 
   // —— PRE-FILL GRID from cart if same product + same signature ——
   const prefillMatrix = useMemo(() => {
@@ -476,11 +473,12 @@ export default function AddToCartGroup({
               },
               filter_was_changed: filterWasChanged,
               // NEW: extra-print grouping metadata (used by cart repricer)
-              baseline_active_count: baselineActiveCount,
-              selected_active_count: selectedActiveCount,
-              has_extra_selection: hasExtraSelection,
+              baseline_active_count: baselineActiveCount, // [PATCH] Kept for backward-compat display
+              selected_active_count: selectedActiveCount, // [PATCH] Kept for backward-compat display
+              selected_extra_price_count: extraPricePlaceCount, // [PATCH] Added
+              has_extra_selection: hasExtraSelection, // [PATCH] Based on extraPricePlaceCount
               extra_print_price: Number(product?.extra_print_price) || 0,
-              pricing_group_key: hasExtraSelection ? `sig:${placementSignature}` : 'default',
+              pricing_group_key: hasExtraSelection ? `sig:${placementSignature}` : 'default', // [PATCH] Predicate unchanged, source updated
               options: {
                 group_type: 'Group',
                 color: color.title,
@@ -557,15 +555,33 @@ export default function AddToCartGroup({
         </div>
 
         {/* Active areas — below title, flow left→right and wrap, capped width */}
-        {activeAreaNames.length > 0 && (
+        {activePlacementsUI.length > 0 && (
           <div className="mx-auto max-w-full flex flex-wrap justify-center gap-1 mb-4">
-            {activeAreaNames.map(nm => (
-              <span
-                key={nm}
-                className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium border border-emerald-600 text-emerald-700 bg-emerald-50"
+            {activePlacementsUI.map(pl => (
+              <div
+                key={pl.name}
+                className="inline-flex flex-row-reverse items-stretch px-0 py-0 rounded-full leading-[10px] text-[10px] font-medium border border-emerald-600 text-emerald-700 bg-emerald-50 overflow-hidden"
+                title={pl.name}
               >
-                {nm}
-              </span>
+                {/* Left: Back badge */}
+                {pl.forceBack && (
+                  <div className="bg-black text-white flex items-center justify-center px-1.5">
+                    <span className="font-bold">B</span>
+                  </div>
+                )}
+
+                {/* Middle: Name */}
+                <div className="px-1.5 py-1">
+                  <span className="text-emerald-700 font-medium">{pl.name}</span>
+                </div>
+
+                {/* Right: Extra price */}
+                {uiExtraPrint > 0 && pl.extraPrice === true && (
+                  <div className="bg-green-600 text-white flex items-center justify-center px-1.5">
+                    <span className="font-bold">{uiExtraPrint}₪</span>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}

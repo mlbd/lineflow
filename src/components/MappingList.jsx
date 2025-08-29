@@ -3,6 +3,7 @@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { Trash2, SquarePen, Star } from 'lucide-react';
+import Tooltip from '@/components/ui/Tooltip';
 
 export default function MappingList({ mappings, selectedId, onSelect, onDelete, onEdit }) {
   const formatCoordinate = value => (typeof value === 'number' ? Math.round(value) : value || 0);
@@ -35,7 +36,17 @@ export default function MappingList({ mappings, selectedId, onSelect, onDelete, 
                   onClick={() => onSelect(m.id)}
                 >
                   <div>
-                    <div className="font-medium">{m.name}</div>
+                    <div className="font-medium flex items-center gap-1">
+                      <span>{m.name}</span>
+                      {m.extraPrice === true && (
+                        // [PATCH] Added tooltip-wrapped bold plus sign
+                        <Tooltip content="Extra price active">
+                          <span className="font-extrabold text-emerald-700 leading-none select-none">
+                            +
+                          </span>
+                        </Tooltip>
+                      )}
+                    </div>
                     <div className="text-xs text-muted-foreground relative">
                       {m.xPercent !== undefined ? (
                         <>
