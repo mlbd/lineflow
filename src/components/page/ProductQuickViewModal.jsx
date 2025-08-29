@@ -649,36 +649,64 @@ export default function ProductQuickViewModal({
                           (companyLogos?.back_lighter && companyLogos.back_lighter.url)
                         );
                       const currentChoice = backChoice.get(nm) || 'Back';
+                      // [PATCH] Updated Area Filter pill UI to 3-segment style with Chevron+B (left) | Name (middle) | Extra price (right)
+                      // [PATCH] Keeps all behavior: main button toggles area; left chevron segment opens dropdown; roles/aria preserved.
                       return (
                         <div key={nm} className="relative inline-flex items-center">
                           <button
                             type="button"
                             onClick={() => toggleArea(nm)}
-                            className={`${canBack ? 'pl-[20px] pr-3 py-1' : 'px-3 py-1'} rounded-full border text-xs font-medium transition relative cursor-pointer
-                             ${
-                               effectiveActive
-                                 ? 'bg-emerald-600 text-white border-emerald-600'
-                                 : isAdded
-                                   ? 'bg-sky-600 text-white border-sky-600'
-                                   : isRemoved
-                                     ? 'bg-gray-300 text-gray-700 border-gray-300'
-                                     : 'bg-white text-primary border-gray-300 hover:bg-gray-50'
-                             }`}
+                            // [PATCH] Keep the same state-color logic, but make container flex to host segments
+                            className={`inline-flex items-stretch rounded-full border text-[11px] leading-[11px] font-medium transition relative cursor-pointer overflow-hidden
+                              ${
+                                effectiveActive
+                                  ? 'bg-emerald-600 text-white border-none'
+                                  : isAdded
+                                    ? 'bg-sky-600 text-white border-sky-600'
+                                    : isRemoved
+                                      ? 'bg-gray-300 text-gray-700 border-gray-300'
+                                      : 'bg-white text-primary border-gray-300 hover:bg-gray-50'
+                              }`}
                             title={nm}
+                            aria-label={nm}
+                            role="button"
                           >
-                            <span className="mr-1">{nm}</span>
-                            {canBack && (
-                              <span
-                                className="ml-1 inline-flex items-center absolute w-[12px] h-[100%] top-0 left-0"
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  setOpenBackFor(openBackFor === nm ? '' : nm);
-                                  if (effectiveActive) toggleArea(nm);
-                                }}
-                                role="button"
-                                aria-label="בחר לוגו גב"
-                              >
-                                <ChevronDown className="w-3 h-3 opacity-90" />
+                            {/* Left: Chevron (dropdown trigger). If "Back" is active, also show "B" beside the arrow. */}
+                            {canBack &&
+                              (() => {
+                                // [PATCH] B badge rule: if user chose Back OR (no explicit choice yet AND area is effectively active), show B
+                                const hasExplicit = backChoice.has(nm);
+                                const isBack = hasExplicit
+                                  ? backChoice.get(nm) === 'Back'
+                                  : effectiveActive;
+                                return (
+                                  <span
+                                    className={`inline-flex items-center justify-center px-2 gap-1 ${
+                                      isBack ? 'bg-black text-white' : ''
+                                    }`}
+                                    onClick={e => {
+                                      e.stopPropagation();
+                                      setOpenBackFor(openBackFor === nm ? '' : nm);
+                                      if (effectiveActive) toggleArea(nm);
+                                    }}
+                                    role="button"
+                                    aria-label="בחר לוגו גב"
+                                  >
+                                    <ChevronDown className="w-3 h-3" />
+                                    {isBack && <span className="font-bold leading-none">B</span>}
+                                  </span>
+                                );
+                              })()}
+
+                            {/* Middle: Name */}
+                            <span className="px-2 py-1">
+                              <span className="font-medium">{nm}</span>
+                            </span>
+
+                            {/* Right: Extra price (only if product.extra_print_price > 0 AND placement.extraPrice===true) */}
+                            {Number(extraPrint) > 0 && !!p?.extraPrice && (
+                              <span className="bg-chart-1 text-white flex items-center justify-center px-2">
+                                <span className="font-bold leading-none">{extraPrint}₪</span>
                               </span>
                             )}
                           </button>
@@ -686,35 +714,38 @@ export default function ProductQuickViewModal({
                           {/* Back-mode dropdown */}
                           {canBack && openBackFor === nm && (
                             <div
-                              className="absolute z-20 left-0 top-full mt-1 min-w-[140px] rounded-md border bg-white shadow-lg overflow-hidden"
+                              className="absolute z-20 left-0 top-full mt-1 min-w-[140px] rounded-md border bg-white overflow-hidden"
                               onMouseLeave={() => setOpenBackFor('')}
                               role="menu"
                               aria-label={`${nm} logo side`}
                             >
-                              {['Default', 'Back'].map(opt => (
-                                <button
-                                  key={opt}
-                                  type="button"
-                                  className={`block cursor-pointer w-full text-left px-3 py-1 text-xs hover:bg-gray-50 ${
-                                    currentChoice === opt
-                                      ? 'text-primary font-semibold'
-                                      : 'text-gray-700'
-                                  }`}
-                                  onClick={() => {
-                                    const next = new Map(backChoice);
-                                    next.set(nm, opt);
-                                    setBackChoice(next);
-                                    setOpenBackFor('');
-                                    toggleArea(nm);
-                                  }}
-                                  role="menuitem"
-                                >
-                                  {currentChoice === opt && (
-                                    <Check className="w-[15px] h-[15px] text-emerald-600 inline-block ml-2" />
-                                  )}
-                                  {opt}
-                                </button>
-                              ))}
+                              {['Default', 'Back'].map(opt => {
+                                const currentChoice = backChoice.get(nm) || 'Back';
+                                return (
+                                  <button
+                                    key={opt}
+                                    type="button"
+                                    className={`block cursor-pointer w-full text-left px-3 py-1 text-xs hover:bg-gray-50 ${
+                                      currentChoice === opt
+                                        ? 'text-primary font-semibold'
+                                        : 'text-gray-700'
+                                    }`}
+                                    onClick={() => {
+                                      const next = new Map(backChoice);
+                                      next.set(nm, opt);
+                                      setBackChoice(next);
+                                      setOpenBackFor('');
+                                      toggleArea(nm);
+                                    }}
+                                    role="menuitem"
+                                  >
+                                    {currentChoice === opt && (
+                                      <Check className="w-[15px] h-[15px] text-emerald-600 inline-block ml-2" />
+                                    )}
+                                    {opt}
+                                  </button>
+                                );
+                              })}
                             </div>
                           )}
                         </div>
