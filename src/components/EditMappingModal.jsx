@@ -257,18 +257,7 @@ export default function EditMappingModal({
             </div>
           </div>{' '}
           {/* NEW */}
-          {/* Back Logo */}
-          <div className="mt-2">
-            <Label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={!!form.back}
-                onChange={e => handleBackLogoChange(e.target.checked)}
-                className="accent-blue-600"
-              />
-              Back Logo Enabled
-            </Label>
-          </div>
+          
           {/* Active switch */}
           <div>
             <Label className="flex items-center gap-2">
@@ -283,6 +272,18 @@ export default function EditMappingModal({
             <div className="text-xs text-muted-foreground mt-1">
               Only “Active” placements are used by default in generated previews.
             </div>
+          </div>
+          {/* Back Logo */}
+          <div className="mt-2">
+            <Label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={!!form.back}
+                onChange={e => handleBackLogoChange(e.target.checked)}
+                className="accent-blue-600"
+              />
+              Back Logo Enabled
+            </Label>
           </div>
           {/* Prevent Extent */}
           <div className="mt-2">
@@ -299,23 +300,7 @@ export default function EditMappingModal({
               Extent defaults to <b>true</b>. Check to force it <b>false</b>.
             </div>
           </div>
-          {/* Added "Extra Price" checkbox UI (lines ~302-311 inserted) */}
-          <div className="mt-2">
-            <Label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                // when checked we store a boolean on the placement object itself
-                checked={!!form.extraPrice} // [PATCH] Added extraPrice state binding
-                onChange={e => update('extraPrice', !!e.target.checked)} // [PATCH] Added updater
-                className="accent-blue-600"
-              />
-              Extra Price
-            </Label>
-            <div className="text-xs text-muted-foreground mt-1">
-              When checked, this placement will be marked with a <b>+</b> and treated as an
-              extra-price area.
-            </div>
-          </div>
+    
         </div>
 
         <DialogFooter>
