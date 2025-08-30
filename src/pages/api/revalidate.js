@@ -1,56 +1,159 @@
 // src/pages/api/revalidate.js
+/**
+ * On-demand revalidation endpoint (Pages Router).
+ *
+ * Auth:
+ *  - Option A (external/backends):   ?secret=REVALIDATE_SECRET   or header: x-ms-cache-secret
+ *  - Option B (same-origin callers): Origin === Host  AND  header "x-ms-csrf" === cookie "ms_csrf"
+ *
+ * Input (GET or POST JSON):
+ *  {
+ *    // Revalidate by path(s)
+ *    "path": "/some/path",
+ *    "paths": ["/a", "/b"],
+ *
+ *    // Optional: accept slugs and convert to paths (prefix is optional)
+ *    "slug": "acme",
+ *    "slugs": ["acme", "leobus"],
+ *    // ENV can control prefix for slug->path mapping:
+ *    //   REVALIDATE_SLUG_PREFIX=""   -> "/{slug}"
+ *    //   REVALIDATE_SLUG_PREFIX="/company" -> "/company/{slug}"
+ *
+ *    // Optional: forward "tags" to an App Router tag revalidation endpoint
+ *    //   Set REVALIDATE_TAG_ENDPOINT="/api/revalidate-tag" (App Router route) to enable.
+ *    "tags": ["ms:products"]
+ *  }
+ *
+ * Output:
+ *  {
+ *    ok: boolean,
+ *    method: "GET"|"POST",
+ *    count: number,                 // number of paths attempted
+ *    revalidated: string[],         // successful paths
+ *    errors: {path:string,error:string}[],
+ *    forwardedTags?: string[],      // tags we attempted to forward
+ *    tagForwardResult?: object,     // response from tag endpoint (if any)
+ *    authMode: "secret"|"csrf"
+ *  }
+ */
+
+function sameOriginOk(req) {
+  const origin = req.headers.origin || '';
+  const host = req.headers.host || '';
+  // Allow internal/server calls that may not set Origin/Host (e.g., Node fetch on same host)
+  if (!origin || !host) return true;
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    // Fallback: loose match if origin parsing fails
+    return origin.endsWith(host);
+  }
+}
+
+function csrfOk(req) {
+  // Header must match cookie exactly
+  const header = req.headers['x-ms-csrf'];
+  const cookie = req.cookies?.ms_csrf;
+  return !!header && !!cookie && header === cookie;
+}
+
+function toArray(val) {
+  if (val == null) return [];
+  if (Array.isArray(val)) return val;
+  return [val];
+}
+
+function normalizePath(p) {
+  if (typeof p !== 'string') return null;
+  let s = p.trim();
+  if (!s) return null;
+  // Disallow absolute URLs / api routes for safety
+  if (/^https?:\/\//i.test(s)) return null;
+  if (s.startsWith('/api/')) return null;
+  if (!s.startsWith('/')) s = '/' + s;
+  return s;
+}
+
+function slugToPath(slug, prefix = '') {
+  if (typeof slug !== 'string' || !slug.trim()) return null;
+  const clean = slug.replace(/^\/+/, ''); // no leading slash in slug
+  const pre = (prefix || '').replace(/\/$/, ''); // remove trailing slash in prefix
+  const joined = pre ? `${pre}/${clean}` : `/${clean}`;
+  return normalizePath(joined);
+}
+
+async function readJsonBody(req) {
+  if (req.method !== 'POST') return {};
+  // If body is already parsed (Next.js default), use it; otherwise parse string
+  if (typeof req.body === 'object' && req.body !== null) return req.body;
+  if (typeof req.body === 'string') {
+    try {
+      return JSON.parse(req.body || '{}');
+    } catch {
+      return {};
+    }
+  }
+  // Minimal manual read fallback (rare)
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const raw = Buffer.concat(chunks).toString('utf8');
+  try {
+    return JSON.parse(raw || '{}');
+  } catch {
+    return {};
+  }
+}
+
 export default async function handler(req, res) {
-  // 🔒 Require secret param
-  if (req.query.secret !== process.env.REVALIDATE_SECRET) {
-    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  // --- Authorization ---
+  const providedSecret = req.query.secret || req.headers['x-ms-cache-secret'];
+  const secretOk = !!providedSecret && providedSecret === process.env.REVALIDATE_SECRET;
+
+  let authorized = secretOk;
+  if (!authorized) {
+    if (!sameOriginOk(req) || !csrfOk(req)) {
+      return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    authorized = true;
+  }
+  const authMode = secretOk ? 'secret' : 'csrf';
+  res.setHeader('x-auth-mode', authMode);
+
+  // --- Method guard ---
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
   }
 
   try {
     const q = req.query || {};
-    let b = {};
-    try {
-      b = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
-    } catch {
-      b = req.body || {};
-    }
+    const b = await readJsonBody(req);
 
-    const slugs = [];
-    const paths = [];
-    const push = (arr, v) => {
-      if (v !== undefined && v !== null && String(v).trim() !== '') arr.push(String(v).trim());
-    };
+    // Collect paths
+    const paths = new Set();
 
-    // Collect from query/body
-    if (q.slug) push(slugs, q.slug);
-    if (q.slugs) {
-      (Array.isArray(q.slugs) ? q.slugs : String(q.slugs).split(',')).forEach(v => push(slugs, v));
-    }
-    if (q.path) push(paths, q.path);
-    if (q.paths) {
-      (Array.isArray(q.paths) ? q.paths : String(q.paths).split(',')).forEach(v => push(paths, v));
-    }
-    if (b.slug) push(slugs, b.slug);
-    if (Array.isArray(b.slugs)) b.slugs.forEach(v => push(slugs, v));
-    if (b.path) push(paths, b.path);
-    if (Array.isArray(b.paths)) b.paths.forEach(v => push(paths, v));
+    // From "path"/"paths"
+    toArray(b.paths ?? q.paths).forEach(p => {
+      const np = normalizePath(p);
+      if (np) paths.add(np);
+    });
+    const singlePath = normalizePath(b.path ?? q.path);
+    if (singlePath) paths.add(singlePath);
 
-    const toPaths = Array.from(
-      new Set([
-        ...paths.map(p => `/${String(p).replace(/^\/+/, '')}`),
-        ...slugs.map(s => `/${String(s).replace(/^\/+/, '')}`),
-      ])
-    );
+    // From "slug"/"slugs"
+    const slugPrefix = process.env.REVALIDATE_SLUG_PREFIX || '';
+    toArray(b.slugs ?? q.slugs).forEach(s => {
+      const np = slugToPath(s, slugPrefix);
+      if (np) paths.add(np);
+    });
+    const singleSlugPath = slugToPath(b.slug ?? q.slug, slugPrefix);
+    if (singleSlugPath) paths.add(singleSlugPath);
 
-    if (toPaths.length === 0) {
-      return res.status(400).json({
-        ok: false,
-        error: 'Provide ?slug=, ?slugs=, ?path=, ?paths= or JSON body { slugs|paths }',
-      });
-    }
-
+    // Nothing to do?
+    const toPaths = Array.from(paths);
     const revalidated = [];
     const errors = [];
 
+    // Revalidate each path
     for (const p of toPaths) {
       try {
         if (typeof res.revalidate === 'function') {
@@ -61,8 +164,46 @@ export default async function handler(req, res) {
           throw new Error('Revalidate API not available in this runtime.');
         }
         revalidated.push(p);
-      } catch (e) {
-        errors.push({ path: p, error: e?.message || String(e) });
+      } catch (err) {
+        errors.push({ path: p, error: err?.message || String(err) });
+      }
+    }
+
+    // Optional: forward tags to an App Router tag route, if configured
+    let forwardedTags;
+    let tagForwardResult;
+    const tags = toArray(b.tags ?? q.tags).filter(Boolean);
+    const tagEndpoint = process.env.REVALIDATE_TAG_ENDPOINT; // e.g., "/api/revalidate-tag" (App Router)
+    if (tags.length && tagEndpoint) {
+      forwardedTags = [...tags];
+      try {
+        // Build absolute URL for internal call
+        const proto = req.headers['x-forwarded-proto'] || 'https';
+        const host = req.headers.host;
+        const url = `${proto}://${host}${tagEndpoint}`;
+
+        // Reuse the same auth mode used to hit this endpoint:
+        const headers = { 'content-type': 'application/json' };
+        if (authMode === 'secret' && providedSecret) {
+          headers['x-ms-cache-secret'] = String(providedSecret);
+        } else if (authMode === 'csrf') {
+          const token = req.cookies?.ms_csrf || req.headers['x-ms-csrf'];
+          if (token) {
+            headers['x-ms-csrf'] = token;
+            // ensure cookie is present in server->server call
+            headers['cookie'] = `ms_csrf=${token}; Path=/; SameSite=Lax`;
+          }
+        }
+
+        const r = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ tags }),
+        });
+        const j = await r.json().catch(() => ({}));
+        tagForwardResult = { status: r.status, ok: r.ok, body: j };
+      } catch (err) {
+        tagForwardResult = { ok: false, error: err?.message || String(err) };
       }
     }
 
@@ -72,6 +213,9 @@ export default async function handler(req, res) {
       count: toPaths.length,
       revalidated,
       errors,
+      forwardedTags,
+      tagForwardResult,
+      authMode,
     });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err?.message || 'Revalidate failed' });

@@ -24,7 +24,10 @@ export default function MappingList({ mappings, selectedId, onSelect, onDelete, 
           </div>
         ) : (
           // 👇 Keep scrollbar visible whenever content overflows
-          <ScrollArea type="always" className="h-[250px] pr-2 p-4">
+          <ScrollArea
+            type="always"
+            className="custom-scrollbar-red h-[250px] pr-2 p-4 border rounded"
+          >
             <div className="space-y-2">
               {mappings.map(m => (
                 <div

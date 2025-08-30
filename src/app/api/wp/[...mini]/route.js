@@ -10,7 +10,9 @@ const WP_PASS = process.env.WP_API_PASS;
 
 // Optional: restrict which endpoints can be proxied (defense-in-depth)
 const ALLOW = new Set(
-  (process.env.MS_WP_PROXY_WHITELIST || 'update-placement').split(',').map(s => s.trim())
+  (process.env.MS_WP_PROXY_WHITELIST || 'update-placement,delete-placement')
+    .split(',')
+    .map(s => s.trim())
 );
 
 function isAllowed(endpoint) {
@@ -23,7 +25,7 @@ export async function POST(req, ctx) {
   // ⬇️ params is async now; await it before reading .mini
   const { mini = [] } = (await ctx.params) || {};
   const parts = Array.isArray(mini) ? mini : [mini];
-  const endpoint = parts.join('/'); // e.g., "update-placement"
+  const endpoint = parts.join('/'); // e.g., "update-placement,delete-placement"
 
   if (!isAllowed(endpoint)) {
     return NextResponse.json({ message: 'Endpoint not allowed' }, { status: 403 });

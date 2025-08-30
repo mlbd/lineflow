@@ -220,25 +220,33 @@ export default function ProductQuickViewModal({
   const baselineActiveCount = useMemo(() => countActive(sourcePlacements), [sourcePlacements]); // [PATCH] kept (not used for extra math)
   const selectedActiveCount = useMemo(() => countActive(basePlacements), [basePlacements]); // [PATCH] kept (not used for extra math)
 
+  // [PATCH] Guarded unit extra price
   const extraPrint = useMemo(
     () => Math.max(0, Number(product?.extra_print_price) || 0),
     [product?.extra_print_price]
   );
 
-  // [PATCH] Added: count active placements flagged extraPrice=true among CURRENT selection
+  // [PATCH] Updated: extras = max(0, selectedActiveCount - 1)
   const extraPricePlaceCount = useMemo(
-    () =>
-      Array.isArray(basePlacements)
-        ? basePlacements.filter(p => p?.active && p?.extraPrice === true).length
-        : 0,
-    [basePlacements]
+    () => Math.max(0, Number(selectedActiveCount || 0) - 1),
+    [selectedActiveCount]
   );
 
-  // [PATCH] Updated formula: ignore baseline entirely
+  // [PATCH] Updated: per-unit extra cost for the live preview
   const extraEach = useMemo(
     () => extraPricePlaceCount * extraPrint,
     [extraPricePlaceCount, extraPrint]
   );
+
+  // [PATCH] Added: robust boolean coercion for "only one" rule (first print free logic from prior patch remains untouched)
+  const productOnlyOne = useMemo(() => {
+    const v = product?.onlyone;
+    if (v === undefined || v === null) return false;
+    if (typeof v === 'boolean') return v;
+    if (typeof v === 'number') return v === 1;
+    const s = String(v).trim().toLowerCase();
+    return s === '1' || s === 'true' || s === 'yes';
+  }, [product?.onlyone]);
 
   // Reset local toggles on product/open, but DO NOT clear global store selection
   useEffect(() => {
@@ -275,30 +283,62 @@ export default function ProductQuickViewModal({
   }, [product?.id, backChoice, backScope]);
 
   // Toggle helper
+  // [PATCH] Updated: toggleArea to honor productOnlyOne
+  // (This replaces the existing toggleArea function body; extra-price logic you approved earlier remains elsewhere in this file.)
   const toggleArea = name => {
     if (!name) return;
+
     const wasActive = originalActiveByName.get(name);
     const nextOn = new Set(areaOn);
     const nextOff = new Set(areaOff);
 
+    // Regular toggle behavior (as before)
     if (wasActive) {
       if (nextOff.has(name)) nextOff.delete(name);
       else {
+        // turn OFF this originally-active placement
         nextOff.add(name);
         nextOn.delete(name);
       }
     } else {
       if (nextOn.has(name)) nextOn.delete(name);
       else {
+        // turn ON this originally-inactive placement
         nextOn.add(name);
         nextOff.delete(name);
       }
     }
-    console.log('toggleArea', { name, wasActive, nextOn, nextOff });
+
+    // Compute whether the clicked placement will be active AFTER this toggle
+    const effectiveAfter = wasActive ? !nextOff.has(name) : nextOn.has(name);
+
+    // [PATCH] Enforce "Only One": if this product requires a single selection
+    // and the clicked placement ends up active, we must deactivate all others.
+    if (productOnlyOne && effectiveAfter) {
+      const list = Array.isArray(basePlacements) ? basePlacements : [];
+      for (const p of list) {
+        const other = p?.name || '';
+        if (!other || other === name) continue;
+
+        const otherWasActive = !!originalActiveByName.get(other);
+        const otherIsAdded = nextOn.has(other);
+        const otherIsRemoved = nextOff.has(other);
+        const otherEffective = otherIsRemoved ? false : otherIsAdded ? true : otherWasActive;
+
+        if (otherEffective) {
+          // Turn OFF this "other" placement
+          if (otherWasActive) nextOff.add(other); // ensure it's explicitly turned off if it was originally active
+          nextOn.delete(other); // remove from the set of newly-on placements
+        }
+      }
+    }
+
+    // Commit sets after any enforcement
     setAreaOn(nextOn);
     setAreaOff(nextOff);
-    // [PATCH] Added: if this placement supports back and will be active AFTER the toggle,
-    // and no explicit choice was made yet, set default choice to "Back".
+
+    // Preserve existing default-back behavior:
+    // if this placement supports back and is active after toggle and no explicit choice yet, default to "Back"
     const targetP = (basePlacements || []).find(pp => (pp?.name || '') === name);
     const canBackHere =
       !!targetP?.back &&
@@ -307,15 +347,12 @@ export default function ProductQuickViewModal({
         (companyLogos?.back_lighter && companyLogos.back_lighter.url)
       );
 
-    if (canBackHere && !backChoice.has(name)) {
-      // compute effectiveActive AFTER this toggle
-      const effectiveAfter = wasActive ? !nextOff.has(name) : nextOn.has(name);
-      if (effectiveAfter) {
-        const nextMap = new Map(backChoice);
-        nextMap.set(name, 'Back'); // default to Back
-        setBackChoice(nextMap); // [PATCH] ensure setForceBackOverrides sees it immediately
-      }
+    if (canBackHere && !backChoice.has(name) && effectiveAfter) {
+      const nextMap = new Map(backChoice);
+      nextMap.set(name, 'Back'); // default to Back
+      setBackChoice(nextMap); // keep consistent with earlier [FORCEBACK] patches
     }
+
     setSliderIdx(0);
   };
 
@@ -702,13 +739,6 @@ export default function ProductQuickViewModal({
                             <span className="px-2 py-1">
                               <span className="font-medium">{nm}</span>
                             </span>
-
-                            {/* Right: Extra price (only if product.extra_print_price > 0 AND placement.extraPrice===true) */}
-                            {Number(extraPrint) > 0 && !!p?.extraPrice && (
-                              <span className="bg-chart-1 text-white flex items-center justify-center px-2">
-                                <span className="font-bold leading-none">{extraPrint}₪</span>
-                              </span>
-                            )}
                           </button>
 
                           {/* Back-mode dropdown */}

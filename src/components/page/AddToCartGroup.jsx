@@ -207,12 +207,6 @@ export default function AddToCartGroup({
     [effectivePlacements]
   );
 
-  // [PATCH] Extra print price for rendering the right green chip
-  const uiExtraPrint = useMemo(
-    () => Math.max(0, toNumber(product?.extra_print_price)),
-    [product?.extra_print_price]
-  );
-
   // —— Baseline placements (FIRST non-empty snapshot from product.placement_coordinates; cached per product id) ——
   const baselinePlacementsRef = useMemo(() => {
     const key = String(product?.id || '');
@@ -294,28 +288,27 @@ export default function AddToCartGroup({
   const countActive = arr => (Array.isArray(arr) ? arr.filter(p => p?.active).length : 0);
   const baselineActiveCount = useMemo(
     () => countActive(baselinePlacementsRef),
-    [product?.id] // keep for backward-compat displays / meta
+    [product?.id] // kept for backward-compat displays / meta
   );
+
   const selectedActiveCount = useMemo(
     () => countActive(effectivePlacements),
     [effectivePlacements]
   );
 
-  // [PATCH] Added: count of selected placements that are extraPrice=true
-  const countExtraSelected = arr =>
-    Array.isArray(arr) ? arr.filter(p => p?.active && p?.extraPrice === true).length : 0;
-
+  // [PATCH] Updated: "extra placement" count = max(0, selectedActiveCount - 1)
   const extraPricePlaceCount = useMemo(
-    () => countExtraSelected(effectivePlacements),
-    [effectivePlacements]
+    () => Math.max(0, Number(selectedActiveCount || 0) - 1),
+    [selectedActiveCount]
   );
 
+  // [PATCH] Guard: charge only if product.extra_print_price > 0
   const extraPrint = useMemo(
     () => Math.max(0, toNumber(product?.extra_print_price)),
     [product?.extra_print_price]
   );
 
-  // [PATCH] Updated: derive from extraPricePlaceCount (ignore baseline entirely)
+  // [PATCH] Updated: per-unit extra cost
   const extraEach = useMemo(
     () => extraPricePlaceCount * extraPrint,
     [extraPricePlaceCount, extraPrint]
@@ -326,7 +319,8 @@ export default function AddToCartGroup({
     [stepInfo.price, extraEach]
   );
 
-  const hasExtraSelection = extraPricePlaceCount > 0; // [PATCH] Updated logic
+  // [PATCH] Updated: only mark as "has extra" when it’s actually billable
+  const hasExtraSelection = extraPricePlaceCount > 0 && extraPrint > 0;
 
   const nextStepAmountWithExtra = useMemo(
     () => (stepInfo?.nextStep ? toNumber(stepInfo.nextStep.amount) + extraEach : 0),
@@ -472,13 +466,14 @@ export default function AddToCartGroup({
                 acf: { color: Array.isArray(product?.acf?.color) ? product.acf.color : [] },
               },
               filter_was_changed: filterWasChanged,
-              // NEW: extra-print grouping metadata (used by cart repricer)
-              baseline_active_count: baselineActiveCount, // [PATCH] Kept for backward-compat display
-              selected_active_count: selectedActiveCount, // [PATCH] Kept for backward-compat display
-              selected_extra_price_count: extraPricePlaceCount, // [PATCH] Added
-              has_extra_selection: hasExtraSelection, // [PATCH] Based on extraPricePlaceCount
+              // [PATCH] Updated: persisted meta related to extra prints
+              baseline_active_count: baselineActiveCount, // kept
+              selected_active_count: selectedActiveCount, // kept
+              selected_extra_price_count: extraPricePlaceCount, // updated source
+              has_extra_selection: hasExtraSelection, // now respects extra_print_price > 0
               extra_print_price: Number(product?.extra_print_price) || 0,
-              pricing_group_key: hasExtraSelection ? `sig:${placementSignature}` : 'default', // [PATCH] Predicate unchanged, source updated
+              pricing_group_key: hasExtraSelection ? `sig:${placementSignature}` : 'default', // only splits when billable
+
               options: {
                 group_type: 'Group',
                 color: color.title,
@@ -574,13 +569,6 @@ export default function AddToCartGroup({
                 <div className="px-1.5 py-1">
                   <span className="text-emerald-700 font-medium">{pl.name}</span>
                 </div>
-
-                {/* Right: Extra price */}
-                {uiExtraPrint > 0 && pl.extraPrice === true && (
-                  <div className="bg-green-600 text-white flex items-center justify-center px-1.5">
-                    <span className="font-bold">{uiExtraPrint}₪</span>
-                  </div>
-                )}
               </div>
             ))}
           </div>

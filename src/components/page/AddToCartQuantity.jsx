@@ -128,14 +128,18 @@ export default function AddToCartQuantity({
   const countActive = arr => (Array.isArray(arr) ? arr.filter(p => p?.active).length : 0);
   const baselineActive = countActive(baselinePlacementsRef); // kept for meta / BC
   const selectedActive = countActive(effectivePlacements); // kept for meta / BC
+
+  // [PATCH] Guarded unit extra price
   const extraPrice = Math.max(0, Number(safeProduct?.extra_print_price) || 0);
 
-  // [PATCH] Added
-  const countExtraSelected = arr =>
-    Array.isArray(arr) ? arr.filter(p => p?.active && p?.extraPrice === true).length : 0;
+  // [PATCH] Updated: extras = max(0, selectedActive - 1)
+  const extraPricePlaceCount = Math.max(0, Number(selectedActive || 0) - 1);
 
-  const extraPricePlaceCount = countExtraSelected(effectivePlacements); // [PATCH] Added
-  const extraEach = extraPricePlaceCount * extraPrice; // [PATCH] Updated
+  // [PATCH] Updated: per-unit extra add
+  const extraEach = extraPricePlaceCount * extraPrice;
+
+  // [PATCH] New: boolean used for grouping + meta flag; only true when billable
+  const hasExtraSelection = extraPricePlaceCount > 0 && extraPrice > 0;
 
   const minStep = visibleSteps[0] ? parseInt(visibleSteps[0].quantity) : 1;
   const customQtyNum = parseInt(customQty || 0) || 0;
@@ -143,30 +147,12 @@ export default function AddToCartQuantity({
   const isCustomEmpty = isCustomSelected && customQty === '';
   const isCustomTooLow = isCustomSelected && customQty !== '' && customQtyNum < minStep;
 
-  // (kept for any other uses; not shown in UI when pooling preview is used)
-  const customPricing = useMemo(() => {
-    if (!isCustomSelected || isCustomEmpty || isCustomTooLow) {
-      return { unitPrice: 0, total: 0 };
-    }
-    const unitPrice = getPriceForQuantity(customQtyNum);
-    const total = customQtyNum * unitPrice;
-    return { unitPrice, total };
-  }, [isCustomSelected, isCustomEmpty, isCustomTooLow, customQtyNum, getPriceForQuantity]);
-
   const placementSignature = buildPlacementSignature(effectivePlacements);
   const baselineSignature = buildPlacementSignature(baselinePlacementsRef);
   const filterWasChanged = placementSignature !== baselineSignature;
   const expectedMergeKey = filterWasChanged
     ? normalizePlacementsForKey(effectivePlacements)
     : 'default';
-
-  const activeAreaNames = useMemo(
-    () =>
-      (Array.isArray(effectivePlacements) ? effectivePlacements : [])
-        .filter(p => p?.active && p?.name)
-        .map(p => String(p.name)),
-    [effectivePlacements]
-  );
 
   // [PATCH] Added richer placement list for UI: name + __forceBack + extraPrice
   const activePlacementsUI = useMemo(
@@ -179,12 +165,6 @@ export default function AddToCartQuantity({
           extraPrice: !!p.extraPrice,
         })),
     [effectivePlacements]
-  );
-
-  // [PATCH] Extra print price for rendering the right green chip
-  const uiExtraPrint = useMemo(
-    () => Math.max(0, Number(safeProduct?.extra_print_price) || 0),
-    [safeProduct?.extra_print_price]
   );
 
   // Find existing matching line (for prefill AND pooled math)
@@ -360,13 +340,13 @@ export default function AddToCartQuantity({
         placement_coordinates: effectivePlacements,
         product: { id: safeProduct.id, placement_coordinates: effectivePlacements },
         filter_was_changed: filterWasChanged,
-        // mirror metadata for consistency
-        baseline_active_count: baselineActive, // [PATCH] Kept for backward-compat display
-        selected_active_count: selectedActive, // [PATCH] Kept for backward-compat display
-        selected_extra_price_count: extraPricePlaceCount, // [PATCH] Added
-        has_extra_selection: extraPricePlaceCount > 0, // [PATCH] Updated logic
+        // [PATCH] Updated meta & grouping
+        baseline_active_count: baselineActive, // kept
+        selected_active_count: selectedActive, // kept
+        selected_extra_price_count: extraPricePlaceCount, // updated
+        has_extra_selection: hasExtraSelection, // now respects extra price > 0
         extra_print_price: Number(safeProduct?.extra_print_price) || 0,
-        pricing_group_key: extraPricePlaceCount > 0 ? `sig:${placementSignature}` : 'default', // [PATCH] Updated logic
+        pricing_group_key: hasExtraSelection ? `sig:${placementSignature}` : 'default',
         options: { line_type: 'Quantity', placement_merge_key: expectedMergeKey },
       });
     }
@@ -437,13 +417,6 @@ export default function AddToCartQuantity({
                   <div className="px-1.5 py-1">
                     <span className="text-emerald-700 font-medium">{pl.name}</span>
                   </div>
-
-                  {/* Right: Extra price */}
-                  {uiExtraPrint > 0 && pl.extraPrice === true && (
-                    <div className="bg-green-600 text-white flex items-center justify-center px-1.5">
-                      <span className="font-bold">{uiExtraPrint}₪</span>
-                    </div>
-                  )}
                 </div>
               ))}
             </div>

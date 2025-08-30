@@ -260,9 +260,6 @@ export default function CartItem({
         extraPrice: !!p.extraPrice,
       }));
 
-    // [PATCH] Extra print price for right chip
-    const uiExtraPrint = Math.max(0, Number(item?.extra_print_price || 0));
-
     console.log(`activePlacements for ${item.product_id}:`, item);
     console.log(`activePlacements for ${item.product_id}:`, activePlacements);
 
@@ -316,13 +313,6 @@ export default function CartItem({
                   <div className="px-1.5 py-1">
                     <span className="text-emerald-700 font-medium">{pl.name}</span>
                   </div>
-
-                  {/* Right: Extra price */}
-                  {uiExtraPrint > 0 && pl.extraPrice === true && (
-                    <div className="bg-green-600 text-white flex items-center justify-center px-1.5">
-                      <span className="font-bold">{uiExtraPrint}₪</span>
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
@@ -409,13 +399,13 @@ export default function CartItem({
                       Number(item?.price_base ?? unit - Number(item?.extra_unit_add || 0)) || 0;
                     const extra = Number(item?.extra_unit_add || 0);
 
-                    // [PATCH] Use new meta if present; otherwise recompute from frozen coordinates
+                    // [PATCH] Updated: recompute extras from frozen coordinates as (active - 1), clamped
                     const metaCount = item?.selected_extra_price_count;
-                    const recomputedCount = Array.isArray(item?.placement_coordinates)
-                      ? item.placement_coordinates.filter(p => p?.active && p?.extraPrice === true)
-                          .length
+                    const recomputedActive = Array.isArray(item?.placement_coordinates)
+                      ? item.placement_coordinates.filter(p => p?.active).length
                       : 0;
-                    const extrasN = metaCount != null ? Number(metaCount) : recomputedCount; // [PATCH] Updated
+                    const recomputedCount = Math.max(0, recomputedActive - 1);
+                    const extrasN = metaCount != null ? Number(metaCount) : recomputedCount; // prefer stored meta
                     const xPrice = Number(item?.extra_print_price || 0);
 
                     return (

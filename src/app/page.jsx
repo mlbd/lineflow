@@ -1,7 +1,7 @@
 // src/app/page.jsx
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Image as IconImage,
   Plus,
@@ -173,6 +173,9 @@ export default function HomePage() {
   const [logosManualOff, setLogosManualOff] = useState(new Set()); // names force-removed
   const [logosPreviewLoading, setLogosPreviewLoading] = useState(false);
 
+  // [PATCH] Added: deletion in-flight state
+  const [isDeleting, setIsDeleting] = useState(false);
+
   // =========== Extra print price ===========
   // NEW: Extra print price UI state
   const [addExtraPrice, setAddExtraPrice] = useState(false);
@@ -180,6 +183,15 @@ export default function HomePage() {
 
   // csrftoken
   const [csrfToken, setCsrfToken] = useState('');
+
+  // [PATCH] Added: save/revalidate phase to control overlay messages
+  const [savePhase, setSavePhase] = useState('idle'); // 'idle' | 'saving' | 'cache'
+
+  // [PATCH] Added: state to force a single active placement at a time
+  const [onlyOne, setOnlyOne] = useState(false);
+
+  // [PATCH] Added: remember previously-active IDs to detect the newly toggled one
+  const prevActiveIdsRef = useRef(new Set());
 
   // Reset overrides each time the modal opens
   useEffect(() => {
@@ -287,7 +299,91 @@ export default function HomePage() {
     return label;
   }, [onlyThisPage, selectedPage?.title, extraPriceValid]);
 
+  // [PATCH] Added: does product have saved placements in WP?
+  const productHasPlacementsInWP = useMemo(() => {
+    const raw = selectedProduct?.placement_coordinates;
+    let arr = Array.isArray(raw) ? raw : [];
+    if (!arr.length && typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) arr = parsed;
+      } catch {}
+    }
+    return Array.isArray(arr) && arr.length > 0;
+  }, [selectedProduct]);
+
+  // [PATCH] Added: does selected page have saved placements for this product?
+  const pageHasPlacementsInWP = useMemo(() => {
+    const pc = selectedPageFull?.meta?.placement_coordinates;
+    const key = String(selectedProductId || '');
+    const list =
+      pc && typeof pc === 'object' && !Array.isArray(pc) ? parseMaybeJsonArray(pc[key]) : [];
+    return Array.isArray(list) && list.length > 0;
+  }, [selectedPageFull, selectedProductId]);
+
+  // [PATCH] Added: delete button label
+  const deleteBtnLabel = useMemo(() => {
+    return usePagePlacements ? 'Delete placements from page' : 'Delete placements from product';
+  }, [usePagePlacements]);
+
+  // [PATCH] Added: toggle handler for "Only One"
+  const handleToggleOnlyOne = checked => {
+    if (!checked) {
+      setOnlyOne(false);
+      return;
+    }
+
+    const activeNow = Array.isArray(mappings) ? mappings.filter(m => m?.active).length : 0;
+    if (activeNow > 1) {
+      setWarnTitle('Cannot enable “Only One”');
+      setWarnBody(
+        'Multiple placements are currently active.\n\n' +
+          'Please deactivate extras so only a single placement remains, then enable “Only One”.'
+      );
+      setWarnOpen(true);
+      // [PATCH] Prevent enabling the checkbox
+      setOnlyOne(false);
+      return;
+    }
+
+    setOnlyOne(true);
+  };
+
+  // [PATCH] Added: enforce single-active rule whenever mappings change
+  useEffect(() => {
+    if (!onlyOne || !Array.isArray(mappings) || mappings.length === 0) {
+      // keep prevActiveIds in sync
+      const ids = new Set(mappings.filter(m => m?.active).map(m => m.id));
+      prevActiveIdsRef.current = ids;
+      return;
+    }
+
+    const activeIds = mappings.filter(m => m?.active).map(m => m.id);
+    if (activeIds.length <= 1) {
+      prevActiveIdsRef.current = new Set(activeIds);
+      return;
+    }
+
+    // Determine which placement was newly turned on (prefer keeping the new one)
+    const prev = prevActiveIdsRef.current || new Set();
+    const newlyOn = activeIds.filter(id => !prev.has(id));
+    const keepId = newlyOn.length
+      ? newlyOn[newlyOn.length - 1] // keep the latest newly activated
+      : activeIds[activeIds.length - 1]; // fallback: keep the last active in list
+
+    const next = mappings.map(m =>
+      m?.id === keepId ? { ...m, active: true } : { ...m, active: false }
+    );
+    // [PATCH] Inform user and enforce the rule
+    setWarnTitle('Only one placement allowed');
+    setWarnBody('“Only One” is enabled, so selecting a placement turns off the others.');
+    setWarnOpen(true);
+    setMappings(next);
+    prevActiveIdsRef.current = new Set([keepId]);
+  }, [mappings, onlyOne]);
+
   // replace your existing handleClearAll with this:
+  // [PATCH] Updated: reset "Only One" when clearing everything
   const handleClearAll = () => {
     // placements
     setMappings([]);
@@ -311,6 +407,8 @@ export default function HomePage() {
     setPagePlacementsCandidate([]);
     setPagePlacementsAvailable(false);
     setLogosSliderIdx(0);
+    // [PATCH] Added: reset Only One toggle
+    setOnlyOne(false);
 
     // close any open panels/modals
     setShowProductPanel(false);
@@ -336,55 +434,6 @@ export default function HomePage() {
       return;
     }
     window.open('/logos', '_blank');
-  };
-
-  // checkbox guard: only allow "Update only for {page}" if product is allowed on that page
-  const handleToggleOnlyThisPage = checked => {
-    if (!checked) {
-      setOnlyThisPage(false);
-      return;
-    }
-
-    if (!selectedProductId) {
-      setWarnTitle('Select a product first');
-      setWarnBody('You need to select a product before scoping updates to a page.');
-      setWarnOpen(true);
-      setOnlyThisPage(false);
-      return;
-    }
-
-    const allowed = Array.isArray(selectedPageFull?.acf?.selected_products)
-      ? selectedPageFull.acf.selected_products
-      : null;
-
-    if (!allowed) {
-      setWarnTitle('This page cannot be scoped');
-      setWarnBody(
-        `The selected page (#${selectedPage?.id} — ${selectedPage?.title}) has no selected_products list.\n` +
-          `You cannot restrict updates to this page.`
-      );
-      setWarnOpen(true);
-      setOnlyThisPage(false);
-      return;
-    }
-
-    const ok = allowed.some(p => Number(p?.id) === Number(selectedProductId));
-    if (!ok) {
-      setWarnTitle('Product not allowed for this page');
-      setWarnBody(
-        `Product #${selectedProductId}${selectedProduct?.name ? ` — ${selectedProduct.name}` : ''} is not in\n` +
-          `the page’s allowed products.\n\nPage: #${selectedPage?.id} — ${selectedPage?.title}`
-      );
-      setWarnOpen(true);
-      setOnlyThisPage(false);
-      return;
-    }
-
-    setOnlyThisPage(true);
-
-    // NEW: Hide/clear extra price UI when scoping to page
-    setAddExtraPrice(false);
-    setExtraPrice('');
   };
 
   // Persist to localStorage for logos page
@@ -461,6 +510,35 @@ export default function HomePage() {
     [csrfToken]
   );
 
+  // [PATCH] Added: clear page cache by slug via /api/revalidate
+  const revalidatePageBySlug = useCallback(
+    async slug => {
+      if (!slug) return;
+      if (!csrfToken) {
+        console.warn('[cache] skip page revalidate: no csrfToken yet');
+        return;
+      }
+      try {
+        const url = `/api/revalidate?slug=${encodeURIComponent(slug)}`;
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-ms-csrf': csrfToken,
+          },
+          body: JSON.stringify({}),
+        });
+        const txt = await r.text();
+        const msg = `[cache] POST ${url} -> ${r.status}`;
+        if (!r.ok) console.warn(msg, txt);
+        else console.log(msg, txt);
+      } catch (e) {
+        console.warn('Page revalidate error', e);
+      }
+    },
+    [csrfToken]
+  );
+
   // === Update Placement (with guard for active) ===
   const handleSavePlacement = async () => {
     if (!selectedProductId || mappings.length === 0) return;
@@ -496,6 +574,9 @@ export default function HomePage() {
   const doSavePlacement = async () => {
     setConfirmOpen(false);
     setIsSaving(true);
+    // [PATCH] Added: begin "saving" phase (controls overlay text)
+    setSavePhase('saving');
+
     setResultMsg('');
     setResultOk(false);
     setResultOpen(false);
@@ -509,14 +590,15 @@ export default function HomePage() {
           placements: mappings,
           ...(onlyThisPage && selectedPage?.id ? { page_id: selectedPage.id } : {}),
           // NEW: only send when not page-scoped, box is checked, and value is valid
-          ...(!onlyThisPage && extraPriceValid ? { extra_print_price: extraPriceNumber } : {}),
+          // ...(!onlyThisPage && extraPriceValid ? { extra_print_price: extraPriceNumber } : {}),
+          onlyOne: Boolean(onlyOne),
         }),
       });
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.message || `HTTP ${res.status}`);
 
-      // Update caches (unchanged from your version)
+      // --- keep your existing local cache updates (no change in behavior) ---
       try {
         if (data?.saved_on === 'product' && data?.product) {
           if (Number(data.product.id) === Number(selectedProductId)) {
@@ -534,9 +616,7 @@ export default function HomePage() {
               localStorage.setItem(LS_KEY, JSON.stringify(parsed));
             }
           }
-          if (data?.product?.id) {
-            clearProductCacheClient(data.product.id, { prime: true });
-          }
+          // (Product cache clear will be awaited below in the "cache" phase)
         } else if (data?.saved_on === 'page' && data?.page) {
           const LS_KEY_PAGES = 'ms_cache_pages_all_v5';
           const raw = localStorage.getItem(LS_KEY_PAGES);
@@ -550,19 +630,196 @@ export default function HomePage() {
               localStorage.setItem(LS_KEY_PAGES, JSON.stringify(parsed));
             }
           }
+
+          // [PATCH] keep: enable "Use page placements" switch after page-scoped save
+          try {
+            const pc = data.page?.meta?.placement_coordinates || {};
+            const key = String(selectedProductId);
+            const candidate =
+              pc && typeof pc === 'object' && !Array.isArray(pc)
+                ? parseMaybeJsonArray(pc[key])
+                : [];
+            const baseW = Number(selectedProduct?.thumbnail_meta?.width) || 0;
+            const baseH = Number(selectedProduct?.thumbnail_meta?.height) || 0;
+            const normalized = normalizeCoords(candidate, baseW, baseH);
+            setPagePlacementsCandidate(normalized);
+            setPagePlacementsAvailable(normalized.length > 0);
+          } catch {}
         }
       } catch (err) {
         console.error('Failed to update local cache after placement save', err);
       }
 
+      // Success state for modal (we'll open it after cache step finishes)
       setResultOk(true);
       setResultMsg(data?.message || 'Placements saved!');
       setOnlyThisPage(false);
+
+      // [PATCH] Begin "cache" phase: keep overlay up and update messages
+      setSavePhase('cache');
+
+      // [PATCH] Await server cache clears/revalidation BEFORE showing Result Modal
+      try {
+        if (data?.saved_on === 'product' && data?.product?.id) {
+          await clearProductCacheClient(data.product.id, { prime: true });
+        } else if (data?.saved_on === 'page') {
+          // prefer selectedPage slug; fallback to returned page.slug if present
+          const slug = selectedPage?.slug || data?.page?.slug;
+          if (slug) {
+            await revalidatePageBySlug(slug);
+          }
+        }
+      } catch (e) {
+        // Non-fatal: log and continue to show the success modal anyway
+        console.warn('Revalidation step had an error:', e);
+      }
+
+      // [PATCH] Now close the overlay and show the result
+      setIsSaving(false);
+      setSavePhase('idle');
+      setResultOpen(true);
     } catch (err) {
       setResultOk(false);
       setResultMsg(err.message || 'Failed to update placements.');
-    } finally {
+
+      // [PATCH] On failure: close overlay immediately and show modal (no cache step)
       setIsSaving(false);
+      setSavePhase('idle');
+      setResultOpen(true);
+    }
+  };
+
+  // [PATCH] Added: ask for confirmation then delete from WP
+  const handleConfirmDelete = () => {
+    if (!selectedProductId) return;
+    const isPage = usePagePlacements && selectedPage?.id;
+    const noun = isPage
+      ? `page "${selectedPage?.title}" (#${selectedPage?.id})`
+      : `product #${selectedProductId}`;
+    setConfirmTitle('Delete saved placements?');
+    setConfirmBody(
+      `This will remove saved placements for ${noun} in WordPress.\nThis action cannot be undone.`
+    );
+    setConfirmAction(() => doDeletePlacement);
+    setConfirmOpen(true);
+  };
+
+  // [PATCH] Added: perform deletion via new REST API
+  // [PATCH] Updated doDeletePlacement to re-enable delete button immediately on page delete
+  const doDeletePlacement = async () => {
+    setIsDeleting(true);
+    setResultOpen(false);
+    setResultOk(false);
+    setResultMsg('');
+    try {
+      const payload = { product_id: selectedProductId };
+      if (usePagePlacements && selectedPage?.id) payload.page_id = selectedPage.id;
+
+      const res = await wpApiFetch(`delete-placement`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.message || `HTTP ${res.status}`);
+
+      if (data?.deleted_on === 'product' && data?.product) {
+        // Update product + local product cache
+        setSelectedProduct(data.product);
+        setMappings([]); // clear canvas since product placements are gone
+        setSelectedMapping(null);
+
+        try {
+          const LS_KEY = 'ms_cache_products_all_v2';
+          const raw = localStorage.getItem(LS_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed?.data?.products)) {
+              parsed.data.products = parsed.data.products.map(p =>
+                p.id === data.product.id ? data.product : p
+              );
+              parsed.__ts = Date.now();
+              localStorage.setItem(LS_KEY, JSON.stringify(parsed));
+            }
+          }
+        } catch {}
+
+        if (data?.product?.id) {
+          clearProductCacheClient(data.product.id, { prime: true });
+        }
+
+        // [PATCH] Re-enable delete button ASAP after successful product delete
+        setIsDeleting(false);
+      } else if (data?.deleted_on === 'page' && data?.page) {
+        // Update page + recompute candidate & availability for switch
+        setSelectedPageFull(data.page);
+
+        const pc = data?.page?.meta?.placement_coordinates || {};
+        const key = String(selectedProductId);
+        const candidate =
+          pc && typeof pc === 'object' && !Array.isArray(pc) ? parseMaybeJsonArray(pc[key]) : [];
+        const baseW = Number(selectedProduct?.thumbnail_meta?.width) || 0;
+        const baseH = Number(selectedProduct?.thumbnail_meta?.height) || 0;
+        const normalized = normalizeCoords(candidate, baseW, baseH);
+        const available = normalized.length > 0;
+
+        setPagePlacementsCandidate(normalized);
+        setPagePlacementsAvailable(available);
+
+        // [PATCH] Always revert to product context after a page delete
+        const prodNorm = getNormalizedProductPlacements();
+        setUsePagePlacements(false); // switch label/logic to product
+        setMappingSource(null);
+        setMappings(prodNorm);
+        setSelectedMapping(prodNorm[0] || null);
+
+        // Update local pages cache
+        try {
+          const LS_KEY_PAGES = 'ms_cache_pages_all_v5';
+          const raw = localStorage.getItem(LS_KEY_PAGES);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed?.data?.pages)) {
+              parsed.data.pages = parsed.data.pages.map(pg =>
+                pg.id === data.page.id ? data.page : pg
+              );
+              parsed.__ts = Date.now();
+              localStorage.setItem(LS_KEY_PAGES, JSON.stringify(parsed));
+            }
+          }
+        } catch {}
+
+        // [PATCH] Re-enable delete button immediately after page delete
+        setIsDeleting(false);
+      }
+
+      // [PATCH] Begin "cache" phase messages (optional overlay)
+      setSavePhase('cache');
+
+      // [PATCH] Use deleted_on for cache/revalidate routing
+      try {
+        if (data?.deleted_on === 'product' && data?.product?.id) {
+          await clearProductCacheClient(data.product.id, { prime: true });
+        } else if (data?.deleted_on === 'page') {
+          const slug = selectedPage?.slug || data?.page?.slug;
+          if (slug) {
+            await revalidatePageBySlug(slug);
+          }
+        }
+      } catch (e) {
+        console.warn('Revalidation step had an error:', e);
+      }
+
+      setIsSaving(false);
+      setResultOk(true);
+      setSavePhase('idle');
+      setResultOpen(true);
+    } catch (err) {
+      setResultOk(false);
+      setResultMsg(err.message || 'Failed to delete placements.');
+    } finally {
+      // [PATCH] Safety: ensure deleting flag is off even on error
+      setIsDeleting(false);
       setResultOpen(true);
     }
   };
@@ -627,41 +884,126 @@ export default function HomePage() {
     return { list: [], available: false };
   }, [selectedPageFull, selectedProductId, selectedProduct]);
 
-  // Keep candidate & availability in sync when product/page changes
+  // [PATCH] Updated: do NOT auto-turn OFF when page has no saved placements.
+  // Keep switch ON; keep current mappings/selection. If page later gains placements,
+  // we can optionally sync them to canvas.
   useEffect(() => {
     const { list, available } = computePageCandidate();
     setPagePlacementsCandidate(list);
     setPagePlacementsAvailable(available);
 
-    // If toggle was ON but availability vanished (product changed etc.), turn OFF and revert.
-    if (usePagePlacements && !available) {
-      setUsePagePlacements(false);
-      setMappingSource(null);
-      const prodNorm = getNormalizedProductPlacements();
-      setMappings(prodNorm);
-      setSelectedMapping(prodNorm[0] || null);
-    }
-  }, [computePageCandidate, usePagePlacements, getNormalizedProductPlacements]);
-
-  /** Toggle handler: apply/remove page placements */
-  const handleToggleUsePagePlacements = nextOn => {
-    if (nextOn) {
-      if (!pagePlacementsAvailable || pagePlacementsCandidate.length === 0) return;
-      setUsePagePlacements(true);
-      setMappings(pagePlacementsCandidate);
-      setSelectedMapping(pagePlacementsCandidate[0] || null);
+    // [PATCH] Optional: if switch is ON and placements become available (e.g. just saved),
+    // you may auto-apply them. If you prefer manual apply only, remove this block.
+    if (usePagePlacements && available && list.length > 0) {
+      setMappings(list);
+      setSelectedMapping(list[0] || null);
       setMappingSource({
         type: 'page',
         pageId: selectedPage?.id,
         pageTitle: selectedPage?.title,
         productId: selectedProductId,
       });
+    }
+
+    // [PATCH] Removed the old branch that forcibly setUsePagePlacements(false) on !available.
+  }, [
+    computePageCandidate,
+    usePagePlacements,
+    getNormalizedProductPlacements,
+    selectedPage?.id,
+    selectedPage?.title,
+    selectedProductId,
+  ]);
+
+  /** [PATCH] Toggle handler now scopes updates to the selected page, validates guards,
+   * applies page placements only if they exist, and keeps button labels in sync. */
+  const handleToggleUsePagePlacements = nextOn => {
+    if (nextOn) {
+      // Guard 1: product must be selected
+      if (!selectedProductId) {
+        setWarnTitle('Select a product first');
+        setWarnBody('You need to select a product before scoping updates to a page.');
+        setWarnOpen(true);
+        setUsePagePlacements(false);
+        setOnlyThisPage(false);
+        return;
+      }
+
+      // Guard 2: product must be allowed on this page
+      const allowed = Array.isArray(selectedPageFull?.acf?.selected_products)
+        ? selectedPageFull.acf.selected_products
+        : null;
+      if (!allowed) {
+        setWarnTitle('This page cannot be scoped');
+        setWarnBody(
+          `The selected page (#${selectedPage?.id} — ${selectedPage?.title}) has no selected_products list.\n` +
+            `You cannot restrict updates to this page.`
+        );
+        setWarnOpen(true);
+        setUsePagePlacements(false);
+        setOnlyThisPage(false);
+        return;
+      }
+      const ok = allowed.some(p => Number(p?.id) === Number(selectedProductId));
+      if (!ok) {
+        setWarnTitle('Product not allowed for this page');
+        setWarnBody(
+          `Product #${selectedProductId}${selectedProduct?.name ? ` — ${selectedProduct.name}` : ''} is not in\n` +
+            `the page’s allowed products.\n\nPage: #${selectedPage?.id} — ${selectedPage?.title}`
+        );
+        setWarnOpen(true);
+        setUsePagePlacements(false);
+        setOnlyThisPage(false);
+        return;
+      }
+
+      console.log(
+        'pagePlacementsAvailable',
+        pagePlacementsAvailable,
+        'pagePlacementsCandidate',
+        pagePlacementsCandidate
+      );
+      // If the page ALREADY has saved placements for this product, apply them to canvas
+      if (pagePlacementsAvailable && pagePlacementsCandidate.length > 0) {
+        setMappings(pagePlacementsCandidate);
+        setSelectedMapping(pagePlacementsCandidate[0] || null);
+        setMappingSource({
+          type: 'page',
+          pageId: selectedPage?.id,
+          pageTitle: selectedPage?.title,
+          productId: selectedProductId,
+        });
+      } else {
+        // No saved page placements: keep current mappings; buttons will be disabled by guards
+        setWarnTitle('No saved page placements');
+        setWarnBody(
+          `This page does not have saved placements for the selected product.\n\n` +
+            `So, you can use the current placements, or draw a new placement and save with “Update for ${selectedPage?.title}”, or switch this off.`
+        );
+        setMappingSource({
+          type: 'page',
+          pageId: selectedPage?.id,
+          pageTitle: selectedPage?.title,
+          productId: selectedProductId,
+        });
+        setWarnOpen(true);
+      }
+
+      console.log('===============================hello=====================');
+
+      // Page-scope ON -> update labels via onlyThisPage
+      setUsePagePlacements(true);
+      setOnlyThisPage(true);
+      // When scoping to page, extra price UI should be hidden/cleared
+      setAddExtraPrice(false);
+      setExtraPrice('');
       return;
     }
 
-    // OFF => revert to product placements
+    // OFF => revert to product placements and clear page-scope (labels revert too)
     const prodNorm = getNormalizedProductPlacements();
     setUsePagePlacements(false);
+    setOnlyThisPage(false);
     setMappingSource(null);
     setMappings(prodNorm);
     setSelectedMapping(prodNorm[0] || null);
@@ -813,14 +1155,26 @@ export default function HomePage() {
   const updateButtonDisabled = isSaving || !selectedProductId || mappings.length === 0;
   const canUpdate = !!selectedProductId && mappings.length > 0 && !isSaving;
 
+  // disable update button
+  const updateButtonDisabledPatched = isSaving || !selectedProductId || mappings.length === 0;
+
   return (
     <main className="w-full flex justify-center bg-muted min-h-screen relative">
       {/* Freeze overlay while saving */}
       {isSaving && (
         <div className="fixed inset-0 z-[70] bg-black/30 backdrop-blur-[1px] pointer-events-auto flex items-center justify-center">
           <div className="bg-white rounded-xl px-6 py-5 shadow-lg flex items-center gap-3">
-            <div className="w-6 h-6 rounded-full border-4 border-blue-200 border-t-blue-600 animate-spin" />
-            <div className="text-sm text-gray-700">Updating placement… please wait</div>
+            <div className="w-6 h-6 mt-0.5 rounded-full border-4 border-blue-200 border-t-blue-600 animate-spin" />
+            <div className="text-sm text-gray-700 space-y-0.5">
+              {/* [PATCH] Updated: two-phase overlay messages */}
+              {savePhase === 'saving' && <div>Updating placement… please wait</div>}
+              {savePhase === 'cache' && (
+                <>
+                  <div>Placement update completed.</div>
+                  <div>Updating cache... please wait.</div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -861,21 +1215,31 @@ export default function HomePage() {
           {/* Source notice (when placements are from PAGE meta) */}
           {mappingSource?.type === 'page' && (
             <div className="px-6">
-              <div className="mb-2 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-800">
-                <Info className="mt-0.5 h-4 w-4" />
-                <div className="text-xs leading-5">
-                  Placements are loaded from <b>page</b> meta:&nbsp;
-                  <b>
-                    #{mappingSource.pageId} — {mappingSource.pageTitle}
-                  </b>
-                  <br />
-                  (not from product meta:&nbsp;
-                  <b>
-                    #{selectedProductId} — {selectedProduct?.name || 'Product'}
-                  </b>
-                  )
+              {/* [PATCH] Added: show simple message when page has no saved placements */}
+              {pagePlacementsAvailable && pagePlacementsCandidate?.length > 0 ? (
+                // [PATCH] Unchanged: original detailed banner when placements are loaded from the page
+                <div className="mb-2 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-800">
+                  <Info className="mt-0.5 h-4 w-4" />
+                  <div className="text-xs leading-5">
+                    Placements are loaded from <b>page</b> meta:&nbsp;
+                    <b>
+                      #{mappingSource.pageId} — {mappingSource.pageTitle}
+                    </b>
+                    <br />
+                    (not from product meta:&nbsp;
+                    <b>
+                      #{selectedProductId} — {selectedProduct?.name || 'Product'}
+                    </b>
+                    )
+                  </div>
                 </div>
-              </div>
+              ) : (
+                // [PATCH] Added: simple notice when nothing was loaded from the page
+                <div className="mb-2 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-800">
+                  <Info className="mt-0.5 h-4 w-4" />
+                  <div className="text-xs leading-5">no placement load from page</div>
+                </div>
+              )}
             </div>
           )}
 
@@ -888,7 +1252,7 @@ export default function HomePage() {
                   <div className="text-xs text-muted-foreground mt-0.5">
                     {pagePlacementsAvailable
                       ? 'Toggle on to replace product placements with saved page placements.'
-                      : 'No saved placements for this product on the selected page.'}
+                      : 'No saved placements on this page for the selected product. You can still scope updates to this page.'}
                   </div>
                 </div>
                 <label className="inline-flex items-center gap-2 select-none">
@@ -900,17 +1264,15 @@ export default function HomePage() {
                     aria-checked={usePagePlacements}
                     checked={usePagePlacements}
                     onChange={e => handleToggleUsePagePlacements(e.target.checked)}
-                    disabled={!pagePlacementsAvailable}
                     className="sr-only"
                   />
 
                   {/* Track (clips the thumb) */}
                   <span
                     className={`relative inline-block h-6 w-11 rounded-full overflow-hidden transition-colors duration-200
-      ${usePagePlacements ? 'bg-blue-600' : 'bg-gray-300'}
-      ${!pagePlacementsAvailable ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-opacity-90'}
-      focus-within:outline-none focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2
-    `}
+                      ${usePagePlacements ? 'bg-blue-600' : 'bg-gray-300'} cursor-pointer hover:bg-opacity-90
+                      focus-within:outline-none focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2
+                    `}
                   >
                     {/* Thumb moves via left/right swap (no transforms) */}
                     <span
@@ -925,27 +1287,10 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* Update-only-for checkbox */}
-          {selectedPage?.title && (
-            <div className="flex items-center justify-center m-0">
-              <label className="flex items-center gap-2 text-sm select-none">
-                <input
-                  type="checkbox"
-                  className="w-4 h-4 cursor-pointer"
-                  checked={onlyThisPage}
-                  onChange={e => handleToggleOnlyThisPage(e.target.checked)}
-                />
-                <span>
-                  Update only for <b>&apos;{selectedPage.title}&apos;</b>
-                </span>
-              </label>
-            </div>
-          )}
-
           {/* Add extra print price (hidden if scoped to a single page) */}
           {!updateButtonDisabled && !onlyThisPage && (
-            <div className="px-6 mt-2">
-              <label className="flex items-center gap-2 text-sm select-none curposer-pointer">
+            <div className="flex flex-col items-center justify-center mt-3">
+              <label className="flex items-center gap-2 text-sm select-none">
                 <input
                   type="checkbox"
                   className="w-4 h-4 cursor-pointer"
@@ -988,16 +1333,56 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* Update Placement */}
-          <div className="px-6">
-            <button
-              className={`mt-2 w-full py-2 cursor-pointer rounded font-semibold transition
-                ${updateButtonDisabled ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
-              onClick={handleSavePlacement}
-              disabled={updateButtonDisabled}
-            >
-              {updateBtnLabel}
-            </button>
+          {/* [PATCH] Added: Only One toggle */}
+          {!updateButtonDisabledPatched && (
+            <div className="flex flex-col items-center justify-center mt-1 mb-1">
+              <label className="flex items-center gap-2 text-sm select-none cursor-pointer">
+                <input
+                  type="checkbox"
+                  aria-label="Only One active placement"
+                  className="w-4 h-4 cursor-pointer"
+                  checked={onlyOne}
+                  onChange={e => handleToggleOnlyOne(e.target.checked)}
+                />
+                <span>Only One</span>
+              </label>
+            </div>
+          )}
+
+          <div className="px-6 flex flex-col gap-2">
+            {/* Update Placement */}
+            <div>
+              <button
+                className={`mt-2 w-full py-2 cursor-pointer rounded font-semibold transition
+                  ${updateButtonDisabledPatched ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                onClick={handleSavePlacement}
+                disabled={updateButtonDisabledPatched}
+              >
+                {updateBtnLabel}
+              </button>
+            </div>
+
+            {/* [PATCH] Added: Delete Placement from WP */}
+            <div>
+              <button
+                className={`mt-2 w-full py-2 cursor-pointer text-sm rounded font-semibold transition
+      ${
+        isDeleting ||
+        !selectedProductId ||
+        (usePagePlacements ? !pageHasPlacementsInWP : !productHasPlacementsInWP)
+          ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+          : 'bg-red-600 text-white hover:bg-red-700'
+      }`}
+                onClick={handleConfirmDelete}
+                disabled={
+                  isDeleting ||
+                  !selectedProductId ||
+                  (usePagePlacements ? !pageHasPlacementsInWP : !productHasPlacementsInWP)
+                }
+              >
+                {isDeleting ? 'Deleting…' : deleteBtnLabel}
+              </button>
+            </div>
           </div>
 
           <div className="flex align-center justify-center gap-4 pb-4">
