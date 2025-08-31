@@ -7,9 +7,8 @@ import CircleReveal from '@/components/CircleReveal';
 import TopBar from '@/components/page/TopBar';
 import HeroSection from '@/components/page/HeroSection';
 import InfoBoxSection from '@/components/page/InfoBoxSection';
-import ProductListSection from '@/components/page/ProductListSection';
-import CartPage from '@/components/cart/CartPage';
 import Footer from '@/components/page/Footer';
+import ProductsShell from '@/components/page/ProductsShell';
 
 import { getOrFetchShipping } from '@/lib/shippingCache';
 import { wpApiFetch } from '@/lib/wpApi';
@@ -140,142 +139,6 @@ export async function getStaticProps({ params }) {
       revalidate: 60,
     };
   }
-}
-
-/* -----------------------------------------------------------
- * Client shell: hydrate full product list once and share
- * --------------------------------------------------------- */
-function ProductsShell({
-  slug,
-  productIds,
-  bumpPrice,
-  companyLogos,
-  pagePlacementMap,
-  customBackAllowedSet,
-  shippingOptions,
-  acf,
-  companyData,
-  cartSectionRef,
-  criticalProducts = [],
-}) {
-  // Start with SSR items so products are visible immediately
-  const [products, setProducts] = useState(criticalProducts);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState('');
-
-  useEffect(() => {
-    let ignore = false;
-    const controller = new AbortController();
-
-    async function run() {
-      if (!Array.isArray(productIds) || productIds.length === 0) {
-        setProducts([]);
-        return;
-      }
-      setErr('');
-      setLoading(true);
-
-      try {
-        const idsParam = encodeURIComponent(productIds.join(','));
-        const url = `/api/minisites/product-cards?ids=${idsParam}&slug=${encodeURIComponent(slug)}`;
-        const res = await fetch(url, { signal: controller.signal });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        const json = await res.json();
-        const fetched = Array.isArray(json?.products) ? json.products : [];
-
-        if (!ignore) {
-          // Merge SSR + fetched; preserve `productIds` order
-          const indexById = new Map(productIds.map((id, i) => [String(id), i]));
-          const inFlightById = new Map(fetched.map(p => [String(p?.id), p]));
-          const ssrById = new Map(criticalProducts.map(p => [String(p?.id), p]));
-
-          const merged = productIds
-            .map(id => inFlightById.get(String(id)) || ssrById.get(String(id)))
-            .filter(Boolean);
-
-          // If any item still missing (shouldn't happen), append fetched uniques
-          if (merged.length < productIds.length) {
-            const seen = new Set(merged.map(p => String(p.id)));
-            fetched.forEach(p => {
-              const k = String(p?.id);
-              if (!seen.has(k)) merged.push(p);
-            });
-            // Finally re-sort to productIds order
-            merged.sort(
-              (a, b) => (indexById.get(String(a.id)) ?? 0) - (indexById.get(String(b.id)) ?? 0)
-            );
-          }
-
-          setProducts(merged);
-        }
-      } catch (e) {
-        if (!ignore) {
-          console.error('ProductsShell fetch error:', e);
-          setErr(e?.message || 'Failed to load products');
-        }
-      } finally {
-        if (!ignore) setLoading(false);
-      }
-    }
-
-    run();
-    return () => {
-      ignore = true;
-      controller.abort();
-    };
-    // NOTE: `criticalProducts` is just the SSR seed; not a dependency
-  }, [productIds, slug]);
-
-  // If we truly have nothing yet AND still loading, show skeleton
-  if (!products.length && loading) {
-    return (
-      <div className="text-center py-12 text-gray-400" role="status" aria-live="polite">
-        טוען מוצרים…
-      </div>
-    );
-  }
-
-  if (err && !products.length) {
-    return (
-      <div className="text-center py-12 text-red-600">
-        לא הצלחנו לטעון מוצרים. אנא רענן/י את הדף.
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <ProductListSection
-        products={products}
-        bumpPrice={bumpPrice}
-        onCartAddSuccess={() => {
-          if (cartSectionRef?.current) {
-            cartSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
-        }}
-        companyLogos={companyLogos}
-        pagePlacementMap={pagePlacementMap}
-        customBackAllowedSet={customBackAllowedSet}
-      />
-
-      <div className="w-full" ref={cartSectionRef}>
-        <CartPage
-          // Maintain backward compatibility for any code reading `initialProducts`
-          initialProducts={products}
-          products={products}
-          shippingOptions={shippingOptions}
-          shippingLoading={false}
-          acf={acf}
-          companyData={companyData}
-          companyLogos={companyLogos}
-          pagePlacementMap={pagePlacementMap}
-          customBackAllowedSet={customBackAllowedSet}
-          slug={slug}
-        />
-      </div>
-    </>
-  );
 }
 
 /* -----------------------------------------------------------
