@@ -14,6 +14,7 @@ import Footer from '@/components/page/Footer';
 import { getOrFetchShipping } from '@/lib/shippingCache';
 import { wpApiFetch } from '@/lib/wpApi';
 import { getProductCardsBatch } from '@/lib/productCache'; // ⬅️ NEW
+import { ProductsProvider } from '@/contexts/ProductsContext';
 
 const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
 
@@ -172,7 +173,7 @@ export default function LandingPage({
   }
 
   return (
-    <>
+    <ProductsProvider initialProducts={initialProducts}>
       <Head>
         <title>{seo.title}</title>
         <meta name="description" content={seo.description} />
@@ -198,7 +199,6 @@ export default function LandingPage({
             <div className="text-center py-12 text-gray-400">אין מוצרים להצגה</div>
           ) : (
             <ProductListSection
-              products={initialProducts}
               bumpPrice={bumpPrice}
               onCartAddSuccess={handleScrollToCart}
               companyLogos={companyLogos}
@@ -208,7 +208,6 @@ export default function LandingPage({
           )}
           <div className="w-full" ref={cartSectionRef}>
             <CartPage
-              initialProducts={initialProducts}
               shippingOptions={shippingOptions}
               shippingLoading={false}
               acf={acf}
@@ -222,6 +221,6 @@ export default function LandingPage({
           <Footer />
         </main>
       </div>
-    </>
+    </ProductsProvider>
   );
 }

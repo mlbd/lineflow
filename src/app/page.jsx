@@ -109,6 +109,30 @@ function findExtraPrintPriceInProduct(p) {
   return NaN;
 }
 
+// [PATCH] Added: derive "onlyOne" from product meta (supports "1", 1, "true", true)
+function readOnlyOneFlag(val) {
+  if (val === true) return true;
+  if (val === 1) return true;
+  if (typeof val === 'string') {
+    const s = val.trim().toLowerCase();
+    return s === '1' || s === 'true' || s === 'yes' || s === 'on';
+  }
+  return false;
+}
+
+// [PATCH] Added: scan typical locations for onlyone meta and coerce to boolean
+function getOnlyOneFromProduct(p) {
+  if (!p || typeof p !== 'object') return false;
+  const candidates = [p.onlyone, p?.meta?.onlyone, p?.acf?.onlyone];
+  for (const c of candidates) {
+    // treat empty string/undefined/null as "not set"
+    if (c !== undefined && c !== null && String(c).trim() !== '') {
+      return readOnlyOneFlag(c);
+    }
+  }
+  return false;
+}
+
 export default function HomePage() {
   const [imageUrl, setImageUrl] = useState(
     `https://res.cloudinary.com/${cloudName}/image/upload/V-Neck_L-Gray_ulfprv.jpg`
@@ -1624,6 +1648,12 @@ export default function HomePage() {
             setAddExtraPrice(false);
             setExtraPrice('');
           }
+
+          // [PATCH] Added: set Only One from product meta if present
+          // If the product carries "onlyone" truthy value, turn the toggle on; otherwise off.
+          // (values can be "1", 1, "true", true)
+          const onlyOneFromProduct = getOnlyOneFromProduct(product);
+          setOnlyOne(onlyOneFromProduct);
 
           // Build placements if product has any
           const prodNorm = (() => {

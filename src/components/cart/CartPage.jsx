@@ -14,6 +14,8 @@ import ProductQuickViewModal from '@/components/page/ProductQuickViewModal';
 import AddToCartModal from '@/components/page/AddToCartModal';
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
 import { wpApiFetch } from '@/lib/wpApi';
+// [PATCH] Added import
+import { useProducts } from '@/contexts/ProductsContext';
 
 function findProductLocally(id, initialProducts, companyData) {
   const pid = String(id);
@@ -29,7 +31,6 @@ function findProductLocally(id, initialProducts, companyData) {
 }
 
 export default function CartPage({
-  initialProducts = [], // ✅ passed from [slug].jsx
   shippingOptions = [],
   shippingLoading = false,
   acf = {},
@@ -39,6 +40,10 @@ export default function CartPage({
   customBackAllowedSet = {},
   slug = '',
 }) {
+  // [PATCH] Use shared context instead of props
+  const { products: initialProducts } = useProducts();
+
+  
   const items = useCartItems();
   const customerNote = useCustomerNote();
   const setCustomerNote = useSetCustomerNote();

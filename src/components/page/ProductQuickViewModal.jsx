@@ -388,6 +388,8 @@ export default function ProductQuickViewModal({
     });
   }, [basePlacements, areaOn, areaOff, backChoice]);
 
+  console.log(`prodcutID::${product?.id}::previewPlacements`, previewPlacements);
+
   // Detect if changed vs base (not vs product default)
   // Did the user change vs source?
   const filterWasChanged = useMemo(() => {
@@ -636,6 +638,8 @@ export default function ProductQuickViewModal({
     if (onClose) onClose();
     if (onAddToCart) onAddToCart(previewProduct);
   };
+
+  console.log(`basePlacements::${previewProduct?.id}`, product);
 
   return (
     <>
