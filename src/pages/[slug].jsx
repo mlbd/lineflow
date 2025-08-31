@@ -1,6 +1,6 @@
 // pages/[slug].jsx
 import Head from 'next/head';
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { GoogleTagManager } from '@next/third-parties/google';
 
 import CircleReveal from '@/components/CircleReveal';
@@ -13,41 +13,50 @@ import Footer from '@/components/page/Footer';
 
 import { getOrFetchShipping } from '@/lib/shippingCache';
 import { wpApiFetch } from '@/lib/wpApi';
-import { getProductCardsBatch } from '@/lib/productCache'; // ⬅️ NEW
-import { ProductsProvider } from '@/contexts/ProductsContext';
+import { getProductCardsBatch } from '@/lib/productCache'; // server-side helper
 
 const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
 
-/* ---------------------- SSG: paths & props --------------------- */
+/* -----------------------------------------------------------
+ * SSG: paths & props (keep ISR to avoid cold user waits)
+ * --------------------------------------------------------- */
 export async function getStaticPaths() {
-  // Keep ISR; warm later so users don't wait.
   return { paths: [], fallback: 'blocking' };
 }
 
 export async function getStaticProps({ params }) {
   try {
-    console.log('⏳ Fetching company page data for slug:', WP_URL, params.slug);
-
+    // 1) Company page data
     const res = await wpApiFetch(`company-page?slug=${params.slug}`);
-    if (!res.ok) throw new Error('Failed to fetch company data');
-
+    if (!res.ok) throw new Error(`company-page fetch failed ${res.status}`);
     const data = await res.json();
-    console.log('✅ Company data response:', data);
 
-    const bumpPrice = data.acf?.bump_price || null;
-    const productIdsRaw = data.acf?.selected_products || [];
-
-    console.log('🧩 Raw selected_products from ACF:', productIdsRaw);
-
-    // Normalize to IDs
+    // 2) Normalize product IDs (avoid serializing huge arrays into Next data)
+    const productIdsRaw = data?.acf?.selected_products || [];
     const productIds = productIdsRaw
       .map(p => (p && typeof p === 'object' ? p.id : p))
-      .filter(Boolean);
-    console.log('🔢 Normalized product IDs:', productIds);
+      .filter(Boolean)
+      .map(id => Number(id))
+      .filter(id => Number.isFinite(id));
 
-    // SHIPPING CACHE LOGIC (runtime-safe)
+    // 3) SSR only first N products so users see products on first paint
+    const CRITICAL_COUNT = 6;
+    const criticalIds = productIds.slice(0, CRITICAL_COUNT);
+    let criticalProducts = [];
+    if (criticalIds.length) {
+      try {
+        criticalProducts = await getProductCardsBatch(criticalIds, {
+          ttlSeconds: 60 * 60 * 6,
+          staleSeconds: 60 * 60 * 24,
+        });
+      } catch (e) {
+        console.warn('[slug].jsx getProductCardsBatch error:', e);
+        criticalProducts = [];
+      }
+    }
+
+    // 4) Shipping (cached server-side)
     const cacheKey = `company:${data?.id || 'na'}|country:IL`;
-
     const shippingOptions = await getOrFetchShipping(
       cacheKey,
       async () => {
@@ -60,13 +69,10 @@ export async function getStaticProps({ params }) {
         const json = await shippingRes.json();
         return Array.isArray(json.shipping) ? json.shipping : [];
       },
-      {
-        ttlSeconds: 21600, // 6h fresh
-        staleSeconds: 86400, // +24h stale acceptable
-      }
+      { ttlSeconds: 21600, staleSeconds: 86400 } // 6h fresh, 24h stale-ok
     );
-    // END SHIPPING CACHE LOGIC
 
+    // 5) Small derived objects only (keep page-data tiny)
     const companyLogos = {
       logo_darker: data?.acf?.logo_darker || null,
       logo_lighter: data?.acf?.logo_lighter || null,
@@ -74,49 +80,53 @@ export async function getStaticProps({ params }) {
       back_lighter: data?.acf?.back_lighter || null,
     };
 
-    // Page-level placement map for your UI
     const pagePlacementMap = data?.meta?.placement_coordinates || {};
     const customBackAllowedSet = (data?.acf?.custom_logo_products || []).map(String);
 
-    // ✅ PRODUCTS via Next server cache (SWR + batch miss fetch)
-    let products = [];
-    if (productIds.length) {
-      products = await getProductCardsBatch(productIds, {
-        ttlSeconds: 60 * 60 * 6, // 6h "fresh"
-        staleSeconds: 60 * 60 * 24, // +24h stale acceptable
-      });
-      console.log('📦 initialProducts from Next cache/batch:', products?.length);
-    } else {
-      console.warn('⚠️ No valid product IDs found');
+    // ---- Build props so we can measure page-data size before returning ----
+    const props = {
+      slug: params.slug,
+      pageId: data?.id || null,
+      productIds, // All IDs (client will fetch the full list)
+      criticalProducts, // First N full products (SSR)
+      bumpPrice: data?.acf?.bump_price || null,
+      companyData: {
+        name: data?.acf?.user_header_title || data?.title || '',
+        description: data?.acf?.user_header_content || '',
+        logo: data?.acf?.logo_darker?.url || null,
+      },
+      companyLogos,
+      seo: {
+        title: data?.acf?.user_header_title || data?.title || '',
+        description: data?.acf?.user_header_content || '',
+        image: data?.acf?.logo_darker?.url || null,
+      },
+      acf: data?.acf || [],
+      meta: data?.meta || [],
+      shippingOptions,
+      pagePlacementMap,
+      customBackAllowedSet,
+    };
+
+    // ---- SERVER SIZE LOG (uncompressed JSON that Next will serialize) ----
+    try {
+      const json = JSON.stringify(props);
+      const bytes = Buffer.byteLength(json, 'utf8');
+      const kb = bytes / 1024;
+      const thresholdKB = 128;
+      const status = kb > thresholdKB ? '⚠️ EXCEEDS' : '✅ OK';
+      console.log(
+        `[PageData] /${params.slug} props size ≈ ${kb.toFixed(
+          1
+        )} KB (${bytes} bytes) → ${status} ${thresholdKB} KB threshold`
+      );
+    } catch (e) {
+      console.warn('[PageData] size check failed:', e);
     }
 
-    return {
-      props: {
-        slug: params.slug,
-        initialProducts: products,
-        bumpPrice,
-        pageId: data?.id || null,
-        companyData: {
-          name: data.acf?.user_header_title || data.title || '',
-          description: data.acf?.user_header_content || '',
-          logo: data.acf?.logo_darker?.url || null,
-        },
-        companyLogos,
-        seo: {
-          title: data.acf?.user_header_title || data.title || '',
-          description: data?.acf.user_header_content || '',
-          image: data.acf?.logo_darker?.url || null,
-        },
-        acf: data?.acf || [],
-        meta: data?.meta || [],
-        shippingOptions,
-        pagePlacementMap,
-        customBackAllowedSet,
-      },
-      revalidate: 60,
-    };
+    return { props, revalidate: 60 };
   } catch (error) {
-    console.error('🚨 getStaticProps error for slug', params.slug, error);
+    console.error('getStaticProps error for slug', params.slug, error);
     return {
       props: {
         slug: params.slug,
@@ -132,9 +142,149 @@ export async function getStaticProps({ params }) {
   }
 }
 
+/* -----------------------------------------------------------
+ * Client shell: hydrate full product list once and share
+ * --------------------------------------------------------- */
+function ProductsShell({
+  slug,
+  productIds,
+  bumpPrice,
+  companyLogos,
+  pagePlacementMap,
+  customBackAllowedSet,
+  shippingOptions,
+  acf,
+  companyData,
+  cartSectionRef,
+  criticalProducts = [],
+}) {
+  // Start with SSR items so products are visible immediately
+  const [products, setProducts] = useState(criticalProducts);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    let ignore = false;
+    const controller = new AbortController();
+
+    async function run() {
+      if (!Array.isArray(productIds) || productIds.length === 0) {
+        setProducts([]);
+        return;
+      }
+      setErr('');
+      setLoading(true);
+
+      try {
+        const idsParam = encodeURIComponent(productIds.join(','));
+        const url = `/api/minisites/product-cards?ids=${idsParam}&slug=${encodeURIComponent(slug)}`;
+        const res = await fetch(url, { signal: controller.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const json = await res.json();
+        const fetched = Array.isArray(json?.products) ? json.products : [];
+
+        if (!ignore) {
+          // Merge SSR + fetched; preserve `productIds` order
+          const indexById = new Map(productIds.map((id, i) => [String(id), i]));
+          const inFlightById = new Map(fetched.map(p => [String(p?.id), p]));
+          const ssrById = new Map(criticalProducts.map(p => [String(p?.id), p]));
+
+          const merged = productIds
+            .map(id => inFlightById.get(String(id)) || ssrById.get(String(id)))
+            .filter(Boolean);
+
+          // If any item still missing (shouldn't happen), append fetched uniques
+          if (merged.length < productIds.length) {
+            const seen = new Set(merged.map(p => String(p.id)));
+            fetched.forEach(p => {
+              const k = String(p?.id);
+              if (!seen.has(k)) merged.push(p);
+            });
+            // Finally re-sort to productIds order
+            merged.sort(
+              (a, b) => (indexById.get(String(a.id)) ?? 0) - (indexById.get(String(b.id)) ?? 0)
+            );
+          }
+
+          setProducts(merged);
+        }
+      } catch (e) {
+        if (!ignore) {
+          console.error('ProductsShell fetch error:', e);
+          setErr(e?.message || 'Failed to load products');
+        }
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+
+    run();
+    return () => {
+      ignore = true;
+      controller.abort();
+    };
+    // NOTE: `criticalProducts` is just the SSR seed; not a dependency
+  }, [productIds, slug]);
+
+  // If we truly have nothing yet AND still loading, show skeleton
+  if (!products.length && loading) {
+    return (
+      <div className="text-center py-12 text-gray-400" role="status" aria-live="polite">
+        טוען מוצרים…
+      </div>
+    );
+  }
+
+  if (err && !products.length) {
+    return (
+      <div className="text-center py-12 text-red-600">
+        לא הצלחנו לטעון מוצרים. אנא רענן/י את הדף.
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <ProductListSection
+        products={products}
+        bumpPrice={bumpPrice}
+        onCartAddSuccess={() => {
+          if (cartSectionRef?.current) {
+            cartSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }}
+        companyLogos={companyLogos}
+        pagePlacementMap={pagePlacementMap}
+        customBackAllowedSet={customBackAllowedSet}
+      />
+
+      <div className="w-full" ref={cartSectionRef}>
+        <CartPage
+          // Maintain backward compatibility for any code reading `initialProducts`
+          initialProducts={products}
+          products={products}
+          shippingOptions={shippingOptions}
+          shippingLoading={false}
+          acf={acf}
+          companyData={companyData}
+          companyLogos={companyLogos}
+          pagePlacementMap={pagePlacementMap}
+          customBackAllowedSet={customBackAllowedSet}
+          slug={slug}
+        />
+      </div>
+    </>
+  );
+}
+
+/* -----------------------------------------------------------
+ * Page Component (+ CLIENT SIZE LOG)
+ * --------------------------------------------------------- */
 export default function LandingPage({
   slug,
-  initialProducts = [],
+  productIds = [],
+  criticalProducts = [],
   bumpPrice = null,
   companyData = {},
   seo = {},
@@ -155,6 +305,59 @@ export default function LandingPage({
     }
   };
 
+  // ---- CLIENT SIZE LOG (transfer/encoded/decoded) ----
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_LOG_PAGE_DATA !== '1') return;
+    if (typeof window === 'undefined' || !window.__NEXT_DATA__) return;
+
+    try {
+      const d = window.__NEXT_DATA__;
+      const buildId = d.buildId;
+      const locale = d.locale ? `/${d.locale}` : '';
+      const path = location.pathname.replace(/^\/|\/$/g, '') || 'index';
+      const url = `/_next/data/${buildId}${locale}/${path}.json`;
+
+      setTimeout(() => {
+        const entries = performance.getEntriesByName(url);
+        const last = entries[entries.length - 1];
+
+        if (last && 'transferSize' in last) {
+          const t = (last.transferSize / 1024).toFixed(1);
+          const enc = (last.encodedBodySize / 1024).toFixed(1);
+          const dec = (last.decodedBodySize / 1024).toFixed(1);
+          console.log(
+            `[PageData] (client) ${path}.json → transfer ~${t} KB, encoded ~${enc} KB, decoded ~${dec} KB`
+          );
+        } else {
+          // Fallback: fetch and measure decoded size; also try Content-Length header
+          fetch(url, { cache: 'no-cache' })
+            .then(async res => {
+              const cl = res.headers.get('content-length');
+              const text = await res.text();
+              const decodedBytes =
+                typeof TextEncoder !== 'undefined'
+                  ? new TextEncoder().encode(text).length
+                  : text.length;
+              const decKB = (decodedBytes / 1024).toFixed(1);
+
+              if (cl) {
+                console.log(
+                  `[PageData] (client) ${path}.json → content-length ${(Number(cl) / 1024).toFixed(
+                    1
+                  )} KB; decoded ~${decKB} KB`
+                );
+              } else {
+                console.log(`[PageData] (client) ${path}.json → decoded ~${decKB} KB`);
+              }
+            })
+            .catch(() => {});
+        }
+      }, 0);
+    } catch (e) {
+      console.warn('[PageData] (client) log failed:', e);
+    }
+  }, [slug]);
+
   if (!animationDone) return <CircleReveal onFinish={() => setAnimationDone(true)} />;
 
   if (error) {
@@ -172,8 +375,15 @@ export default function LandingPage({
     );
   }
 
+  const preloadHref =
+    Array.isArray(productIds) && productIds.length > 0
+      ? `/api/minisites/product-cards?ids=${encodeURIComponent(productIds.join(','))}&slug=${encodeURIComponent(
+          slug
+        )}`
+      : null;
+
   return (
-    <ProductsProvider initialProducts={initialProducts}>
+    <>
       <Head>
         <title>{seo.title}</title>
         <meta name="description" content={seo.description} />
@@ -186,6 +396,11 @@ export default function LandingPage({
         {seo.image && <meta name="twitter:image" content={seo.image} />}
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="canonical" href={`${process.env.NEXT_PUBLIC_SITE_URL || ''}/${slug}`} />
+
+        {/* Hint the browser to start the product JSON fetch ASAP */}
+        {preloadHref && (
+          <link rel="preload" as="fetch" href={preloadHref} crossOrigin="anonymous" />
+        )}
       </Head>
 
       <GoogleTagManager gtmId={process.env.NEXT_PUBLIC_GTM_ID} />
@@ -195,32 +410,25 @@ export default function LandingPage({
         <main className="alrndr-hero">
           <HeroSection company={companyData} />
           <InfoBoxSection />
-          {initialProducts.length === 0 ? (
-            <div className="text-center py-12 text-gray-400">אין מוצרים להצגה</div>
-          ) : (
-            <ProductListSection
-              bumpPrice={bumpPrice}
-              onCartAddSuccess={handleScrollToCart}
-              companyLogos={companyLogos}
-              pagePlacementMap={pagePlacementMap}
-              customBackAllowedSet={customBackAllowedSet}
-            />
-          )}
-          <div className="w-full" ref={cartSectionRef}>
-            <CartPage
-              shippingOptions={shippingOptions}
-              shippingLoading={false}
-              acf={acf}
-              companyData={companyData}
-              companyLogos={companyLogos}
-              pagePlacementMap={pagePlacementMap}
-              customBackAllowedSet={customBackAllowedSet}
-              slug={slug}
-            />
-          </div>
+
+          {/* SSR N products; hydrate full list once client-side */}
+          <ProductsShell
+            slug={slug}
+            productIds={productIds}
+            criticalProducts={criticalProducts}
+            bumpPrice={bumpPrice}
+            companyLogos={companyLogos}
+            pagePlacementMap={pagePlacementMap}
+            customBackAllowedSet={customBackAllowedSet}
+            shippingOptions={shippingOptions}
+            acf={acf}
+            companyData={companyData}
+            cartSectionRef={cartSectionRef}
+          />
+
           <Footer />
         </main>
       </div>
-    </ProductsProvider>
+    </>
   );
 }

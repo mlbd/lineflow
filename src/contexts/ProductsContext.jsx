@@ -21,8 +21,5 @@ export function useProducts() {
 // Optional convenience
 export function useProductById(id) {
   const { products } = useProducts();
-  return useMemo(
-    () => products?.find?.(p => String(p?.id) === String(id)) || null,
-    [products, id]
-  );
+  return useMemo(() => products?.find?.(p => String(p?.id) === String(id)) || null, [products, id]);
 }

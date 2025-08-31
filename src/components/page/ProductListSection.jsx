@@ -8,21 +8,17 @@ import AddToCartModal from '@/components/page/AddToCartModal';
 import Image from 'next/image';
 import { generateProductImageUrl } from '@/utils/cloudinaryMockup';
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
-// [PATCH] Added import
-import { useProducts } from '@/contexts/ProductsContext';
 
 const PRODUCT_PER_PAGE = 12;
 
 export default function ProductListSection({
+  products = [],
   bumpPrice,
   onCartAddSuccess,
   companyLogos = {},
   pagePlacementMap = {},
   customBackAllowedSet = {},
 }) {
-  // [PATCH] Use shared context instead of props
-  const { products } = useProducts();
-
   const [page, setPage] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [modalProduct, setModalProduct] = useState(null);
