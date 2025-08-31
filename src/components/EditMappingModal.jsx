@@ -257,7 +257,6 @@ export default function EditMappingModal({
             </div>
           </div>{' '}
           {/* NEW */}
-          
           {/* Active switch */}
           <div>
             <Label className="flex items-center gap-2">
@@ -300,7 +299,6 @@ export default function EditMappingModal({
               Extent defaults to <b>true</b>. Check to force it <b>false</b>.
             </div>
           </div>
-    
         </div>
 
         <DialogFooter>

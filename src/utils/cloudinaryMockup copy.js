@@ -16,131 +16,6 @@ export const ENABLE_ALLOW_BACK_GATE = false;
  */
 export const ENABLE_LOGO_STEP_SCALING = '1';
 
-// [PATCH] Added DEV overlay gate, helpers, and DRY overlay injector.
-// Place these near the top of cloudinaryMockup.js (after existing imports/consts).
-
-// [PATCH] Added — module-scoped flag for showing dev overlays
-let DEV_OVERLAY_ENABLED = false;
-
-// [PATCH] Added — default styling for the overlay rectangles (same vibe you use elsewhere)
-const DEV_OVERLAY_DEFAULTS = {
-  hex: '#000000', // black
-  opacity: 40, // 0–100 (Cloudinary "o_")
-};
-
-// [PATCH] Added — tiny safe helpers to control the flag
-export function setDevOverlayEnabled(flag) {
-  DEV_OVERLAY_ENABLED = !!flag;
-}
-
-// [PATCH] Added — client-side initializer that checks ?dev= in URL against NEXT_PUBLIC_DEV_OVERLAY_TOKEN
-export function initDevOverlayFromUrl() {
-  try {
-    if (typeof window === 'undefined') return; // only on client
-    const token = new URLSearchParams(window.location.search).get('dev');
-    const pub = process.env.NEXT_PUBLIC_DEV_OVERLAY_TOKEN;
-    if (!token || !pub) return;
-    if (token === pub) {
-      DEV_OVERLAY_ENABLED = true;
-      // console.debug('[Dev overlay] enabled via URL token');
-    }
-  } catch (_) {}
-}
-
-// [PATCH] Added — small util to format numeric params safely
-function to6(n) {
-  const v = Number(n || 0);
-  return Number.isFinite(v) ? v.toFixed(6) : '0.000000';
-}
-
-// [PATCH] Added — internal helper to colorize/position placement rectangles for any generator
-// expects `placements` array of objects each having xPercent, yPercent, wPercent, hPercent
-// [PATCH] Added — tiny helper to push dev overlays (place near other small utils/helpers in cloudinaryMockup.js)
-// [PATCH] Updated pushDevOverlays — use absolute pixels against resized canvas when available; otherwise safe relative fallback.
-function pushDevOverlays(transforms, placements, baseHex, opacity = 20, opts = {}) {
-  try {
-    // Gate: allow via flag or ?dev=<token> matching NEXT_PUBLIC_DEV_OVERLAY_TOKEN
-    let enabled = !!DEV_OVERLAY_ENABLED;
-    if (!enabled && typeof window !== 'undefined') {
-      const token = new URLSearchParams(window.location.search).get('dev');
-      const pub = process?.env?.NEXT_PUBLIC_DEV_OVERLAY_TOKEN;
-      if (pub && token === pub) enabled = true;
-    }
-    if (!enabled) return;
-    if (!Array.isArray(placements) || placements.length === 0) return;
-
-    const hex = String(DEV_OVERLAY_DEFAULTS.hex || baseHex || '#000000').replace('#', '');
-    const op = Math.max(0, Math.min(100, Number(DEV_OVERLAY_DEFAULTS.opacity ?? opacity)));
-
-    // [PATCH] Added — when naturalW/H are provided, we draw in absolute pixels (no fl_relative).
-    const naturalW = Number(opts?.naturalW) || 0;
-    const naturalH = Number(opts?.naturalH) || 0;
-    const haveAbs = naturalW > 0 && naturalH > 0;
-
-    placements.forEach(p => {
-      const { xPercent, yPercent, wPercent, hPercent } = p || {};
-      if (
-        typeof xPercent !== 'number' ||
-        typeof yPercent !== 'number' ||
-        typeof wPercent !== 'number' ||
-        typeof hPercent !== 'number'
-      )
-        return;
-
-      const angleDeg = getAngleDeg(p);
-
-      if (haveAbs) {
-        // [PATCH] Updated — ABSOLUTE (pixels) on the resized canvas; DO NOT use fl_relative here.
-        const x = Math.round(xPercent * naturalW);
-        const y = Math.round(yPercent * naturalH);
-        const w = Math.round(wPercent * naturalW);
-        const h = Math.round(hPercent * naturalH);
-
-        if (!angleDeg) {
-          transforms.push(`l_one_pixel_s4c3vt,w_${w},h_${h}`);
-          transforms.push(
-            `co_rgb:${hex},e_colorize:100,o_${op},fl_layer_apply,x_${x},y_${y},g_north_west`
-          );
-        } else {
-          // Center anchor for rotated rects
-          const cx = x + Math.round(w / 2);
-          const cy = y + Math.round(h / 2);
-          const offX = cx - Math.round(naturalW / 2);
-          const offY = cy - Math.round(naturalH / 2);
-
-          transforms.push(`l_one_pixel_s4c3vt,w_${w},h_${h}`);
-          transforms.push(
-            `co_rgb:${hex},e_colorize:100,o_${op},a_${angleDeg},fl_layer_apply,g_center,x_${offX},y_${offY}`
-          );
-        }
-      } else {
-        // [PATCH] Added — RELATIVE fallback when resized canvas is unknown
-        const relW = to6(wPercent);
-        const relH = to6(hPercent);
-
-        if (!angleDeg) {
-          transforms.push(`l_one_pixel_s4c3vt,fl_relative,w_${relW},h_${relH}`);
-          transforms.push(
-            `co_rgb:${hex},e_colorize:100,o_${op},fl_layer_apply,fl_relative,x_${to6(xPercent)},y_${to6(yPercent)},g_north_west`
-          );
-        } else {
-          const cRelX = xPercent + wPercent / 2;
-          const cRelY = yPercent + hPercent / 2;
-          const offRelX = to6(cRelX - 0.5);
-          const offRelY = to6(cRelY - 0.5);
-
-          transforms.push(`l_one_pixel_s4c3vt,fl_relative,w_${relW},h_${relH}`);
-          transforms.push(
-            `co_rgb:${hex},e_colorize:100,o_${op},a_${angleDeg},fl_layer_apply,fl_relative,g_center,x_${offRelX},y_${offRelY}`
-          );
-        }
-      }
-    });
-  } catch (_) {
-    // swallow
-  }
-}
-
 /* --------------------- shared helpers --------------------- */
 
 // ------------------- transient, SCOPED in-memory overrides -------------------
@@ -571,9 +446,6 @@ export const buildCloudinaryMockupUrl = ({
   const bgIsDark = isDarkHex(baseHex);
   const transforms = [];
 
-  // [PATCH] Updated — dev overlay rectangles with explicit canvas size (baseW x baseH)
-  pushDevOverlays(transforms, placements, baseHex, undefined, { naturalW: baseW, naturalH: baseH });
-
   const naturalW = baseW;
   const naturalH = baseH;
 
@@ -636,12 +508,6 @@ export const buildRelativeMockupUrl = ({
   const transforms = [];
 
   transforms.push(`f_auto,q_auto,c_fit,w_${max}${maxH ? `,h_${maxH}` : ''}`);
-
-  // [PATCH] Updated — dev overlay rectangles with explicit resized canvas (max × aspect)
-  pushDevOverlays(transforms, placements, baseHex, undefined, {
-    naturalW: max,
-    naturalH: getAspectHeight(baseW, baseH, max),
-  });
 
   const naturalW = max;
   const naturalH = getAspectHeight(baseW, baseH, max);
@@ -991,7 +857,6 @@ export const generateHoverThumbUrlFromItem = (
 
 /* ---------------------- Overlay preview (color bbox fixed; logos conditional) ---------------------- */
 
-// [PATCH] Updated generateProductImageUrlWithOverlay to fix overlay x/y drift and relative/absolute mismatch.
 export const generateProductImageUrlWithOverlay = (
   product,
   logos,
@@ -1008,27 +873,31 @@ export const generateProductImageUrlWithOverlay = (
 
   let baseUrl = product.thumbnail;
   let baseHex = product?.thumbnail_meta?.thumbnail_color || '#ffffff';
-  // [PATCH] Updated — we'll use these for aspect -> resized canvas math
   let baseW = Number(product?.thumbnail_meta?.width) || 0;
   let baseH = Number(product?.thumbnail_meta?.height) || 0;
-  let baseShade = '';
+  let baseShade = ''; // <— NEW
 
   if (product?.acf?.group_type === 'Group' && Array.isArray(product?.acf?.color)) {
     const clr = product.acf.color[Number(colorIndex) || 0] || product.acf.color[0];
     if (clr?.thumbnail?.url) {
       baseUrl = clr.thumbnail.url;
       baseHex = clr?.color_hex_code || baseHex;
-      // [PATCH] Added — ensure we carry the intrinsic size of the chosen color
-      baseW = Number(clr?.thumbnail?.width) || baseW;
-      baseH = Number(clr?.thumbnail?.height) || baseH;
     }
-    baseShade = normalizeShade(clr?.lightdark);
+    baseShade = normalizeShade(clr?.lightdark); // <— NEW
   }
 
   const rawPlacements = resolvePlacements(product, { pagePlacementMap });
   const placementsActive = rawPlacements.filter(p => p?.active === true);
+  // const allowBack = ENABLE_ALLOW_BACK_GATE
+  //   ? isBackAllowedForProduct(product?.id, { customBackAllowedSet })
+  //   : true;
+  // const placements = placementsActive.map(p => {
+  //   const forced = typeof p.__forceBack === 'boolean' ? p.__forceBack : undefined;
+  //   const defaultBack = !!(p?.back && allowBack);
+  //   const __useBack = typeof forced === 'boolean' ? forced : defaultBack;
+  //   return { ...p, __useBack };
+  // });
 
-  // [PATCH] Updated — consistent allowBack calc (unchanged intent)
   const allowBack = isBackAllowedForProduct(product?.id, { customBackAllowedSet });
   const placements = placementsActive.map(p => ({ ...p, __useBack: !!(p?.back && allowBack) }));
 
@@ -1038,79 +907,41 @@ export const generateProductImageUrlWithOverlay = (
   const cloud = ENV_CLOUD || parsedBase.cloud;
   if (!cloud || !parsedBase.baseAsset) return baseUrl;
 
-  // [PATCH] Updated — base resize (unchanged), but we’ll compute overlay x/y against this resized canvas
   const transforms = [`f_auto,q_auto,c_fit,w_${Number(max) || 900}`];
 
-  const hex = String((overlayHex || '#000000').replace('#', ''));
-  const op = Math.max(0, Math.min(Number(overlayOpacity) || 0, 100));
+  const hex = (overlayHex || '#000000').replace('#', '');
+  const op = Math.max(0, Math.min(overlayOpacity, 100));
 
-  // [PATCH] Added — compute resized canvas (naturalW/H) to match the c_fit above
-  const naturalW = Number(max) || 900;
-  // Guard: if baseW/H are unknown, we can’t resolve resized height; handle later with relative fallback
-  const haveIntrinsic = baseW > 0 && baseH > 0;
-  const naturalH = haveIntrinsic ? getAspectHeight(baseW, baseH, naturalW) : 0;
-
-  // [PATCH] Updated — One-pixel color overlay boxes
+  // Colorized bbox (unchanged)...
   placements.forEach(p => {
     const { xPercent, yPercent, wPercent, hPercent } = p || {};
     if (xPercent == null || yPercent == null || wPercent == null || hPercent == null) return;
-
     const angleDeg = getAngleDeg(p);
 
-    if (haveIntrinsic) {
-      // [PATCH] Updated — ABSOLUTE (pixels) on the resized canvas; DO NOT use fl_relative here
-      const x = Math.round(xPercent * naturalW);
-      const y = Math.round(yPercent * naturalH);
-      const w = Math.round(wPercent * naturalW);
-      const h = Math.round(hPercent * naturalH);
-
-      if (!angleDeg) {
-        // [PATCH] Updated — remove fl_relative; anchor by top-left like logos.jsx
-        transforms.push(
-          `l_one_pixel_s4c3vt,w_${w},h_${h}`,
-          `co_rgb:${hex},e_colorize:100,o_${op},fl_layer_apply,x_${x},y_${y},g_north_west`
-        );
-      } else {
-        // [PATCH] Updated — center anchoring on resized canvas
-        const cx = x + Math.round(w / 2);
-        const cy = y + Math.round(h / 2);
-        const offX = cx - Math.round(naturalW / 2);
-        const offY = cy - Math.round(naturalH / 2);
-
-        transforms.push(
-          `l_one_pixel_s4c3vt,w_${w},h_${h}`,
-          `co_rgb:${hex},e_colorize:100,o_${op},a_${angleDeg},fl_layer_apply,g_center,x_${offX},y_${offY}`
-        );
-      }
+    if (!angleDeg) {
+      transforms.push(
+        `l_one_pixel_s4c3vt,fl_relative,w_${wPercent.toFixed(6)},h_${hPercent.toFixed(6)}`,
+        `co_rgb:${hex},e_colorize:100,o_${op},fl_layer_apply,fl_relative,x_${xPercent.toFixed(6)},y_${yPercent.toFixed(6)},g_north_west`
+      );
     } else {
-      // [PATCH] Added — RELATIVE fallback when intrinsic base size is unknown
-      const relW = wPercent.toFixed(6);
-      const relH = hPercent.toFixed(6);
-
-      if (!angleDeg) {
-        transforms.push(
-          `l_one_pixel_s4c3vt,fl_relative,w_${relW},h_${relH}`,
-          `co_rgb:${hex},e_colorize:100,o_${op},fl_layer_apply,fl_relative,x_${xPercent.toFixed(6)},y_${yPercent.toFixed(6)},g_north_west`
-        );
-      } else {
-        const cRelX = xPercent + wPercent / 2;
-        const cRelY = yPercent + hPercent / 2;
-        const offRelX = (cRelX - 0.5).toFixed(6);
-        const offRelY = (cRelY - 0.5).toFixed(6);
-
-        transforms.push(
-          `l_one_pixel_s4c3vt,fl_relative,w_${relW},h_${relH}`,
-          `co_rgb:${hex},e_colorize:100,o_${op},a_${angleDeg},fl_layer_apply,fl_relative,g_center,x_${offRelX},y_${offRelY}`
-        );
-      }
+      const cRelX = xPercent + wPercent / 2;
+      const cRelY = yPercent + hPercent / 2;
+      const offRelX = (cRelX - 0.5).toFixed(6);
+      const offRelY = (cRelY - 0.5).toFixed(6);
+      transforms.push(
+        `l_one_pixel_s4c3vt,fl_relative,w_${wPercent.toFixed(6)},h_${hPercent.toFixed(6)},a_${angleDeg}`,
+        `co_rgb:${hex},e_colorize:100,o_${op},fl_layer_apply,fl_relative,g_center,x_${offRelX},y_${offRelY}`
+      );
     }
   });
 
-  // [PATCH] Updated — logos: feed the same resized canvas to placement builder
+  // Logos with override-aware pick
   const bgIsDark = isDarkHex(baseHex);
+  const naturalW = max;
+  const naturalH = getAspectHeight(baseW, baseH, naturalW);
 
   placements.forEach(p => {
-    const chosen = pickLogoVariant(logos, !!p.__useBack, bgIsDark, baseShade);
+    const chosen = pickLogoVariant(logos, !!p.__useBack, bgIsDark, baseShade); // <— NEW
     if (!chosen || !isCloudinaryUrl(chosen.url)) return;
 
     const parsedLogo = parseCloudinaryIds(chosen.url);
@@ -1121,9 +952,8 @@ export const generateProductImageUrlWithOverlay = (
       logoW: chosen.width,
       logoH: chosen.height,
       placement: p,
-      // [PATCH] Updated — use the same resized canvas dims as the color overlay
-      naturalW: haveIntrinsic ? naturalW : Number(max) || 900,
-      naturalH: haveIntrinsic ? naturalH : Number(max) || 900, // best-effort if unknown
+      naturalW,
+      naturalH,
       useRelative: false,
     });
     if (segs.length) transforms.push(...segs);
