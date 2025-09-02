@@ -1,5 +1,5 @@
 // src/lib/wpApi.js
-const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
+const WP_URL = process.env.WP_SITE_URL;
 const isBrowser = typeof window !== 'undefined';
 
 /**

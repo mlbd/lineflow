@@ -14,8 +14,6 @@ import { getOrFetchShipping } from '@/lib/shippingCache';
 import { wpApiFetch } from '@/lib/wpApi';
 import { getProductCardsBatch } from '@/lib/productCache'; // server-side helper
 
-const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
-
 /* -----------------------------------------------------------
  * SSG: paths & props (keep ISR to avoid cold user waits)
  * --------------------------------------------------------- */
@@ -269,7 +267,7 @@ export default function LandingPage({
       <GoogleTagManager gtmId={process.env.NEXT_PUBLIC_GTM_ID} />
 
       <div className="min-h-screen bg-gradient-to-b from-[#f7f7f7] to-[#fff] flex flex-col">
-        <TopBar wpUrl={WP_URL} onCartClick={handleScrollToCart} />
+        <TopBar onCartClick={handleScrollToCart} />
         <main className="alrndr-hero">
           <HeroSection company={companyData} />
           <InfoBoxSection />

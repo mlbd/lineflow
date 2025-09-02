@@ -31,7 +31,6 @@ import LogoutButton from '@/components/LogoutButton';
 import { wpApiFetch } from '@/lib/wpApi';
 
 const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-const WP_URL = process.env.NEXT_PUBLIC_WP_SITE_URL;
 
 function ToolButton({ icon: Icon, label, onClick, className = '', title }) {
   return (
@@ -614,7 +613,7 @@ export default function HomePage() {
           placements: mappings,
           ...(onlyThisPage && selectedPage?.id ? { page_id: selectedPage.id } : {}),
           // NEW: only send when not page-scoped, box is checked, and value is valid
-          // ...(!onlyThisPage && extraPriceValid ? { extra_print_price: extraPriceNumber } : {}),
+          ...(!onlyThisPage && extraPriceValid ? { extra_print_price: extraPriceNumber } : {}),
           onlyOne: Boolean(onlyOne),
         }),
       });
@@ -1752,7 +1751,6 @@ export default function HomePage() {
           setShowLogoPanel(false);
         }}
         folder="Experiment"
-        wpUrl={WP_URL}
       />
 
       {/* Result Modal */}

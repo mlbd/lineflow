@@ -4,7 +4,7 @@
 
 import { NextResponse } from 'next/server';
 
-const WP_URL = (process.env.NEXT_PUBLIC_WP_SITE_URL || '').replace(/\/$/, '');
+const WP_URL = (process.env.WP_SITE_URL || '').replace(/\/$/, '');
 const WP_USER = process.env.WP_API_USER;
 const WP_PASS = process.env.WP_API_PASS;
 

@@ -5,7 +5,6 @@ import { wpApiFetch } from '@/lib/wpApi';
 
 const REVALIDATE_SECONDS = 60 * 60 * 24 * 7; // 7 days
 const PER_PAGE = 50;
-const WP_URL = process.env.WP_SITE_URL || process.env.NEXT_PUBLIC_WP_SITE_URL;
 
 async function fetchProductsPage(page = 1) {
   const res = await wpApiFetch(

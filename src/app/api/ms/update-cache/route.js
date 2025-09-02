@@ -3,8 +3,6 @@ export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import { wpApiFetch } from '@/lib/wpApi';
 
-const WP_URL = process.env.WP_SITE_URL || process.env.NEXT_PUBLIC_WP_SITE_URL;
-
 async function fetchProduct(id) {
   const res = await wpApiFetch(`products?id=${id}`, { cache: 'no-store' });
   const json = await res.json();

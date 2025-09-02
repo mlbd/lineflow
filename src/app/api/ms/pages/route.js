@@ -3,7 +3,7 @@ export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import { wpApiFetch } from '@/lib/wpApi';
 
-const WP_URL = process.env.WP_SITE_URL || process.env.NEXT_PUBLIC_WP_SITE_URL;
+const WP_URL = process.env.WP_SITE_URL;
 
 // Simple in-process cache (per server instance)
 const CACHE_KEY = '__ms_pages_all_v4__';

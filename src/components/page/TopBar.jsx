@@ -5,9 +5,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useCartItems, getTotalItems } from '@/components/cart/cartStore'; // adjust path if needed
-import { wpApiFetch } from '@/lib/wpApi';
 
-export default function TopBar({ wpUrl, onCartClick }) {
+export default function TopBar({ onCartClick }) {
   const [menus, setMenus] = useState([]);
   const items = useCartItems(); // read cart items
   const totalItems = getTotalItems(items); // calculate total quantity
