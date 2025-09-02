@@ -138,6 +138,12 @@ export const useCartStore = create(
       customerNote: '',
       setCustomerNote: note => set({ customerNote: note }),
 
+      // [PATCH] Added: persistable coupon state + actions
+      // Keeps coupon across reloads; clear it when user removes coupon or cart is cleared.
+      coupon: null, // { code, type, amount, valid, ... } as returned by validate API
+      setCoupon: couponObj => set({ coupon: couponObj || null }),     // save/replace
+      removeCoupon: () => set({ coupon: null }),                       // explicit remove
+
       /* Add item (merge rules):
          - GROUP: merge by product_id + color + size + signature
          - NON-GROUP: merge by deep-equal options
@@ -289,32 +295,44 @@ export const useClearCart = () => useCartStore(s => s.clearCart);
 export const useCustomerNote = () => useCartStore(s => s.customerNote);
 export const useSetCustomerNote = () => useCartStore(s => s.setCustomerNote);
 
+// [PATCH] Added: coupon selectors
+export const useCoupon = () => useCartStore(s => s.coupon);
+export const useSetCoupon = () => useCartStore(s => s.setCoupon);
+export const useRemoveCoupon = () => useCartStore(s => s.removeCoupon);
+
 export const getTotalItems = items =>
   (Array.isArray(items) ? items : []).reduce(
     (total, item) => total + (parseInt(item.quantity) || 0),
     0
   );
 
+// [PATCH] Updated: getTotalPrice — do all math in cents to avoid float drift
 export const getTotalPrice = items =>
-  (Array.isArray(items) ? items : []).reduce(
-    (total, item) =>
-      total + Math.round(toNumber(item.price) * (parseInt(item.quantity) || 0) * 100) / 100,
-    0
-  );
+  (Array.isArray(items) ? items : []).reduce((cents, item) => {
+    const qty = parseInt(item?.quantity) || 0;
+    const priceCents = Math.round(toNumber(item?.price) * 100);
+    return cents + priceCents * qty;
+  }, 0) / 100;
 
+// [PATCH] Updated: getCartTotalPrice — cents-precise and supports fixed_cart/percent_cart
 export const getCartTotalPrice = (items, { coupon = null, shippingCost = 0 } = {}) => {
-  const subtotal = getTotalPrice(items);
+  const subtotal = getTotalPrice(items);                       // decimal
+  const subtotalCents = Math.round(toNumber(subtotal) * 100);  // cents
+  const shippingCents = Math.round(toNumber(shippingCost) * 100);
 
-  let couponDiscount = 0;
+  let discountCents = 0;
   if (coupon && coupon.valid) {
-    const couponAmount = toNumber(coupon.amount);
-    if (coupon.type === 'percent') {
-      couponDiscount = Math.round(subtotal * (couponAmount / 100));
-    } else {
-      couponDiscount = couponAmount;
+    const type = String(coupon.type || coupon.discount_type || '').toLowerCase();
+    const amount = toNumber(coupon.amount);
+    if (type === 'percent' || type === 'percentage' || type === 'percent_cart') {
+      discountCents = Math.round((subtotalCents * amount) / 100);
+    } else if (type === 'fixed' || type === 'fixed_cart') {
+      discountCents = Math.min(subtotalCents, Math.round(amount * 100));
     }
   }
 
-  const total = Math.max(0, subtotal + toNumber(shippingCost) - couponDiscount);
-  return total;
+  const totalCents = Math.max(0, subtotalCents - discountCents + shippingCents);
+  return totalCents / 100;                                     // back to decimal
 };
+
+

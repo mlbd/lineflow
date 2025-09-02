@@ -8,6 +8,11 @@ import { useCartStore } from '@/components/cart/cartStore';
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
 import { buildPlacementSignature, normalizePlacementsForKey } from '@/utils/placements';
 
+// [PATCH] Added: money helpers
+const toCents = v => Math.round(Number(v ?? 0) * 100);
+const fmt2 = cents => (Math.max(0, Number(cents || 0)) / 100).toFixed(2);
+
+
 // Cache the first non-empty baseline per product id, so user filters can't mutate it later.
 const __baselinePlacementCache =
   typeof window !== 'undefined' ? (window.__baselinePlacementCache ||= new Map()) : new Map();
@@ -441,7 +446,7 @@ export default function AddToCartQuantity({
                   className="form-radio mx-2"
                 />
                 <input
-                  className="custom_qty_input border rounded-lg px-2 py-1 w-24 text-right"
+                  className="custom_qty_input border rounded-lg px-2 py-1 w-24 text-right md:max-w-[70px]"
                   inputMode="numeric"
                   pattern="[0-9]*"
                   placeholder={visibleSteps.length ? `מינ' ${minStep}` : 'הקלידו כמות…'}
@@ -461,7 +466,7 @@ export default function AddToCartQuantity({
               <div className="alarnd-single-qty flex-1 text-center">
                 <span className="text-gray-400">
                   {isCustomSelected && !isCustomEmpty && !isCustomTooLow
-                    ? `${Math.round(customQtyNum * unitWithExtra)}₪`
+                    ? `${fmt2(Math.round(customQtyNum * Number(unitWithExtra || 0) * 100))}₪`
                     : '—'}
                 </span>
               </div>
@@ -481,7 +486,8 @@ export default function AddToCartQuantity({
               const stepQty = parseInt(step.quantity) || 0;
               const stepUnitBase = getPooledUnitBase(stepQty);
               const stepUnitWithExtra = stepUnitBase + extraEach;
-              const stepTotal = Math.round(stepQty * stepUnitWithExtra);
+              // [PATCH] Updated: step total in cents with 2 decimals
+              const stepTotalCents = Math.round(stepQty * Number(stepUnitWithExtra || 0) * 100);
               return (
                 <label
                   key={idx + 1}
@@ -503,7 +509,7 @@ export default function AddToCartQuantity({
                   </div>
 
                   <div className="alarnd-single-qty flex-1 text-center">
-                    <span className="text-gray-400">{stepTotal}₪</span>
+                    <span className="text-gray-400">{fmt2(stepTotalCents)}₪</span>
                   </div>
                   <div className="alarnd-single-qty flex-shrink-0">
                     <span className="font-bold">{stepUnitWithExtra.toFixed(2)} ש״ח ליחידה</span>

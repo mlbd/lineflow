@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 
 export default function CouponField({
   couponInput,
@@ -14,11 +14,24 @@ export default function CouponField({
   const handleApply = async e => {
     e.preventDefault();
     setError(null);
-    if (!couponInput.trim()) {
-      setError('יש למלא קוד קופון.');
+    const code = (couponInput || '').trim();
+    if (!code) {
+      setError('Please enter a coupon code.');
       return;
     }
-    await onValidate({ code: couponInput.trim(), onError: setError });
+    try {
+      await onValidate?.({
+        code,
+        onError: msg => setError(msg || 'Coupon validation failed.'),
+      });
+    } catch {
+      setError('שגיאה באימות קופון'); // "Error validating coupon"
+    }
+  };
+
+  const handleRemove = () => {
+    setError(null);
+    onRemoveCoupon?.();
   };
 
   return (
@@ -41,7 +54,7 @@ export default function CouponField({
               <button
                 type="button"
                 className="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-lg font-bold transition"
-                onClick={onRemoveCoupon}
+                onClick={handleRemove}
               >
                 הסר
               </button>

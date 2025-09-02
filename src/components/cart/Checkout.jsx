@@ -4,6 +4,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useCartItems, getTotalPrice, useCustomerNote } from './cartStore';
 import { generateHoverThumbUrlFromItem } from '@/utils/cloudinaryMockup';
+// [PATCH] Added: cents helpers (precise math + localized 2-decimal display)
+const toCents = v => Math.round(Number(v ?? 0) * 100);
+const fromCents = c => Number(c || 0) / 100;
+const formatILS2 = cents =>
+  fromCents(cents).toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 
 export default function Checkout({
   selectedShipping,
@@ -128,26 +134,25 @@ export default function Checkout({
   }, [rawItems, companyLogos, pagePlacementMap, customBackAllowedSet]);
 
   // 4) Totals — calculated from the products (unit price * qty)
-  const subtotal = getTotalPrice(products);
+  // [PATCH] Updated: cents-precise totals (and supports fixed_cart/percent_cart)
+  const subtotalCents = Math.round(Number(getTotalPrice(products)) * 100);
 
-  console.log('products', products);
-  console.log('subtotal', subtotal);
-
-  let couponDiscount = 0;
+  let discountCents = 0;
   let couponDescription = '';
   if (coupon?.valid) {
     const amount = Number(coupon.amount || 0);
-    if (coupon.type === 'percent') {
-      couponDiscount = Math.round(subtotal * (amount / 100));
-      couponDescription = `${coupon.amount}% הנחה`;
-    } else if (coupon.type === 'fixed') {
-      couponDiscount = Math.min(subtotal, Math.round(amount));
+    const ctype  = String(coupon.type || coupon.discount_type || '').toLowerCase();
+    if (ctype === 'percent' || ctype === 'percentage' || ctype === 'percent_cart') {
+      discountCents = Math.round((subtotalCents * amount) / 100);
+      couponDescription = `${amount}% הנחה`;
+    } else if (ctype === 'fixed' || ctype === 'fixed_cart') {
+      discountCents = Math.min(subtotalCents, Math.round(amount * 100));
       couponDescription = `₪${amount} הנחה`;
     }
   }
 
-  const shippingCost = Number(selectedShipping?.cost || 0);
-  const total = Math.max(0, subtotal - couponDiscount + shippingCost);
+  const shippingCents = Math.round(Number(selectedShipping?.cost || 0) * 100);
+  const totalCents = Math.max(0, subtotalCents - discountCents + shippingCents);
 
   console.log('userMeta', userMeta);
 
@@ -305,21 +310,21 @@ export default function Checkout({
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">
           <span>סכום ביניים</span>
-          <span>₪{subtotal.toLocaleString('he-IL')}</span>
+          <span>₪{formatILS2(subtotalCents)}</span>
         </div>
-        {couponDiscount > 0 && (
+        {discountCents > 0 && (
           <div className="flex justify-between text-green-700">
             <span>{couponDescription || 'קופון'}</span>
-            <span>-₪{couponDiscount.toLocaleString('he-IL')}</span>
+            <span>-₪{formatILS2(discountCents)}</span>
           </div>
         )}
         <div className="flex justify-between">
           <span>משלוח</span>
-          <span>{shippingCost > 0 ? `₪${shippingCost.toLocaleString('he-IL')}` : 'חינם'}</span>
+          <span>{shippingCents > 0 ? `₪${formatILS2(shippingCents)}` : 'חינם'}</span>
         </div>
         <div className="border-t pt-2 flex justify-between font-semibold text-lg">
           <span>לתשלום</span>
-          <span>₪{total.toLocaleString('he-IL')}</span>
+          <span>₪{formatILS2(totalCents)}</span>
         </div>
       </div>
 

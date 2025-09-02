@@ -19,6 +19,11 @@ const toNumber = v => {
   return Number.isFinite(n) ? n : 0;
 };
 
+// [PATCH] Added: money helpers for precise totals in the modal
+const toCents = v => Math.round(Number(v ?? 0) * 100);
+const fmt2 = cents => (Math.max(0, Number(cents || 0)) / 100).toFixed(2);
+
+
 function getLuminance(hex) {
   hex = hex?.replace(/^#/, '') || '';
   if (hex.length === 3)
@@ -711,8 +716,11 @@ export default function AddToCartGroup({
                     סה&quot;כ:{' '}
                     <span>
                       <span className="current_total_price">
-                        {quantities.flat().reduce((s, v) => s + (parseInt(v || 0) || 0), 0) *
-                          unitWithExtra.toFixed(2)}
+                        {(() => {
+                          const qty = quantities.flat().reduce((s, v) => s + (parseInt(v || 0) || 0), 0);
+                          const totalCents = Math.round(qty * Number(unitWithExtra || 0) * 100);
+                          return fmt2(totalCents);
+                        })()}
                       </span>
                       <span className="woocommerce-Price-currencySymbol">₪</span>
                     </span>

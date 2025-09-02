@@ -11,6 +11,11 @@ import {
 } from '@/utils/cloudinaryMockup';
 import Tooltip from '@/components/ui/Tooltip';
 
+// [PATCH] Added: money helpers for precise line totals
+const toCents = v => Math.round((Number(v ?? 0)) * 100);
+const fmt2 = cents => (Math.max(0, Number(cents || 0)) / 100).toFixed(2);
+
+
 const SHOW_PLACEMENTS_LABEL = true;
 const SHOW_FILTER_CHANGED_LABEL = false;
 
@@ -322,7 +327,10 @@ export default function CartItem({
     );
   };
 
-  const totalPrice = Math.round(item.price * item.quantity * 100) / 100;
+  // [PATCH] Updated: cents-precise line total
+  const priceCents = Math.round(Number(item?.price || 0) * 100);
+  const qty = parseInt(item?.quantity) || 0;
+  const totalCents = priceCents * qty;
 
   // console.log('item', item);
 
@@ -463,7 +471,7 @@ export default function CartItem({
 
       {/* 5) Total price */}
       <div className="text-center">
-        <div className="text-sm font-bold text-gray-900">{totalPrice} ₪</div>
+        <div className="text-sm font-bold text-gray-900">{fmt2(totalCents)} ₪</div>
         <div className="text-sm text-gray-500">סה&quot;כ</div>
       </div>
 

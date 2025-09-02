@@ -2,7 +2,14 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useCartItems, useCustomerNote, useSetCustomerNote } from './cartStore';
+import { 
+  useCartItems, 
+  useCustomerNote, 
+  useSetCustomerNote, 
+  useCoupon,
+  useSetCoupon,
+  useRemoveCoupon, 
+} from './cartStore';
 import CartItem from './CartItem';
 import Checkout from './Checkout';
 import CartEmpty from './CartEmpty';
@@ -43,10 +50,15 @@ export default function CartPage({
   const customerNote = useCustomerNote();
   const setCustomerNote = useSetCustomerNote();
 
+  // [PATCH] Added: use coupon from persisted store (no local state)
+  const coupon = useCoupon();
+  const setCouponStore = useSetCoupon();
+  const removeCouponStore = useRemoveCoupon();
+
   const [selectedShipping, setSelectedShipping] = useState(null);
   const [validating, setValidating] = useState(false);
-  const [coupon, setCoupon] = useState(null);
   const [couponInput, setCouponInput] = useState('');
+
 
   // 🔧 Toggle if you ever want to switch grouping off quickly
   const GROUP_CART_BY_PRODUCT = true;
@@ -82,10 +94,14 @@ export default function CartPage({
     }
   }, [shippingOptions, selectedShipping]);
 
+  // [PATCH] New: on mount/when store coupon changes, prefill the input
+  useEffect(() => {
+    if (coupon?.code) setCouponInput(prev => (prev?.trim() ? prev : coupon.code));
+  }, [coupon?.code]);
+
   const handleValidateCoupon = async ({ code, onError }) => {
     console.log('handleValidateCoupon', acf);
     setValidating(true);
-    setCoupon(null);
     try {
       const res = await wpApiFetch(`coupon-validate`, {
         method: 'POST',
@@ -93,7 +109,9 @@ export default function CartPage({
         body: JSON.stringify({ coupon_code: code, email: acf?.email_address || 'dummy@example.com' }),
       });
       const data = await res.json();
-      setCoupon(data);
+      // [PATCH] Added: persist coupon in store so it survives refresh
+      // Also store the code explicitly in case API doesn't echo it back.
+      setCouponStore({ ...data, code });
       if (!data?.valid && data?.error) onError?.(data.error);
     } catch {
       onError?.('שגיאה באימות קופון');
@@ -103,7 +121,8 @@ export default function CartPage({
   };
 
   const handleRemoveCoupon = () => {
-    setCoupon(null);
+    // [PATCH] Updated: remove from store and clear input
+    removeCouponStore();
     setCouponInput('');
   };
 

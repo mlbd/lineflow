@@ -203,31 +203,141 @@ export default async function handler(req, res) {
     const CallbackUrl = `${notifyBase}/api/payments/zcredit/notify?t=${encodeURIComponent(process.env.ZCREDIT_WEBHOOK_SECRET || '')}&status=success`;
     const FailureCallBackUrl = `${notifyBase}/api/payments/zcredit/notify?t=${encodeURIComponent(process.env.ZCREDIT_WEBHOOK_SECRET || '')}&status=failure`;
 
-    const CartItems = Array.isArray(draft?.lines)
-      ? draft.lines.map((l, i) => ({
-          Amount: Number(l?.unit_price ?? 0),
-          Currency: 'ILS',
-          Name: `${((l?.name ?? '') + '').trim() || `Item ${i + 1}`} (#${l.product_id})`,
-          Description: l?.group_type ? `${l.group_type} pricing` : '',
-          Quantity: Number(l?.quantity ?? 1),
-          Image: '',
-          IsTaxFree: false,
-          AdjustAmount: false,
-        }))
-      : [];
+    // [PATCH] Updated: CartItems logic with coupon type support (fixed_cart | percent)
+    const CartItems = (() => {
+      // [PATCH] Added: helpers
+      const num = (v) => {
+        const x = Number(v ?? 0);
+        return Number.isFinite(x) ? x : 0;
+      };
+      const clampMoney = (v) => Number(Math.max(0, num(v)).toFixed(2));
 
-    if (Number(draft.shipping || 0) > 0) {
-      CartItems.push({
-        Amount: Number(draft.shipping),
+      // [PATCH] Added: compute discount from coupon type
+      function computeDiscountFromCoupon(c, subtotal, shipping) {
+        if (!c) return 0;
+        const type = String(c?.discount_type ?? c?.type ?? '').toLowerCase();
+        const amountRaw = num(c?.amount ?? c?.value ?? c?.coupon_amount);
+        const base = num(subtotal) + num(shipping);
+
+        if (!base || amountRaw <= 0) return 0;
+
+        if (type === 'fixed_cart' || type === 'fixed') {
+          // Fixed money off the cart total
+          return Math.min(amountRaw, base);
+        }
+        if (type === 'percent' || type === 'percentage' || type === 'percent_cart') {
+          // Percent off the cart total
+          const pct = amountRaw / 100;
+          return Math.min(base * pct, base);
+        }
+        // Unknown type → no computed discount here
+        return 0;
+      }
+
+      const lines = Array.isArray(draft?.lines) ? draft.lines : [];
+
+      // Subtotal = Σ(unit_price * quantity)
+      const subtotal = lines.reduce(
+        (acc, l) => acc + num(l?.unit_price) * num(l?.quantity ?? 1),
+        0
+      );
+
+      // Shipping from WP draft first, fallback to selectedShipping.cost
+      const shipping = clampMoney(num(draft?.shipping) || num(selectedShipping?.cost));
+      const baseTotal = clampMoney(subtotal + shipping);
+
+      // Try to compute discount from coupon type first
+      const couponDiscount = computeDiscountFromCoupon(coupon, subtotal, shipping);
+
+      // Also detect any discount WP may have calculated (fallback only)
+      const discountCandidates = [
+        draft?.discount_total,
+        draft?.discount,
+        draft?.coupon_amount,
+        draft?.coupon_discount,
+      ].map(num);
+      const wpDiscount = Math.max(0, discountCandidates.find((v) => v > 0) || 0);
+
+      // Do we have a coupon?
+      const hasCoupon =
+        !!coupon &&
+        String(coupon?.code ?? coupon).trim() !== '' &&
+        (String(coupon?.discount_type ?? coupon?.type ?? '').trim() !== '' || couponDiscount > 0);
+
+      // Final payable total
+      let payableTotal;
+      if (hasCoupon) {
+        // With coupon: trust our type math over draft total
+        const discount = couponDiscount > 0 ? couponDiscount : wpDiscount;
+        payableTotal = clampMoney(baseTotal - discount);
+      } else {
+        // No coupon: prefer draft total if present, else derive
+        const draftTotal = num(draft?.total);
+        const derived = clampMoney(baseTotal - wpDiscount);
+        payableTotal = draftTotal > 0 ? clampMoney(draftTotal) : derived;
+      }
+
+      if (hasCoupon) {
+        // Single adjusted item to match payable total exactly
+        const descBits = [
+          'Adjusted total: items + shipping − coupon',
+          (() => {
+            const t = String(coupon?.discount_type ?? coupon?.type ?? '').toLowerCase();
+            if (t === 'fixed_cart' || t === 'fixed') return `type=fixed_cart amount=${num(coupon?.amount).toFixed(2)}`;
+            if (t === 'percent' || t === 'percentage' || t === 'percent_cart')
+              return `type=percent value=${num(coupon?.amount)}%`;
+            return '';
+          })(),
+          coupon?.code ? `code=${coupon.code}` : '',
+          // Optional human math if you already have a helper like toAmountString()
+          // `${toAmountString(subtotal)} + ${toAmountString(shipping)} − ${toAmountString(couponDiscount || wpDiscount)} = ${toAmountString(payableTotal)}`
+        ].filter(Boolean);
+
+        return [
+          {
+            Amount: payableTotal,
+            Currency: 'ILS',
+            Name: 'Order Total',
+            Description: descBits.join(' | '), // [PATCH] Added: explain why single item
+            Quantity: 1,
+            Image: '',
+            IsTaxFree: false,
+            AdjustAmount: true,
+          },
+        ];
+      }
+
+      // No coupon: detailed items (no negative discount line!)
+      const detailed = lines.map((l, i) => ({
+        Amount: clampMoney(l?.unit_price),
         Currency: 'ILS',
-        Name: selectedShipping?.title || 'Shipping',
-        Description: '',
-        Quantity: 1,
+        Name: `${((l?.name ?? '') + '').trim() || `Item ${i + 1}`} (#${l?.product_id ?? ''})`,
+        Description: l?.group_type ? `${l.group_type} pricing` : '',
+        Quantity: Math.max(1, num(l?.quantity ?? 1)),
         Image: '',
         IsTaxFree: false,
         AdjustAmount: false,
-      });
-    }
+      }));
+
+      if (shipping > 0) {
+        detailed.push({
+          Amount: shipping,
+          Currency: 'ILS',
+          Name: selectedShipping?.title || 'Shipping',
+          Description: '',
+          Quantity: 1,
+          Image: '',
+          IsTaxFree: false,
+          AdjustAmount: false,
+        });
+      }
+
+      return detailed;
+    })();
+
+    // [PATCH] Added: log CartItems for diagnostics (optional)
+    limon_file_log('CreateSession', 'zCredit::CreateSession::CartItems', limon_pretty(CartItems));
+
 
     const Customer = {
       Email: (form?.email || '').trim(),

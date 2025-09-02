@@ -2,6 +2,11 @@
 
 import { useCartItems, getTotalPrice, getCartTotalPrice } from './cartStore';
 
+// [PATCH] Added: cents helpers for precise math + 2-decimal display
+const toCents = v => Math.round(Number(v ?? 0) * 100);
+const fmt2 = cents => (Math.max(0, Number(cents || 0)) / 100).toFixed(2);
+
+
 export default function ShippingOptions({
   shippingOptions = [],
   loading = false,
@@ -10,20 +15,30 @@ export default function ShippingOptions({
   coupon = null,
   onRemoveCoupon = null,
 }) {
+  // [PATCH] Updated: cents-precise subtotal/discount/total
   const items = useCartItems();
   const subtotal = getTotalPrice(items);
-  const cartTotal = getCartTotalPrice(items, { coupon, shippingCost: selectedShipping?.cost || 0 });
-  let couponDiscount = 0;
+  const subtotalCents = toCents(subtotal);
+  const shippingCents = toCents(selectedShipping?.cost || 0);
+
+  let couponDiscountCents = 0;
   let couponLabel = '';
+
   if (coupon && coupon.valid) {
-    if (coupon.type === 'percent') {
-      couponDiscount = Math.round(subtotal * (coupon.amount / 100));
-      couponLabel = coupon.description || `${coupon.amount}%`;
-    } else {
-      couponDiscount = coupon.amount;
-      couponLabel = coupon.description || `${coupon.amount}₪`;
+    const amount = Number(coupon.amount || 0);
+    const ctype  = String(coupon.type || coupon.discount_type || '').toLowerCase();
+
+    if (ctype === 'percent' || ctype === 'percentage' || ctype === 'percent_cart') {
+      couponDiscountCents = Math.round((subtotalCents * amount) / 100);
+      couponLabel = `${amount}%`;
+    } else if (ctype === 'fixed' || ctype === 'fixed_cart') {
+      const fixed = toCents(amount);
+      couponDiscountCents = Math.min(subtotalCents, fixed);
+      couponLabel = `${amount}₪`;
     }
   }
+
+  const cartTotalPreciseCents = Math.max(0, subtotalCents - couponDiscountCents + shippingCents);
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl shadow-md space-y-6">
@@ -83,14 +98,14 @@ export default function ShippingOptions({
           <div className="space-y-4 pt-2">
             <div className="flex flex-col justify-center items-center text-sm text-gray-700">
               <span className="text-2xl font-bold">סה&quot;כ:</span>
-              <span className="text-3xl font-bold">{cartTotal} ₪</span>
+              <span className="text-3xl font-bold">{fmt2(cartTotalPreciseCents)} ₪</span>
             </div>
             {coupon && coupon.valid && (
               <div className="flex flex-col items-center gap-1">
                 <div className="flex items-center gap-2 text-pink-600 text-sm font-semibold">
                   <span>קופון:</span>
                   <span className="font-bold">{coupon.code || couponLabel}</span>
-                  <span>-{couponDiscount}₪</span>
+                  <span>-{fmt2(couponDiscountCents)}₪</span>
                   {onRemoveCoupon && (
                     <button
                       type="button"
