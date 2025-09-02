@@ -1,35 +1,32 @@
 // src/app/api/wp/[...mini]/route.js
-// Server-side proxy for WP REST (mini-sites namespace).
-// Calls WP with Basic Auth using server env vars (never exposed to browser).
-
 import { NextResponse } from 'next/server';
 
 const WP_URL = (process.env.WP_SITE_URL || '').replace(/\/$/, '');
 const WP_USER = process.env.WP_API_USER;
 const WP_PASS = process.env.WP_API_PASS;
 
-// Optional: restrict which endpoints can be proxied (defense-in-depth)
-const ALLOW = new Set(
-  (process.env.MS_WP_PROXY_WHITELIST || 'update-placement,delete-placement,coupon-validate')
-    .split(',')
-    .map(s => s.trim())
-);
+// ✅ Only allow same-site requests
+function isSameOrigin(req) {
+  const allowedHost = process.env.NEXT_PUBLIC_SITE_URL || ''; // e.g. https://min.lukpaluk.xyz
+  const origin = req.headers.get('origin') || '';
+  const referer = req.headers.get('referer') || '';
 
-function isAllowed(endpoint) {
-  // Adjust if you need nested paths; right now we allow single-segment names.
-  return ALLOW.has(endpoint);
+  return (
+    (origin && origin.startsWith(allowedHost)) ||
+    (referer && referer.startsWith(allowedHost))
+  );
 }
 
-// If you also have GET support, mirror the same pattern used in POST below.
 export async function POST(req, ctx) {
-  // ⬇️ params is async now; await it before reading .mini
   const { mini = [] } = (await ctx.params) || {};
   const parts = Array.isArray(mini) ? mini : [mini];
-  const endpoint = parts.join('/'); // e.g., "update-placement,delete-placement"
+  const endpoint = parts.join('/');
 
-  if (!isAllowed(endpoint)) {
-    return NextResponse.json({ message: 'Endpoint not allowed' }, { status: 403 });
+  // ✅ Block cross-site requests
+  if (!isSameOrigin(req)) {
+    return NextResponse.json({ message: 'Forbidden: cross-site request' }, { status: 403 });
   }
+
   if (!WP_USER || !WP_PASS) {
     return NextResponse.json({ message: 'WP credentials missing on server' }, { status: 500 });
   }
