@@ -166,6 +166,8 @@ export default function LandingPage({
     }
   };
 
+  console.log('[Page] ---------------ACF---------------:', acf);
+
   // ---- CLIENT SIZE LOG (transfer/encoded/decoded) ----
   useEffect(() => {
     if (process.env.NEXT_PUBLIC_LOG_PAGE_DATA !== '1') return;

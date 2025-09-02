@@ -83,13 +83,14 @@ export default function CartPage({
   }, [shippingOptions, selectedShipping]);
 
   const handleValidateCoupon = async ({ code, onError }) => {
+    console.log('handleValidateCoupon', acf);
     setValidating(true);
     setCoupon(null);
     try {
-      const res = await wpApiFetch(`coupon/validate`, {
+      const res = await wpApiFetch(`coupon-validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ coupon_code: code, email: acf?.email_address || '' }),
+        body: JSON.stringify({ coupon_code: code, email: acf?.email_address || 'dummy@example.com' }),
       });
       const data = await res.json();
       setCoupon(data);

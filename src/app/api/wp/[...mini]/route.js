@@ -10,7 +10,7 @@ const WP_PASS = process.env.WP_API_PASS;
 
 // Optional: restrict which endpoints can be proxied (defense-in-depth)
 const ALLOW = new Set(
-  (process.env.MS_WP_PROXY_WHITELIST || 'update-placement,delete-placement')
+  (process.env.MS_WP_PROXY_WHITELIST || 'update-placement,delete-placement,coupon-validate')
     .split(',')
     .map(s => s.trim())
 );
@@ -41,6 +41,9 @@ export async function POST(req, ctx) {
 
   const auth = Buffer.from(`${WP_USER}:${WP_PASS}`).toString('base64');
   const url = `${WP_URL}/wp-json/mini-sites/v1/${endpoint}`;
+
+  console.log(`[proxy] ${url}`);
+  console.log(`[proxy] body`, payload);
 
   const wpRes = await fetch(url, {
     method: 'POST',
