@@ -77,27 +77,35 @@ export default function ZCreditReturnPage() {
           <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
         )}
 
-        <h1 className="text-2xl font-bold mb-2">{approved ? 'התשלום אושר' : 'התשלום לא הושלם'}</h1>
+        <h1 className="text-2xl font-bold mb-2">
+          {approved ? 'Payment Approved' : 'Payment Not Approved'}
+        </h1>
 
         {approved ? (
-          <p className="mb-6 text-green-700">תודה! התשלום התקבל. שלחנו את פרטי ההזמנה למייל שלך.</p>
+          <p className="mb-6 text-green-700">
+            Thank you! Your payment was successful. We are processing your order.
+          </p>
         ) : (
-          <p className="mb-6 text-red-700">נראה שהתשלום בוטל או נכשל. אפשר לנסות שוב.</p>
+          <p className="mb-6 text-red-700">
+            It appears the payment failed or was not completed. Please try again.
+          </p>
         )}
 
         <div className="bg-gray-50 border rounded-lg p-4 text-sm text-left space-y-2">
           <div>
-            <span className="font-semibold">סטטוס:</span> {result?.status || '-'}
+            <span className="font-semibold">Status:</span> {result?.status || '-'}
           </div>
           <div>
-            <span className="font-semibold">מזהה עסקה:</span>{' '}
+            <span className="font-semibold">Transaction ID:</span>{' '}
             {result?.tx?.TransactionUniqueId || '-'}
           </div>
           <div>
-            <span className="font-semibold">סכום:</span> {result?.tx?.TransactionSum || '-'}
+            <span className="font-semibold">Amount:</span>{' '}
+            {result?.tx?.TransactionSum ? `$${result?.tx?.TransactionSum}` : '-'}
           </div>
           <div>
-            <span className="font-semibold">אסמכתא:</span> {result?.tx?.ApprovalNumber || '-'}
+            <span className="font-semibold">Approval Number:</span>{' '}
+            {result?.tx?.ApprovalNumber || '-'}
           </div>
         </div>
 
@@ -106,7 +114,7 @@ export default function ZCreditReturnPage() {
             href={backHref}
             className="inline-block bg-blue-600 text-white px-5 py-2 rounded-lg shadow hover:bg-blue-700 transition"
           >
-            חזרה לדף הבית
+            Back to Home
           </Link>
         </div>
       </div>

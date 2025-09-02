@@ -37,5 +37,5 @@ export default function IframeSuccess() {
     }
   }, []);
 
-  return <div className="p-6 text-center">מעבד תשלום…</div>;
+  return <div className="p-6 text-center">Processing payment…</div>;
 }

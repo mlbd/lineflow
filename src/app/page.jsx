@@ -358,10 +358,10 @@ export default function HomePage() {
 
     const activeNow = Array.isArray(mappings) ? mappings.filter(m => m?.active).length : 0;
     if (activeNow > 1) {
-      setWarnTitle('Cannot enable “Only One”');
+      setWarnTitle('Cannot enable "Only One"');
       setWarnBody(
         'Multiple placements are currently active.\n\n' +
-          'Please deactivate extras so only a single placement remains, then enable “Only One”.'
+          'Please deactivate extras so only a single placement remains, then enable "Only One".'
       );
       setWarnOpen(true);
       // [PATCH] Prevent enabling the checkbox
@@ -399,7 +399,7 @@ export default function HomePage() {
     );
     // [PATCH] Inform user and enforce the rule
     setWarnTitle('Only one placement allowed');
-    setWarnBody('“Only One” is enabled, so selecting a placement turns off the others.');
+    setWarnBody('"Only One" is enabled, so selecting a placement turns off the others.');
     setWarnOpen(true);
     setMappings(next);
     prevActiveIdsRef.current = new Set([keepId]);
@@ -491,10 +491,10 @@ export default function HomePage() {
     if (!isCloudinaryUrl(currentThumbUrl)) {
       setWarnTitle('Cloudinary image required');
       setWarnBody(
-        `The selected product’s thumbnail is not a Cloudinary URL, so we can’t resolve a public ID for logo mapping.\n\n` +
+        `The selected product's thumbnail is not a Cloudinary URL, so we can't resolve a public ID for logo mapping.\n\n` +
           `• Product: #${selectedProductId}${selectedProduct?.name ? ` — ${selectedProduct.name}` : ''}\n` +
           `• Current URL: ${currentThumbUrl || '(empty)'}\n\n` +
-          `Please choose a product whose thumbnail comes from Cloudinary (e.g. contains “res.cloudinary.com”).`
+          `Please choose a product whose thumbnail comes from Cloudinary (e.g. contains "res.cloudinary.com").`
       );
       setWarnOpen(true);
       return;
@@ -571,7 +571,7 @@ export default function HomePage() {
       setWarnTitle('No active placements');
       setWarnBody(
         'You must mark at least one placement as Active before saving.\n\n' +
-          'Open a placement, toggle “Active”, and try again.'
+          'Open a placement, toggle "Active", and try again.'
       );
       setWarnOpen(true);
       return;
@@ -580,7 +580,7 @@ export default function HomePage() {
     if (!isCloudinaryUrl(currentThumbUrl)) {
       setConfirmTitle('Proceed without Cloudinary image?');
       setConfirmBody(
-        `This product’s thumbnail is not a Cloudinary URL. Saving placements will still update the product meta, ` +
+        `This product's thumbnail is not a Cloudinary URL. Saving placements will still update the product meta, ` +
           `but logo previews/overlays that depend on a Cloudinary public ID may fail.\n\n` +
           `• Product: #${selectedProductId}${selectedProduct?.name ? ` — ${selectedProduct.name}` : ''}\n` +
           `• Current URL: ${currentThumbUrl || '(empty)'}\n\n` +
@@ -972,7 +972,7 @@ export default function HomePage() {
         setWarnTitle('Product not allowed for this page');
         setWarnBody(
           `Product #${selectedProductId}${selectedProduct?.name ? ` — ${selectedProduct.name}` : ''} is not in\n` +
-            `the page’s allowed products.\n\nPage: #${selectedPage?.id} — ${selectedPage?.title}`
+            `the page's allowed products.\n\nPage: #${selectedPage?.id} — ${selectedPage?.title}`
         );
         setWarnOpen(true);
         setUsePagePlacements(false);
@@ -1001,7 +1001,7 @@ export default function HomePage() {
         setWarnTitle('No saved page placements');
         setWarnBody(
           `This page does not have saved placements for the selected product.\n\n` +
-            `So, you can use the current placements, or draw a new placement and save with “Update for ${selectedPage?.title}”, or switch this off.`
+            `So, you can use the current placements, or draw a new placement and save with "Update for ${selectedPage?.title}", or switch this off.`
         );
         setMappingSource({
           type: 'page',

@@ -52,7 +52,7 @@ const placementsSig = arr =>
     .sort()
     .join('|');
 
-function PriceChart({ steps, regularPrice, currency = '₪', extraEach = 0 }) {
+function PriceChart({ steps, regularPrice, currency = '$', extraEach = 0 }) {
   if (!Array.isArray(steps) || steps.length === 0) return null;
 
   const getRange = i => {
@@ -60,17 +60,17 @@ function PriceChart({ steps, regularPrice, currency = '₪', extraEach = 0 }) {
 
     // First tier: always from 1 to thisQty
     if (i === 0) {
-      return `כמות: 1-${thisQty}`;
+      return `Quantity: 1-${thisQty}`;
     }
 
     // Middle tiers: from (previousQty + 1) to thisQty
     if (i < steps.length - 1) {
       const prevQty = Number(steps[i - 1]?.quantity);
-      return `כמות: ${prevQty + 1}-${thisQty}`;
+      return `Quantity: ${prevQty + 1}-${thisQty}`;
     }
 
     // Last tier: thisQty+
-    return `כמות: ${thisQty}+`;
+    return `Quantity: ${thisQty}+`;
   };
 
   const parseMoney = v => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -78,7 +78,7 @@ function PriceChart({ steps, regularPrice, currency = '₪', extraEach = 0 }) {
 
   return (
     <div className="w-full">
-      <h2 className="text-xl font-semibold text-center mb-2">תמחור כמות</h2>
+      <h2 className="text-xl font-semibold text-center mb-2">Quantity Pricing</h2>
       <div className="mt-4 w-full">
         <div className="grid grid-cols-1 sm:grid-cols-2 border rounded-xl overflow-hidden">
           {steps.map((step, i) => {
@@ -96,8 +96,8 @@ function PriceChart({ steps, regularPrice, currency = '₪', extraEach = 0 }) {
                 className={`flex flex-col items-center border-b last:border-b-0 sm:border-r px-4 py-3 ${checkerBg}`}
               >
                 <div className="text-lg font-bold text-primary">
-                  {display}
                   {currency}
+                  {display}
                 </div>
                 <div className="text-xs text-gray-500 mt-1">{getRange(i)}</div>
               </div>
@@ -648,7 +648,7 @@ export default function ProductQuickViewModal({
           <DialogClose asChild>
             <button
               className="absolute top-2 right-2 z-10 bg-white rounded-full cursor-pointer p-2 shadow hover:bg-bglighter focus:outline-none focus:ring-2 focus:ring-skyblue"
-              aria-label="סגור"
+              aria-label="Close"
             >
               <X className="w-5 h-5" />
             </button>
@@ -669,13 +669,13 @@ export default function ProductQuickViewModal({
               <DialogDescription className="prose prose-sm max-w-none mb-4 text-primary">
                 {product?.acf?.pricing_description
                   ? product.acf.pricing_description.replace(/<[^>]+>/g, '')
-                  : 'פרטי מוצר'}
+                  : 'Product Details'}
               </DialogDescription>
 
               {/* AREA FILTER */}
               {basePlacements.length > 0 && (
                 <div className="mb-4">
-                  <div className="text-xs text-gray-500 mb-1">מיקומי לוגו</div>
+                  <div className="text-xs text-gray-500 mb-1">Logo Placements</div>
                   <div className="flex flex-wrap gap-2">
                     {basePlacements.map(p => {
                       const nm = p?.name || '';
@@ -731,7 +731,7 @@ export default function ProductQuickViewModal({
                                       if (effectiveActive) toggleArea(nm);
                                     }}
                                     role="button"
-                                    aria-label="בחר לוגו גב"
+                                    aria-label="Select Back Logo"
                                   >
                                     <ChevronDown className="w-3 h-3" />
                                     {isBack && <span className="font-bold leading-none">B</span>}
@@ -800,7 +800,7 @@ export default function ProductQuickViewModal({
                   className="alarnd-btn mt-5 bg-primary text-white"
                   onClick={handleAddToCartClick}
                 >
-                  הוסיפו לעגלה
+                  Add to cart
                 </button>
               </div>
             </div>
@@ -875,7 +875,7 @@ export default function ProductQuickViewModal({
                   <button
                     className="absolute top-1/2 mt-[-11px] left-2 -translate-y-1/2 bg-white rounded-full p-2 shadow cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={() => setSliderIdx((sliderIdx - 1 + colors.length) % colors.length)}
-                    aria-label="הקודם"
+                    aria-label="Previous"
                     disabled={navDisabled}
                     type="button"
                   >
@@ -884,7 +884,7 @@ export default function ProductQuickViewModal({
                   <button
                     className="absolute top-1/2 mt-[-11px] right-2 -translate-y-1/2 bg-white rounded-full p-2 shadow cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={() => setSliderIdx((sliderIdx + 1) % colors.length)}
-                    aria-label="הבא"
+                    aria-label="Next"
                     disabled={navDisabled}
                     type="button"
                   >
@@ -916,7 +916,7 @@ export default function ProductQuickViewModal({
               )}
 
               {preloading && hasSlider && colors.length > 1 && (
-                <div className="mt-3 text-xs text-gray-500">טוען תמונות מקדימות…</div>
+                <div className="mt-3 text-xs text-gray-500">Loading previews…</div>
               )}
             </div>
           </div>

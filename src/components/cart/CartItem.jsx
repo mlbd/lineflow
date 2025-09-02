@@ -12,9 +12,8 @@ import {
 import Tooltip from '@/components/ui/Tooltip';
 
 // [PATCH] Added: money helpers for precise line totals
-const toCents = v => Math.round((Number(v ?? 0)) * 100);
+const toCents = v => Math.round(Number(v ?? 0) * 100);
 const fmt2 = cents => (Math.max(0, Number(cents || 0)) / 100).toFixed(2);
-
 
 const SHOW_PLACEMENTS_LABEL = true;
 const SHOW_FILTER_CHANGED_LABEL = false;
@@ -197,15 +196,16 @@ export default function CartItem({
       return;
     }
     if (numValue < minQuantity) {
-      setError(`כמות מינימלית: ${minQuantity}`);
+      setError(`Minimum quantity: ${minQuantity}`);
       return;
     }
     if (numValue > maxQuantity) {
-      setError(`כמות מקסימלית: ${maxQuantity}`);
+      setError(`Maximum quantity: ${maxQuantity}`);
       setLocalQuantity(maxQuantity.toString());
       updateItemQuantity(idx, maxQuantity);
       return;
     }
+
     setError('');
     updateItemQuantity(idx, numValue);
   };
@@ -270,14 +270,14 @@ export default function CartItem({
 
     return (
       <div className="space-y-1">
-        <div className="font-semibold text-skyblue text-[15px] text-center md:text-right">
+        <div className="font-semibold text-skyblue text-[15px] text-center md:text-left">
           {item.name}
         </div>
 
         {item.options?.group_type === 'Group' && (
           <div className="space-y-1 text-sm text-gray-600 flex gap-0 md:gap-0 mb-2 md:mb-2 flex-col">
             <div className="flex items-center gap-2 mx-auto md:mx-0">
-              <span>צבע:</span>
+              <span>Color:</span>
               <span
                 className="p-0.5 rounded text-xs font-medium"
                 style={{
@@ -291,7 +291,7 @@ export default function CartItem({
               </span>
             </div>
             <div className="mx-auto md:mx-0">
-              מידה: <span className="font-medium">{item.options.size}</span>
+              Size: <span className="font-medium">{item.options.size}</span>
             </div>
           </div>
         )}
@@ -386,10 +386,10 @@ export default function CartItem({
 
       {/* 3) Unit price */}
       <div className="text-center">
-        <div className="text-sm font-semibold text-gray-900">{Number(item.price).toFixed(2)} ₪</div>
-        <div className="text-xs text-gray-500">ליחידה</div>
+        <div className="text-sm font-semibold text-gray-900">${Number(item.price).toFixed(2)}</div>
+        <div className="text-xs text-gray-500">Per unit</div>
         {SHOW_FILTER_CHANGED_LABEL && item.filter_was_changed && (
-          <div className="text-xs text-red-500">⚠ מיקומי לוגו שונו</div>
+          <div className="text-xs text-red-500">⚠ Logo placements were changed</div>
         )}
 
         {/* Extra per-unit chip with tooltip */}
@@ -399,7 +399,7 @@ export default function CartItem({
               placement="bottom"
               content={
                 <div className="space-y-1">
-                  <div className="font-medium">פירוט תוספת הדפסה</div>
+                  <div className="font-medium">Printing add-on details</div>
                   {(() => {
                     console.log(`item::${item.product_id}`, item);
                     const unit = Number(item?.price) || 0;
@@ -419,22 +419,22 @@ export default function CartItem({
                     return (
                       <>
                         <div>
-                          <span className="tabular-nums">{base.toFixed(2)} ₪</span> בסיס
+                          <span className="tabular-nums">${base.toFixed(2)}</span> Base
                         </div>
                         <div>
-                          + <span className="tabular-nums">{extra.toFixed(2)} ₪</span> תוספת
+                          + <span className="tabular-nums">${extra.toFixed(2)}</span> Extra
                           {xPrice > 0 &&
                             extrasN > 0 && ( // [PATCH] Updated condition to show only when count > 0
                               <span className="text-gray-500">
                                 {' '}
-                                ({extrasN}×{xPrice.toFixed(2)} ₪)
+                                ({extrasN}×${xPrice.toFixed(2)})
                               </span>
                             )}
                         </div>
                         <div className="my-1 border-t border-gray-200" />
                         <div>
-                          = <span className="font-semibold tabular-nums">{unit.toFixed(2)} ₪</span>{' '}
-                          ליחידה
+                          = <span className="font-semibold tabular-nums">${unit.toFixed(2)}</span>{' '}
+                          per unit
                         </div>
                       </>
                     );
@@ -443,7 +443,7 @@ export default function CartItem({
               }
             >
               <span className="inline-flex items-center text-[11px] text-amber-600 px-1.5 py-0.5 rounded border border-amber-200 hover:bg-amber-50 cursor-help select-none">
-                +{Number(item.extra_unit_add).toFixed(2)} ₪
+                +{Number(item.extra_unit_add).toFixed(2)}$
               </span>
             </Tooltip>
           </div>
@@ -471,8 +471,8 @@ export default function CartItem({
 
       {/* 5) Total price */}
       <div className="text-center">
-        <div className="text-sm font-bold text-gray-900">{fmt2(totalCents)} ₪</div>
-        <div className="text-sm text-gray-500">סה&quot;כ</div>
+        <div className="text-sm font-bold text-gray-900">${fmt2(totalCents)}</div>
+        <div className="text-sm text-gray-500">Total</div>
       </div>
 
       {/* 6) Remove */}
@@ -481,7 +481,7 @@ export default function CartItem({
           <button
             onClick={() => removeItem(idx)}
             className="p-1 text-red-500 cursor-pointer hover:text-red-700 hover:bg-red-50 transition-colors"
-            aria-label="הסר פריט"
+            aria-label="Remove item"
           >
             <Trash2 className="w-5 h-5" />
           </button>
@@ -489,8 +489,8 @@ export default function CartItem({
             type="button"
             className="p-1 text-blue-600 cursor-pointer hover:text-blue-800 hover:bg-blue-50 transition-colors"
             onClick={() => onOpenEditFromCart?.(item, idx)}
-            aria-label="עריכת פריט (מיקומים/כמויות)"
-            title="עריכת פריט"
+            aria-label="Edit item (placements/quantities)"
+            title="Edit item"
           >
             <SquarePen className="w-5 h-5" />
           </button>

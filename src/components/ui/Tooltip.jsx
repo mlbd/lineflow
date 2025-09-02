@@ -3,11 +3,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
-// <Tooltip content="הסר פריט">
+// <Tooltip content="Remove Item">
 //   <button
 //     onClick={() => removeItem(idx)}
 //     className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full transition-colors"
-//     aria-label="הסר פריט"
+//     aria-label="Remove Item"
 //   >
 //     <Trash2 className="w-5 h-5" />
 //   </button>

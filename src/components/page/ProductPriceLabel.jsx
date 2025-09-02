@@ -9,7 +9,7 @@ export default function ProductPriceLabel({ product, bumpPrice = null }) {
 
   return (
     <div className="mt-2 w-full text-lg text-primary text-center font-normal">
-      {priceDisplay ? priceDisplay : 'לא זמין'}
+      {priceDisplay ? priceDisplay : 'Not available'}
     </div>
   );
 }

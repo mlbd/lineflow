@@ -82,7 +82,7 @@ export function ProductsShell({
   if (!products.length && loading) {
     return (
       <div className="text-center py-12 text-gray-400" role="status" aria-live="polite">
-        טוען מוצרים…
+        Loading products…
       </div>
     );
   }
@@ -90,7 +90,7 @@ export function ProductsShell({
   if (err && !products.length) {
     return (
       <div className="text-center py-12 text-red-600">
-        לא הצלחנו לטעון מוצרים. אנא רענן/י את הדף.
+        We couldn&apos;t load the products. Please refresh the page.
       </div>
     );
   }

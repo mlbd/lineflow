@@ -21,9 +21,10 @@ export default function Footer() {
             </div>
 
             <p className="leading-6 text-sm">
-              אולאראונד הוא מותג הדפסה על חולצות, מוצרים ממותגים ובגדול כל סוגי הביגוד – שנותן מענה
-              כולל תחת קורת גג אחת. עם ניסיון של מאות לקוחות מרוצים והדפסות In-House בטכנולוגיות הכי
-              מתקדמות, נשמח לשדרג גם את העסק שלך.
+              Allaround is a brand for printing on shirts, branded products, and basically all types
+              of clothing – providing a complete solution under one roof. With experience from
+              hundreds of satisfied customers and in-house printing using the most advanced
+              technologies, we would be happy to upgrade your business as well.
             </p>
 
             <ul className="space-y-1">
@@ -58,34 +59,34 @@ export default function Footer() {
                   className="inline-flex text-[15px] font-regular items-center gap-2 hover:opacity-80 transition"
                 >
                   <LocationIcon className="h-5 w-5 text-blue-600" />
-                  <span>הלהב 2, חולון (קומת רמפה עליונה)</span>
+                  <span>Blade 2, Holon (Upper Ramp Level)</span>
                 </Link>
               </li>
             </ul>
           </div>
 
           {/* Column 2: Site Navigation */}
-          <nav aria-label="ניווט אתר" className="space-y-5">
-            <h3 className="text-lg font-semibold">ניווט באתר</h3>
+          <nav aria-label="Site Navigation" className="space-y-5">
+            <h3 className="text-lg font-semibold">Site Navigation</h3>
             <ul className="grid grid-cols-2 gap-3">
               <li>
                 <Link href="/" className="hover:underline underline-offset-4">
-                  דף הבית
+                  Home
                 </Link>
               </li>
               <li>
                 <Link href="/catalog" className="hover:underline underline-offset-4">
-                  קטלוג
+                  Catalog
                 </Link>
               </li>
               <li>
                 <Link href="/about" className="hover:underline underline-offset-4">
-                  אודות
+                  About
                 </Link>
               </li>
               <li>
                 <Link href="/contact" className="hover:underline underline-offset-4">
-                  צור קשר
+                  Contact
                 </Link>
               </li>
             </ul>
@@ -93,7 +94,7 @@ export default function Footer() {
 
           {/* Column 3: Follow Us */}
           <div className="space-y-5">
-            <h3 className="text-lg font-semibold">עקבו אחרינו</h3>
+            <h3 className="text-lg font-semibold">Follow Us</h3>
             <ul className="flex flex-col gap-2">
               <li>
                 <a
@@ -134,7 +135,7 @@ export default function Footer() {
 
         {/* Divider + Bottom Row */}
         <div className="mt-10 border-t border-gray-300 pt-6 flex flex-col md:flex-row items-center justify-center gap-3">
-          <p className="text-sm">© {new Date().getFullYear()} Allaround. כל הזכויות שמורות.</p>
+          <p className="text-sm">© {new Date().getFullYear()} Allaround. All rights reserved.</p>
         </div>
       </div>
     </footer>

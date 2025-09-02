@@ -405,7 +405,7 @@ export default function LogosPage() {
     const max = 54;
     const minPrice = min + Math.random() * (max - min);
     const maxPrice = minPrice + Math.random() * (max - minPrice);
-    return `${minPrice.toFixed(2)}₪ - ${maxPrice.toFixed(2)}₪`;
+    return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`;
   };
 
   // ✅ FIX: useEffect with fetchLogos as dep

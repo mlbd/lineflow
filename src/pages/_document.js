@@ -6,7 +6,7 @@ export default function Document() {
   const isRTL = true; // Your RTL logic
 
   return (
-    <Html lang="en" dir={isRTL ? 'rtl' : 'ltr'}>
+    <Html lang="en">
       <Head />
       <body className="antialiased">
         <GoogleTagManager gtmId={process.env.NEXT_PUBLIC_GTM_ID} />

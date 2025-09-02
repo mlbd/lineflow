@@ -2,13 +2,13 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { 
-  useCartItems, 
-  useCustomerNote, 
-  useSetCustomerNote, 
+import {
+  useCartItems,
+  useCustomerNote,
+  useSetCustomerNote,
   useCoupon,
   useSetCoupon,
-  useRemoveCoupon, 
+  useRemoveCoupon,
 } from './cartStore';
 import CartItem from './CartItem';
 import Checkout from './Checkout';
@@ -59,7 +59,6 @@ export default function CartPage({
   const [validating, setValidating] = useState(false);
   const [couponInput, setCouponInput] = useState('');
 
-
   // 🔧 Toggle if you ever want to switch grouping off quickly
   const GROUP_CART_BY_PRODUCT = true;
 
@@ -106,7 +105,10 @@ export default function CartPage({
       const res = await wpApiFetch(`coupon-validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ coupon_code: code, email: acf?.email_address || 'dummy@example.com' }),
+        body: JSON.stringify({
+          coupon_code: code,
+          email: acf?.email_address || 'dummy@example.com',
+        }),
       });
       const data = await res.json();
       // [PATCH] Added: persist coupon in store so it survives refresh
@@ -114,7 +116,7 @@ export default function CartPage({
       setCouponStore({ ...data, code });
       if (!data?.valid && data?.error) onError?.(data.error);
     } catch {
-      onError?.('שגיאה באימות קופון');
+      onError?.('Coupon verification error');
     } finally {
       setValidating(false);
     }
@@ -192,7 +194,7 @@ export default function CartPage({
     <div className="relative bg-bglight">
       <div className="mt-16 max-w-[900px] mx-auto w-full">
         <div className="container mx-auto py-8 px-4">
-          <h1 className="text-3xl font-bold mb-8 text-center">סל קניות</h1>
+          <h1 className="text-3xl font-bold mb-8 text-center">Shopping Cart</h1>
 
           {validating ? (
             <CartShimmer itemCount={items.length || 3} />
@@ -204,10 +206,10 @@ export default function CartPage({
                 {arranged.length > 0 && (
                   <div className="grid grid-cols-7 gap-0 p-4 bg-gray-50 border border-gray-200 rounded-lg mb-4">
                     <div className="text-center font-semibold text-gray-700"></div>
-                    <div className="col-span-2 font-semibold text-gray-700">מוצר</div>
-                    <div className="text-center font-semibold text-gray-700">מחיר</div>
-                    <div className="text-center font-semibold text-gray-700">כמות</div>
-                    <div className="text-center font-semibold text-gray-700">סה&quot;כ</div>
+                    <div className="col-span-2 font-semibold text-gray-700">Product</div>
+                    <div className="text-center font-semibold text-gray-700">Price</div>
+                    <div className="text-center font-semibold text-gray-700">Quantity</div>
+                    <div className="text-center font-semibold text-gray-700">Total</div>
                   </div>
                 )}
 
@@ -258,7 +260,7 @@ export default function CartPage({
                       <textarea
                         value={customerNote}
                         onChange={e => setCustomerNote(e.target.value)}
-                        placeholder="כל הערה שקיימת בנוגע להזמנה מוזמנים להקליד כאן."
+                        placeholder="Any notes regarding the order can be entered here."
                         className="w-full border rounded px-3 py-2 outline-none border-gray-300 min-h-[80px] bg-white text-gray-700"
                         rows={3}
                       />

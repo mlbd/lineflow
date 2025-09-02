@@ -8,8 +8,7 @@ import { generateHoverThumbUrlFromItem } from '@/utils/cloudinaryMockup';
 const toCents = v => Math.round(Number(v ?? 0) * 100);
 const fromCents = c => Number(c || 0) / 100;
 const formatILS2 = cents =>
-  fromCents(cents).toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
+  fromCents(cents).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function Checkout({
   selectedShipping,
@@ -141,13 +140,13 @@ export default function Checkout({
   let couponDescription = '';
   if (coupon?.valid) {
     const amount = Number(coupon.amount || 0);
-    const ctype  = String(coupon.type || coupon.discount_type || '').toLowerCase();
+    const ctype = String(coupon.type || coupon.discount_type || '').toLowerCase();
     if (ctype === 'percent' || ctype === 'percentage' || ctype === 'percent_cart') {
       discountCents = Math.round((subtotalCents * amount) / 100);
-      couponDescription = `${amount}% הנחה`;
+      couponDescription = `${amount}% discount`;
     } else if (ctype === 'fixed' || ctype === 'fixed_cart') {
       discountCents = Math.min(subtotalCents, Math.round(amount * 100));
-      couponDescription = `₪${amount} הנחה`;
+      couponDescription = `$${amount} discount`;
     }
   }
 
@@ -179,10 +178,10 @@ export default function Checkout({
     const e = {};
     const req = ['fullName', 'email', 'phone', 'city', 'streetName', 'streetNumber'];
     req.forEach(k => {
-      if (!(form?.[k] || '').toString().trim()) e[k] = 'שדה חובה';
+      if (!(form?.[k] || '').toString().trim()) e[k] = 'Required field';
     });
-    if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) e.email = 'אימייל לא תקין';
-    if (form.phone && !/^[0-9+\-()\s]{9,15}$/.test(form.phone)) e.phone = 'טלפון לא תקין';
+    if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) e.email = 'Invalid email';
+    if (form.phone && !/^[0-9+\-()\s]{9,15}$/.test(form.phone)) e.phone = 'Invalid phone number';
     return e;
   }, [form]);
 
@@ -281,7 +280,7 @@ export default function Checkout({
       setPaymentUrl(data.paymentUrl);
       setShowPayModal(true);
     } catch (e) {
-      setErrorMsg(e?.message || 'שגיאת תשלום');
+      setErrorMsg(e?.message || 'Payment Error');
     } finally {
       setPaying(false);
     }
@@ -298,7 +297,7 @@ export default function Checkout({
       }
       if (e.data?.type === 'ZCREDIT_ERROR') {
         setShowPayModal(false);
-        setErrorMsg('התשלום נכשל או בוטל');
+        setErrorMsg('Payment failed or was canceled');
       }
     }
     window.addEventListener('message', onMsg);
@@ -309,22 +308,22 @@ export default function Checkout({
     <div className="bg-white border rounded-lg p-6 space-y-6">
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">
-          <span>סכום ביניים</span>
-          <span>₪{formatILS2(subtotalCents)}</span>
+          <span>Subtotal</span>
+          <span>${formatILS2(subtotalCents)}</span>
         </div>
         {discountCents > 0 && (
           <div className="flex justify-between text-green-700">
-            <span>{couponDescription || 'קופון'}</span>
-            <span>-₪{formatILS2(discountCents)}</span>
+            <span>{couponDescription || 'Coupon'}</span>
+            <span>-${formatILS2(discountCents)}</span>
           </div>
         )}
         <div className="flex justify-between">
-          <span>משלוח</span>
-          <span>{shippingCents > 0 ? `₪${formatILS2(shippingCents)}` : 'חינם'}</span>
+          <span>Shipping</span>
+          <span>{shippingCents > 0 ? `$${formatILS2(shippingCents)}` : 'Free'}</span>
         </div>
         <div className="border-t pt-2 flex justify-between font-semibold text-lg">
-          <span>לתשלום</span>
-          <span>₪{formatILS2(totalCents)}</span>
+          <span>Total</span>
+          <span>${formatILS2(totalCents)}</span>
         </div>
       </div>
 
@@ -337,12 +336,12 @@ export default function Checkout({
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {[
-            ['fullName', 'שם מלא'],
-            ['email', 'אימייל'],
-            ['phone', 'טלפון'],
-            ['city', 'עיר'],
-            ['streetName', 'רחוב'],
-            ['streetNumber', "מס' בית"],
+            ['fullName', 'Full name'],
+            ['email', 'Email'],
+            ['phone', 'Phone'],
+            ['city', 'City'],
+            ['streetName', 'Street'],
+            ['streetNumber', 'House number'],
           ].map(([key, label]) => (
             <label key={key} className="block text-sm">
               <div className="mb-1">{label}</div>
@@ -358,7 +357,7 @@ export default function Checkout({
             </label>
           ))}
           <label className="block text-sm md:col-span-2">
-            <div className="mb-1">שם לחשבונית (אופציונלי)</div>
+            <div className="mb-1">Name for invoice (optional)</div>
             <input
               value={form.invoiceName || ''}
               onChange={e => setForm(f => ({ ...f, invoiceName: e.target.value }))}
@@ -378,10 +377,14 @@ export default function Checkout({
               : 'bg-blue-600 hover:bg-blue-700'
           }`}
           title={
-            isCartEmpty ? 'העגלה ריקה' : hasErrors ? 'נא למלא את כל השדות הנדרשים' : 'המשך לתשלום'
+            isCartEmpty
+              ? 'Cart is empty'
+              : hasErrors
+                ? 'Please fill in all required fields'
+                : 'Proceed to payment'
           }
         >
-          {paying ? 'מעבד תשלום…' : 'המשך לתשלום'}
+          {paying ? 'Processing payment…' : 'Proceed to payment'}
         </button>
       </form>
 
@@ -389,7 +392,7 @@ export default function Checkout({
         <div className="fixed inset-0 z-[1000] bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-2xl rounded-2xl overflow-hidden shadow-xl">
             <div className="flex items-center justify-between px-4 py-3 border-b">
-              <h3 className="font-semibold">תשלום מאובטח</h3>
+              <h3 className="font-semibold">Secure Payment</h3>
               <button onClick={() => setShowPayModal(false)} className="p-2" aria-label="Close">
                 ✕
               </button>
@@ -403,7 +406,7 @@ export default function Checkout({
                   allow="payment *"
                 />
               ) : (
-                <div className="h-full flex items-center justify-center">טוען…</div>
+                <div className="h-full flex items-center justify-center">Loading…</div>
               )}
             </div>
           </div>

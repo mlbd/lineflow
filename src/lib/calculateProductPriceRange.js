@@ -8,7 +8,7 @@ export function applyPercentageIncrease(steps, percentage) {
 
 export function formatPrice(price) {
   if (typeof price !== 'number' || isNaN(price)) return '';
-  return `${price.toFixed(2)}₪`;
+  return `$${price.toFixed(2)}`;
 }
 
 export function calculateProductPriceRange(product, bumpPrice = null) {

@@ -77,7 +77,7 @@ export default function ProductListSection({
         {/* Filters */}
         <div className="mb-6 flex flex-wrap gap-2 items-center justify-center">
           {[
-            { value: 'all', label: 'הצג הכל' },
+            { value: 'all', label: 'Show All' },
             ...allCategories.map(cat => ({ value: cat, label: categoryName(cat) })),
           ].map(({ value, label }) => {
             const isActive = selectedCategory === value;
@@ -142,7 +142,7 @@ export default function ProductListSection({
                     className="text-skyblue mt-2 font-medium text-lg cursor-pointer"
                     onClick={() => setModalProduct(p)}
                   >
-                    לפרטים על המוצר
+                    For product details
                   </Button>
                   <Button
                     onClick={() => {
@@ -152,7 +152,7 @@ export default function ProductListSection({
                     id={`add-to-cart-${p.id}`}
                     className="bg-accent rounded-[11px] mt-5 w-auto text-primary font-bold hover:bg-[#002266] hover:text-white text-[17px] py-[23px] px-[25px] transition cursor-pointer"
                   >
-                    הוסף להזמנה
+                    Add to Order
                   </Button>
                 </div>
               </div>
@@ -160,7 +160,7 @@ export default function ProductListSection({
           })}
           {visibleProducts.length === 0 && (
             <div className="col-span-3 text-center text-gray-400 py-10">
-              אין מוצרים בקטגוריה זו.
+              No products in this category.
             </div>
           )}
         </div>
@@ -169,7 +169,7 @@ export default function ProductListSection({
         {hasMore && (
           <div className="flex justify-center mt-8">
             <Button size="sm" onClick={handleLoadMore} className="alarnd-btn w-auto py-6 px-8">
-              טען עוד
+              Load More
             </Button>
           </div>
         )}

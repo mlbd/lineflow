@@ -26,9 +26,9 @@ export default function ProductColorBoxes({ acf }) {
         alt="Info"
         width={16}
         height={16}
-        className="w-[16px] h-[16px] inline-block ml-2"
+        className="w-[16px] h-[16px] inline-block mr-2"
       />
-      זמין בצבע אחד כבתמונה
+      Available in one color as shown
     </div>
   );
 }

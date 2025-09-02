@@ -23,7 +23,6 @@ const toNumber = v => {
 const toCents = v => Math.round(Number(v ?? 0) * 100);
 const fmt2 = cents => (Math.max(0, Number(cents || 0)) / 100).toFixed(2);
 
-
 function getLuminance(hex) {
   hex = hex?.replace(/^#/, '') || '';
   if (hex.length === 3)
@@ -163,7 +162,7 @@ export default function AddToCartGroup({
     let newVal = val.replace(/[^0-9]/g, '');
     if (newVal.length > 1 && newVal[0] === '0') newVal = newVal.replace(/^0+/, '');
     if (parseInt(newVal) > QTY_LIMIT) {
-      setError(`כמות מקסימלית לרכישה: ${QTY_LIMIT}`);
+      setError(`Maximum quantity per order: ${QTY_LIMIT}`);
       newVal = QTY_LIMIT.toString();
     } else setError(null);
 
@@ -544,7 +543,7 @@ export default function AddToCartGroup({
         }}
       >
         <DialogClose asChild>
-          <button className="alarnd-close-btn" aria-label="סגור">
+          <button className="alarnd-close-btn" aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </DialogClose>
@@ -582,7 +581,7 @@ export default function AddToCartGroup({
         {/* Other quantity in cart (stable; unaffected by form typing) */}
         {otherQtyInCart > 0 && (
           <div className="text-center text-xs text-gray-600 -mt-2 mb-3">
-            עוד {otherQtyInCart} בעגלה
+            {otherQtyInCart} more in cart
           </div>
         )}
 
@@ -669,17 +668,17 @@ export default function AddToCartGroup({
             ) : stepInfo.nextStep ? (
               <div className="text-pink text-xl pt-[10px] text-center mb-2 flex flex-col">
                 <span>
-                  הוסיפו {stepInfo.unitsToNext} פריטים נוספים להורדת המחיר ל-{' '}
-                  <b>{nextStepAmountWithExtra.toFixed(2)}₪</b> ליחידה
+                  Add {stepInfo.unitsToNext} more items to lower the price to{' '}
+                  <b>${nextStepAmountWithExtra.toFixed(2)}</b> per unit
                 </span>
                 <span className="line-through current_price">
-                  (כרגע {unitWithExtra.toFixed(2)}₪)
+                  (Currently ${unitWithExtra.toFixed(2)})
                 </span>
               </div>
             ) : (
               flatTotalFromMatrix(quantities) > 0 && (
                 <div className="text-green-600 text-center mb-2">
-                  {`מחיר ליחידה: ${unitWithExtra.toFixed(2)}₪`}
+                  {`Unit price: $${unitWithExtra.toFixed(2)}`}
                 </div>
               )
             )}
@@ -701,28 +700,30 @@ export default function AddToCartGroup({
                 <div className="alarnd--price-by-shirt text-center my-4">
                   <p className="alarnd--group-price text-lg font-semibold">
                     <span>
+                      <span className="woocommerce-Price-currencySymbol">$</span>
                       <span className="current_price">{unitWithExtra.toFixed(2)}</span>
-                      <span className="woocommerce-Price-currencySymbol">₪</span>
                     </span>{' '}
-                    / {acf.first_line_keyword || 'תיק'}
+                    / {acf.first_line_keyword || 'Bag'}
                   </p>
                   <p>
-                    סה&quot;כ יחידות:{' '}
+                    Total units:{' '}
                     <span className="alarnd__total_qty">
                       {quantities.flat().reduce((s, v) => s + (parseInt(v || 0) || 0), 0)}
                     </span>
                   </p>
                   <span className="alarnd--total-price">
-                    סה&quot;כ:{' '}
+                    Total:{' '}
                     <span>
                       <span className="current_total_price">
+                        <span className="woocommerce-Price-currencySymbol">$</span>
                         {(() => {
-                          const qty = quantities.flat().reduce((s, v) => s + (parseInt(v || 0) || 0), 0);
+                          const qty = quantities
+                            .flat()
+                            .reduce((s, v) => s + (parseInt(v || 0) || 0), 0);
                           const totalCents = Math.round(qty * Number(unitWithExtra || 0) * 100);
                           return fmt2(totalCents);
                         })()}
                       </span>
-                      <span className="woocommerce-Price-currencySymbol">₪</span>
                     </span>
                   </span>
                 </div>
@@ -734,7 +735,7 @@ export default function AddToCartGroup({
                   className="alarnd-btn"
                   onClick={handleAddToCart}
                 >
-                  הוסף לעגלה
+                  Add to Cart
                 </button>
               </div>
             </div>

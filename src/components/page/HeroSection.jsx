@@ -7,9 +7,9 @@ export default function HeroSection({ company }) {
     <section className="w-full py-13 flex justify-center bg-skyblue">
       <div className="max-w-[var(--site-max-width)] w-full flex flex-col md:flex-row items-center gap-8 px-4">
         {/* left: Title and Content */}
-        <div className="flex-2 text-center md:text-right">
+        <div className="flex-2 text-center md:text-left">
           <h1 className="text-[40px] flex gap items-center md:text-4xl text-white font-extrabold mb-4">
-            היי, {name}
+            Hi, {name}
             <span className="inline-block align-middle ml-2">
               <Image
                 src="/verified.png"
@@ -21,7 +21,7 @@ export default function HeroSection({ company }) {
               />
             </span>
           </h1>
-          {description && <p className="text-lg text-white">{description}</p>}
+          {description && <p className="text-lg text-white text-left">{description}</p>}
         </div>
 
         {/* right: Logo */}

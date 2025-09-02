@@ -4,18 +4,18 @@ import Image from 'next/image';
 const defaultBoxes = [
   {
     icon: '/device-mini.svg',
-    title: 'כאן בשבילך',
-    text: 'לכל שאלה, התלבטות או התייעצות, נשמח לעזור בכל דבר. זמינים במגוון דרכים: טלפון, אימייל וכמובן גם בווטסאפ.',
+    title: 'Here for You',
+    text: 'For any question, concern, or advice, we are happy to help with anything. Available in various ways: phone, email, and of course WhatsApp.',
   },
   {
     icon: '/rocket-mini.svg',
-    title: 'משלוחים מהירים',
-    text: 'בין 2-5 ימי עסקים וההזמנה אצלכם! משלוח אקספרס של חברת UPS, שירות משלוחים ברמה הגבוהה ביותר',
+    title: 'Fast Shipping',
+    text: 'Within 2-5 business days and your order is with you! Express shipping by UPS, the highest level of delivery service.',
   },
   {
     icon: '/hand-mini.svg',
-    title: 'פשוט ומהיר',
-    text: 'יצרנו מערכת אישית בשבילך שבכמה קליקים פשוטים תוכלו לבצע הזמנה ולשדרג את העסק שלכם, ממש בכמה דקות',
+    title: 'Simple and Fast',
+    text: 'We created a personal system for you so that with just a few simple clicks you can place an order and upgrade your business, all in just a few minutes.',
   },
 ];
 

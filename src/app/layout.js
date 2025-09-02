@@ -15,7 +15,7 @@ export default function RootLayout({ children }) {
   const isRTL = true; // Replace with language/company logic as needed
 
   return (
-    <html lang="en" dir={isRTL ? 'rtl' : 'ltr'}>
+    <html lang="en">
       <body className={`${heebo.className} antialiased`}>
         <GoogleTagManager gtmId={process.env.NEXT_PUBLIC_GTM_ID} />
         {children}

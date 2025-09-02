@@ -37,7 +37,7 @@ export async function getStaticProps({ params }) {
       .filter(id => Number.isFinite(id));
 
     // 3) SSR only first N products so users see products on first paint
-    const CRITICAL_COUNT = 6;
+    const CRITICAL_COUNT = 12;
     const criticalIds = productIds.slice(0, CRITICAL_COUNT);
     let criticalProducts = [];
     if (criticalIds.length) {
@@ -221,7 +221,7 @@ export default function LandingPage({
     }
   }, [slug]);
 
-  if (!animationDone) return <CircleReveal onFinish={() => setAnimationDone(true)} />;
+  // if (!animationDone) return <CircleReveal onFinish={() => setAnimationDone(true)} />;
 
   if (error) {
     return (

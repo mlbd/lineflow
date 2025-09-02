@@ -206,11 +206,11 @@ export default async function handler(req, res) {
     // [PATCH] Updated: CartItems logic with coupon type support (fixed_cart | percent)
     const CartItems = (() => {
       // [PATCH] Added: helpers
-      const num = (v) => {
+      const num = v => {
         const x = Number(v ?? 0);
         return Number.isFinite(x) ? x : 0;
       };
-      const clampMoney = (v) => Number(Math.max(0, num(v)).toFixed(2));
+      const clampMoney = v => Number(Math.max(0, num(v)).toFixed(2));
 
       // [PATCH] Added: compute discount from coupon type
       function computeDiscountFromCoupon(c, subtotal, shipping) {
@@ -256,7 +256,7 @@ export default async function handler(req, res) {
         draft?.coupon_amount,
         draft?.coupon_discount,
       ].map(num);
-      const wpDiscount = Math.max(0, discountCandidates.find((v) => v > 0) || 0);
+      const wpDiscount = Math.max(0, discountCandidates.find(v => v > 0) || 0);
 
       // Do we have a coupon?
       const hasCoupon =
@@ -283,7 +283,8 @@ export default async function handler(req, res) {
           'Adjusted total: items + shipping − coupon',
           (() => {
             const t = String(coupon?.discount_type ?? coupon?.type ?? '').toLowerCase();
-            if (t === 'fixed_cart' || t === 'fixed') return `type=fixed_cart amount=${num(coupon?.amount).toFixed(2)}`;
+            if (t === 'fixed_cart' || t === 'fixed')
+              return `type=fixed_cart amount=${num(coupon?.amount).toFixed(2)}`;
             if (t === 'percent' || t === 'percentage' || t === 'percent_cart')
               return `type=percent value=${num(coupon?.amount)}%`;
             return '';
@@ -337,7 +338,6 @@ export default async function handler(req, res) {
 
     // [PATCH] Added: log CartItems for diagnostics (optional)
     limon_file_log('CreateSession', 'zCredit::CreateSession::CartItems', limon_pretty(CartItems));
-
 
     const Customer = {
       Email: (form?.email || '').trim(),

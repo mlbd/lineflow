@@ -1,5 +1,5 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 
 export default function CouponField({
   couponInput,
@@ -25,7 +25,7 @@ export default function CouponField({
         onError: msg => setError(msg || 'Coupon validation failed.'),
       });
     } catch {
-      setError('שגיאה באימות קופון'); // "Error validating coupon"
+      setError('Coupon verification error'); // "Error validating coupon"
     }
   };
 
@@ -41,10 +41,10 @@ export default function CouponField({
           <div>
             <input
               type="text"
-              placeholder="קוד קופון"
+              placeholder="Coupon code"
               value={couponInput}
               onChange={e => setCouponInput(e.target.value)}
-              className="flex-grow py-2 px-4 border rounded-lg text-right focus:ring focus:ring-skyblue"
+              className="flex-grow py-2 px-4 border rounded-lg text-left focus:ring focus:ring-skyblue"
               disabled={validating}
               autoComplete="off"
             />
@@ -56,7 +56,7 @@ export default function CouponField({
                 className="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-lg font-bold transition"
                 onClick={handleRemove}
               >
-                הסר
+                Remove
               </button>
             )}
             <button
@@ -64,7 +64,7 @@ export default function CouponField({
               disabled={validating}
               className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-bold transition"
             >
-              החל קופון
+              Apply coupon
             </button>
           </div>
         </div>
@@ -72,13 +72,15 @@ export default function CouponField({
       {error && <div className="text-red-600 text-base text-center">{error}</div>}
       {couponDetails && couponDetails.valid && (
         <div className="text-green-700 text-center text-sm">
-          קופון הופעל בהצלחה: {couponDetails.description || couponDetails.type} (
+          Coupon applied successfully: {couponDetails.description || couponDetails.type} (
           {couponDetails.amount}
-          {couponDetails.type === 'percent' ? '%' : '₪'})
+          {couponDetails.type === 'percent' ? '%' : '$'})
         </div>
       )}
       {couponDetails && !couponDetails.valid && (
-        <div className="text-red-600 text-center text-sm">קופון שגוי: {couponDetails.error}</div>
+        <div className="text-red-600 text-center text-sm">
+          Invalid coupon: {couponDetails.error}
+        </div>
       )}
     </form>
   );

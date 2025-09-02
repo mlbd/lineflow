@@ -9,7 +9,7 @@ import { buildPlacementSignature } from '@/utils/placements';
 const toNumber = v => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
   if (v == null) return 0;
-  const s = String(v).replace(/[^\d.-]/g, ''); // strips ₪, commas, spaces, etc.
+  const s = String(v).replace(/[^\d.-]/g, ''); // strips $, commas, spaces, etc.
   const n = parseFloat(s);
   return Number.isFinite(n) ? n : 0;
 };
@@ -141,8 +141,8 @@ export const useCartStore = create(
       // [PATCH] Added: persistable coupon state + actions
       // Keeps coupon across reloads; clear it when user removes coupon or cart is cleared.
       coupon: null, // { code, type, amount, valid, ... } as returned by validate API
-      setCoupon: couponObj => set({ coupon: couponObj || null }),     // save/replace
-      removeCoupon: () => set({ coupon: null }),                       // explicit remove
+      setCoupon: couponObj => set({ coupon: couponObj || null }), // save/replace
+      removeCoupon: () => set({ coupon: null }), // explicit remove
 
       /* Add item (merge rules):
          - GROUP: merge by product_id + color + size + signature
@@ -316,8 +316,8 @@ export const getTotalPrice = items =>
 
 // [PATCH] Updated: getCartTotalPrice — cents-precise and supports fixed_cart/percent_cart
 export const getCartTotalPrice = (items, { coupon = null, shippingCost = 0 } = {}) => {
-  const subtotal = getTotalPrice(items);                       // decimal
-  const subtotalCents = Math.round(toNumber(subtotal) * 100);  // cents
+  const subtotal = getTotalPrice(items); // decimal
+  const subtotalCents = Math.round(toNumber(subtotal) * 100); // cents
   const shippingCents = Math.round(toNumber(shippingCost) * 100);
 
   let discountCents = 0;
@@ -332,7 +332,5 @@ export const getCartTotalPrice = (items, { coupon = null, shippingCost = 0 } = {
   }
 
   const totalCents = Math.max(0, subtotalCents - discountCents + shippingCents);
-  return totalCents / 100;                                     // back to decimal
+  return totalCents / 100; // back to decimal
 };
-
-

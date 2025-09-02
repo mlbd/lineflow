@@ -12,7 +12,6 @@ import { buildPlacementSignature, normalizePlacementsForKey } from '@/utils/plac
 const toCents = v => Math.round(Number(v ?? 0) * 100);
 const fmt2 = cents => (Math.max(0, Number(cents || 0)) / 100).toFixed(2);
 
-
 // Cache the first non-empty baseline per product id, so user filters can't mutate it later.
 const __baselinePlacementCache =
   typeof window !== 'undefined' ? (window.__baselinePlacementCache ||= new Map()) : new Map();
@@ -90,9 +89,9 @@ export default function AddToCartQuantity({
     let newVal = val.replace(/[^0-9]/g, '');
     const n = parseInt(newVal || 0) || 0;
     if (newVal && n > QTY_LIMIT) {
-      setError(`כמות מקסימלית לרכישה: ${QTY_LIMIT}`);
+      setError(`Maximum quantity per order: ${QTY_LIMIT}`);
     } else if (newVal && n < minStep) {
-      setError(`הכמות המינימלית היא ${minStep}`);
+      setError(`Minimum quantity is ${minStep}`);
     } else {
       setError(null);
     }
@@ -256,7 +255,7 @@ export default function AddToCartQuantity({
         // custom
         setSelectedIdx(0);
         setCustomQty(String(q));
-        if (q > 0 && q < minStep) setError(`הכמות המינימלית היא ${minStep}`);
+        if (q > 0 && q < minStep) setError(`Minimum quantity is ${minStep}`);
       }
     } else {
       setError(null);
@@ -296,7 +295,7 @@ export default function AddToCartQuantity({
   // ---- Submit: block invalid custom; then replace/remove/add ----
   const handleAddToCart = () => {
     if (isCustomSelected && (isCustomEmpty || isCustomTooLow)) {
-      if (isCustomEmpty) setError(`הכמות המינימלית היא ${minStep}`);
+      if (isCustomEmpty) setError(`Minimum quantity is ${minStep}`);
       return;
     }
     if (!!error) return;
@@ -391,7 +390,7 @@ export default function AddToCartQuantity({
         style={{ width: '470px', minWidth: '470px', maxWidth: '100vw' }}
       >
         <DialogClose asChild>
-          <button className="alarnd-close-btn" aria-label="סגור">
+          <button className="alarnd-close-btn" aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </DialogClose>
@@ -429,7 +428,9 @@ export default function AddToCartQuantity({
 
           {/* Other quantity in cart (stable; unaffected by form typing) */}
           {otherQtyInCart > 0 && (
-            <div className="text-center text-xs text-gray-600">עוד {otherQtyInCart} בעגלה</div>
+            <div className="text-center text-xs text-gray-600">
+              There are {otherQtyInCart} in your cart
+            </div>
           )}
         </div>
 
@@ -446,10 +447,10 @@ export default function AddToCartQuantity({
                   className="form-radio mx-2"
                 />
                 <input
-                  className="custom_qty_input border rounded-lg px-2 py-1 w-24 text-right md:max-w-[70px]"
+                  className="custom_qty_input border rounded-lg px-2 py-1 w-24 text-left md:max-w-[70px]"
                   inputMode="numeric"
                   pattern="[0-9]*"
-                  placeholder={visibleSteps.length ? `מינ' ${minStep}` : 'הקלידו כמות…'}
+                  placeholder={visibleSteps.length ? `Min ${minStep}` : 'Enter quantity…'}
                   value={customQty}
                   onChange={e => {
                     if (selectedIdx !== 0) setSelectedIdx(0);
@@ -466,7 +467,7 @@ export default function AddToCartQuantity({
               <div className="alarnd-single-qty flex-1 text-center">
                 <span className="text-gray-400">
                   {isCustomSelected && !isCustomEmpty && !isCustomTooLow
-                    ? `${fmt2(Math.round(customQtyNum * Number(unitWithExtra || 0) * 100))}₪`
+                    ? `$${fmt2(Math.round(customQtyNum * Number(unitWithExtra || 0) * 100))}`
                     : '—'}
                 </span>
               </div>
@@ -475,7 +476,7 @@ export default function AddToCartQuantity({
               <div className="alarnd-single-qty flex-shrink-0">
                 <span className="font-bold">
                   {isCustomSelected && !isCustomEmpty && !isCustomTooLow
-                    ? `${unitWithExtra.toFixed(2)} ש״ח ליחידה`
+                    ? `$${unitWithExtra.toFixed(2)} per unit`
                     : '—'}
                 </span>
               </div>
@@ -509,10 +510,10 @@ export default function AddToCartQuantity({
                   </div>
 
                   <div className="alarnd-single-qty flex-1 text-center">
-                    <span className="text-gray-400">{fmt2(stepTotalCents)}₪</span>
+                    <span className="text-gray-400">${fmt2(stepTotalCents)}</span>
                   </div>
                   <div className="alarnd-single-qty flex-shrink-0">
-                    <span className="font-bold">{stepUnitWithExtra.toFixed(2)} ש״ח ליחידה</span>
+                    <span className="font-bold">${stepUnitWithExtra.toFixed(2)} per unit</span>
                   </div>
                 </label>
               );
@@ -522,7 +523,7 @@ export default function AddToCartQuantity({
           {/* Inline hint when custom selected but not valid */}
           {isCustomSelected && (isCustomEmpty || isCustomTooLow) && !error && (
             <div className="text-amber-600 text-sm text-center mt-2">
-              נא להזין לפחות {minStep} יחידות.
+              Please enter at least {minStep} units.
             </div>
           )}
           {error && <div className="text-red-500 text-sm text-center mt-2">{error}</div>}
@@ -537,7 +538,7 @@ export default function AddToCartQuantity({
               )}
               onClick={handleAddToCart}
             >
-              הוסף לעגלה
+              Add to Cart
             </button>
           </div>
         </form>

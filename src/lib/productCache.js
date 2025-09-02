@@ -12,10 +12,7 @@ if (!g.__MS_PRODUCT_CACHE__) {
 const STORE = g.__MS_PRODUCT_CACHE__.store; // id -> { data, freshUntil, staleUntil }
 const INFLIGHT = g.__MS_PRODUCT_CACHE__.inflight;
 
-const WP_URL = (process.env.WP_SITE_URL || '').replace(
-  /\/$/,
-  ''
-);
+const WP_URL = (process.env.WP_SITE_URL || '').replace(/\/$/, '');
 const WP_USER = process.env.WP_API_USER || '';
 const WP_PASS = process.env.WP_API_PASS || '';
 

@@ -11,10 +11,7 @@ function isSameOrigin(req) {
   const origin = req.headers.get('origin') || '';
   const referer = req.headers.get('referer') || '';
 
-  return (
-    (origin && origin.startsWith(allowedHost)) ||
-    (referer && referer.startsWith(allowedHost))
-  );
+  return (origin && origin.startsWith(allowedHost)) || (referer && referer.startsWith(allowedHost));
 }
 
 export async function POST(req, ctx) {
