@@ -33,6 +33,7 @@ export async function POST(req, ctx) {
     payload = await req.json();
   } catch {}
 
+  // Build Basic token and send via custom header (X-Authorization)
   const auth = Buffer.from(`${WP_USER}:${WP_PASS}`).toString('base64');
   const url = `${WP_URL}/wp-json/mini-sites/v1/${endpoint}`;
 
@@ -43,7 +44,8 @@ export async function POST(req, ctx) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Basic ${auth}`,
+      // IMPORTANT: use custom header so upstream that strips "Authorization" won't break auth
+      'X-Authorization': `Basic ${auth}`,
     },
     body: JSON.stringify(payload),
   });

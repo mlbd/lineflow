@@ -19,7 +19,7 @@ const WP_PASS = process.env.WP_API_PASS || '';
 function authHeader() {
   if (WP_USER && WP_PASS) {
     const b64 = Buffer.from(`${WP_USER}:${WP_PASS}`).toString('base64');
-    return { Authorization: `Basic ${b64}` };
+    return { 'X-Authorization': `Basic ${b64}` };
   }
   return {};
 }
