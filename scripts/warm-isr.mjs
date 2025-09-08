@@ -100,7 +100,7 @@ async function fetchJsonWithTimeout(url, timeoutMs = REQUEST_TIMEOUT_MS) {
   try {
     const res = await fetch(url, {
       signal: ctrl.signal,
-      headers: BASIC_AUTH ? { Authorization: BASIC_AUTH } : undefined,
+      headers: BASIC_AUTH ? { 'X-Authorization': BASIC_AUTH } : undefined,
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();

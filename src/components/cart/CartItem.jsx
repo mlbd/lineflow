@@ -181,40 +181,53 @@ export default function CartItem({
     setPos({ x: nx, y: ny });
   };
 
-  // Quantity helpers
-  const minQuantity = 1;
-  const maxQuantity = 999;
+  // [PATCH] Updated: Quantity helpers respect type-specific limits
+  const isQuantityType =
+    item?.options?.line_type === 'Quantity' || item?.pricing?.type === 'Quantity'; // [PATCH] Added
+  // [PATCH] Added: derive min from first visible quantity_steps tier (fallback to first/1)
+  const minQuantity = (() => {
+    if (!isQuantityType) return 1;
+    const steps = Array.isArray(item?.pricing?.steps) ? item.pricing.steps : [];
+    const firstVisible = steps.find(s => !s?.hide) || steps[0];
+    const q = parseInt(firstVisible?.quantity) || 1;
+    return Math.max(1, q);
+  })();
+  // [PATCH] Updated: Quantity-type gets 50k cap
+  const maxQuantity = isQuantityType ? 50000 : 999;
 
   const handleQuantityChange = value => {
+    // [PATCH] Updated: sanitize & clamp per dynamic min/max (50k for Quantity-type)
     let cleanValue = value.replace(/[^0-9]/g, '');
     if (cleanValue.length > 1 && cleanValue[0] === '0') cleanValue = cleanValue.replace(/^0+/, '');
-    setLocalQuantity(cleanValue);
 
-    const numValue = parseInt(cleanValue) || 0;
-    if (!cleanValue) {
+    // Allow empty while typing; commit on blur or next key
+    if (cleanValue === '') {
+      setLocalQuantity('');
       setError('');
       return;
     }
-    if (numValue < minQuantity) {
-      setError(`Minimum quantity: ${minQuantity}`);
-      return;
-    }
-    if (numValue > maxQuantity) {
-      setError(`Maximum quantity: ${maxQuantity}`);
-      setLocalQuantity(maxQuantity.toString());
-      updateItemQuantity(idx, maxQuantity);
-      return;
-    }
 
-    setError('');
-    updateItemQuantity(idx, numValue);
+    let n = parseInt(cleanValue || 0) || 0;
+    if (n > maxQuantity) {
+      setError(`Maximum quantity: ${maxQuantity}`);
+      n = maxQuantity;
+    } else if (isQuantityType && n > 0 && n < minQuantity) {
+      setError(`Minimum quantity is ${minQuantity}`);
+      n = minQuantity;
+    } else {
+      setError('');
+    }
+    setLocalQuantity(n.toString());
+    updateItemQuantity(idx, n);
   };
 
   const handleQuantityBlur = () => {
-    const numValue = parseInt(localQuantity) || 0;
-    if (!localQuantity || numValue < minQuantity) {
-      setLocalQuantity(minQuantity.toString());
-      updateItemQuantity(idx, minQuantity);
+    // [PATCH] Updated: coerce to min on blur when empty or below min
+    const n = parseInt(localQuantity || 0) || 0;
+    if (!localQuantity || n < minQuantity) {
+      const coerced = Math.max(minQuantity, 1);
+      setLocalQuantity(coerced.toString());
+      updateItemQuantity(idx, coerced);
       setError('');
     }
   };
@@ -463,7 +476,7 @@ export default function CartItem({
             className={`w-16 px-2 py-1 text-center border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
               error ? 'border-red-400 focus:ring-red-500 focus:border-red-500' : 'border-gray-300'
             }`}
-            maxLength="3"
+            maxLength={maxQuantity >= 1000 ? 6 : 3} // [PATCH] Updated
           />
           {error && <div className="text-sm text-red-500 mt-1">{error}</div>}
         </div>

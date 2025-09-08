@@ -2,56 +2,38 @@
 /**
  * On-demand revalidation endpoint (Pages Router).
  *
- * Auth:
- *  - Option A (external/backends):   ?secret=REVALIDATE_SECRET   or header: x-ms-cache-secret
- *  - Option B (same-origin callers): Origin === Host  AND  header "x-ms-csrf" === cookie "ms_csrf"
+ * What this does now:
+ *  1) Auth check (secret or same-origin+csrf).
+ *  2) Revalidate page paths (from "path"/"paths" or "slug"/"slugs").
+ *  3) If a "slug" is provided, it will:
+ *     - Load the company page from WP to discover product IDs.
+ *     - Clear in-memory product cache for those IDs.
+ *     - Optionally force-refresh those products from WP right now (prime).
  *
- * Input (GET or POST JSON):
- *  {
- *    // Revalidate by path(s)
- *    "path": "/some/path",
- *    "paths": ["/a", "/b"],
+ * Query/body extras:
+ *   - slug / slugs: company slug(s) to revalidate, e.g. "sabbir"
+ *   - prime=1: also force-refresh product data from WP for the slug's products
+ *   - ids=1,2,3: directly clear/prime specific product ids (advanced)
+ *   - tags: forwarded to an optional App Router tag endpoint (REVALIDATE_TAG_ENDPOINT)
  *
- *    // Optional: accept slugs and convert to paths (prefix is optional)
- *    "slug": "acme",
- *    "slugs": ["acme", "leobus"],
- *    // ENV can control prefix for slug->path mapping:
- *    //   REVALIDATE_SLUG_PREFIX=""   -> "/{slug}"
- *    //   REVALIDATE_SLUG_PREFIX="/company" -> "/company/{slug}"
- *
- *    // Optional: forward "tags" to an App Router tag revalidation endpoint
- *    //   Set REVALIDATE_TAG_ENDPOINT="/api/revalidate-tag" (App Router route) to enable.
- *    "tags": ["ms:products"]
- *  }
- *
- * Output:
- *  {
- *    ok: boolean,
- *    method: "GET"|"POST",
- *    count: number,                 // number of paths attempted
- *    revalidated: string[],         // successful paths
- *    errors: {path:string,error:string}[],
- *    forwardedTags?: string[],      // tags we attempted to forward
- *    tagForwardResult?: object,     // response from tag endpoint (if any)
- *    authMode: "secret"|"csrf"
- *  }
+ * Response includes details of what was revalidated and what product IDs were cleared/primed.
  */
+
+import { clearProductCache, forceRefreshProducts } from '@/lib/productCache';
+import { wpApiFetch } from '@/lib/wpApi';
 
 function sameOriginOk(req) {
   const origin = req.headers.origin || '';
   const host = req.headers.host || '';
-  // Allow internal/server calls that may not set Origin/Host (e.g., Node fetch on same host)
   if (!origin || !host) return true;
   try {
     return new URL(origin).host === host;
   } catch {
-    // Fallback: loose match if origin parsing fails
     return origin.endsWith(host);
   }
 }
 
 function csrfOk(req) {
-  // Header must match cookie exactly
   const header = req.headers['x-ms-csrf'];
   const cookie = req.cookies?.ms_csrf;
   return !!header && !!cookie && header === cookie;
@@ -67,24 +49,21 @@ function normalizePath(p) {
   if (typeof p !== 'string') return null;
   let s = p.trim();
   if (!s) return null;
-  // Disallow absolute URLs / api routes for safety
-  if (/^https?:\/\//i.test(s)) return null;
-  if (s.startsWith('/api/')) return null;
+  if (/^https?:\/\//i.test(s)) return null; // disallow absolute URLs
   if (!s.startsWith('/')) s = '/' + s;
   return s;
 }
 
 function slugToPath(slug, prefix = '') {
   if (typeof slug !== 'string' || !slug.trim()) return null;
-  const clean = slug.replace(/^\/+/, ''); // no leading slash in slug
-  const pre = (prefix || '').replace(/\/$/, ''); // remove trailing slash in prefix
+  const clean = slug.replace(/^\/+/, '');
+  const pre = (prefix || '').replace(/\/$/, '');
   const joined = pre ? `${pre}/${clean}` : `/${clean}`;
   return normalizePath(joined);
 }
 
 async function readJsonBody(req) {
   if (req.method !== 'POST') return {};
-  // If body is already parsed (Next.js default), use it; otherwise parse string
   if (typeof req.body === 'object' && req.body !== null) return req.body;
   if (typeof req.body === 'string') {
     try {
@@ -93,22 +72,22 @@ async function readJsonBody(req) {
       return {};
     }
   }
-  // Minimal manual read fallback (rare)
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
-  const raw = Buffer.concat(chunks).toString('utf8');
   try {
-    return JSON.parse(raw || '{}');
+    return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
   } catch {
     return {};
   }
 }
 
 export default async function handler(req, res) {
+  // Never cache this endpoint
+  res.setHeader('Cache-Control', 'no-store');
+
   // --- Authorization ---
   const providedSecret = req.query.secret || req.headers['x-ms-cache-secret'];
   const secretOk = !!providedSecret && providedSecret === process.env.REVALIDATE_SECRET;
-
   let authorized = secretOk;
   if (!authorized) {
     if (!sameOriginOk(req) || !csrfOk(req)) {
@@ -120,13 +99,16 @@ export default async function handler(req, res) {
   res.setHeader('x-auth-mode', authMode);
 
   // --- Method guard ---
-  if (req.method !== 'GET' && req.method !== 'POST') {
+  if (!['GET', 'POST'].includes(req.method)) {
     return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
   }
 
   try {
     const q = req.query || {};
     const b = await readJsonBody(req);
+
+    const slugPrefix = process.env.REVALIDATE_SLUG_PREFIX || '';
+    const wantPrime = String(b.prime ?? q.prime ?? '') === '1';
 
     // Collect paths
     const paths = new Set();
@@ -140,20 +122,24 @@ export default async function handler(req, res) {
     if (singlePath) paths.add(singlePath);
 
     // From "slug"/"slugs"
-    const slugPrefix = process.env.REVALIDATE_SLUG_PREFIX || '';
-    toArray(b.slugs ?? q.slugs).forEach(s => {
-      const np = slugToPath(s, slugPrefix);
-      if (np) paths.add(np);
-    });
-    const singleSlugPath = slugToPath(b.slug ?? q.slug, slugPrefix);
-    if (singleSlugPath) paths.add(singleSlugPath);
+    const slugs = toArray(b.slugs ?? q.slugs);
+    const singleSlug = b.slug ?? q.slug;
+    if (singleSlug) slugs.push(singleSlug);
 
-    // Nothing to do?
+    const slugPaths = [];
+    slugs.forEach(s => {
+      const np = slugToPath(s, slugPrefix);
+      if (np) {
+        paths.add(np);
+        slugPaths.push({ slug: s, path: np });
+      }
+    });
+
+    // Revalidate each path
     const toPaths = Array.from(paths);
     const revalidated = [];
     const errors = [];
 
-    // Revalidate each path
     for (const p of toPaths) {
       try {
         if (typeof res.revalidate === 'function') {
@@ -169,20 +155,70 @@ export default async function handler(req, res) {
       }
     }
 
-    // Optional: forward tags to an App Router tag route, if configured
+    // ===== Product cache maintenance =====
+    // Accept ids via query/body (advanced/manual)
+    const idsDirect = String(b.ids ?? q.ids ?? '')
+      .split(',')
+      .map(n => Number(n))
+      .filter(n => Number.isFinite(n));
+
+    // If slugs were provided, fetch their product IDs via WP
+    const bySlug = [];
+    for (const { slug } of slugPaths) {
+      try {
+        const resp = await wpApiFetch(`company-page?slug=${encodeURIComponent(slug)}`);
+        if (!resp.ok) throw new Error(`company-page ${resp.status}`);
+        const data = await resp.json();
+        const productIdsRaw = data?.acf?.selected_products || [];
+        const ids = productIdsRaw
+          .map(p => (p && typeof p === 'object' ? p.id : p))
+          .map(n => Number(n))
+          .filter(n => Number.isFinite(n));
+        bySlug.push({ slug, ids, pageId: data?.id || null });
+      } catch (err) {
+        bySlug.push({ slug, ids: [], error: err?.message || String(err) });
+      }
+    }
+
+    // Merge all IDs to clear
+    const toClear = new Set(idsDirect);
+    bySlug.forEach(entry => entry.ids.forEach(id => toClear.add(id)));
+
+    const clearedIds = [];
+    const primedIds = [];
+
+    for (const id of toClear) {
+      const r = clearProductCache(id); // clear in-memory cache
+      if (r?.ok) clearedIds.push(id);
+    }
+
+    if (wantPrime && toClear.size) {
+      try {
+        const refreshed = await forceRefreshProducts(Array.from(toClear), {
+          ttlSeconds: 60 * 60 * 6,
+          staleSeconds: 60 * 60 * 24,
+        });
+        // "refreshed" returns the actual products we pulled; record IDs for visibility
+        refreshed.forEach(p => {
+          const pid = Number(p?.id);
+          if (pid) primedIds.push(pid);
+        });
+      } catch (err) {
+        errors.push({ path: '(prime:products)', error: err?.message || String(err) });
+      }
+    }
+
+    // Optional: forward tags to an App Router endpoint
     let forwardedTags;
     let tagForwardResult;
     const tags = toArray(b.tags ?? q.tags).filter(Boolean);
-    const tagEndpoint = process.env.REVALIDATE_TAG_ENDPOINT; // e.g., "/api/revalidate-tag" (App Router)
+    const tagEndpoint = process.env.REVALIDATE_TAG_ENDPOINT;
     if (tags.length && tagEndpoint) {
       forwardedTags = [...tags];
       try {
-        // Build absolute URL for internal call
         const proto = req.headers['x-forwarded-proto'] || 'https';
         const host = req.headers.host;
         const url = `${proto}://${host}${tagEndpoint}`;
-
-        // Reuse the same auth mode used to hit this endpoint:
         const headers = { 'content-type': 'application/json' };
         if (authMode === 'secret' && providedSecret) {
           headers['x-ms-cache-secret'] = String(providedSecret);
@@ -190,11 +226,9 @@ export default async function handler(req, res) {
           const token = req.cookies?.ms_csrf || req.headers['x-ms-csrf'];
           if (token) {
             headers['x-ms-csrf'] = token;
-            // ensure cookie is present in server->server call
             headers['cookie'] = `ms_csrf=${token}; Path=/; SameSite=Lax`;
           }
         }
-
         const r = await fetch(url, {
           method: 'POST',
           headers,
@@ -210,12 +244,14 @@ export default async function handler(req, res) {
     return res.json({
       ok: errors.length === 0,
       method: req.method,
-      count: toPaths.length,
       revalidated,
+      count: toPaths.length,
       errors,
-      forwardedTags,
-      tagForwardResult,
       authMode,
+      // Product info
+      clearedIds,
+      primed: wantPrime ? primedIds : undefined,
+      bySlug,
     });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err?.message || 'Revalidate failed' });

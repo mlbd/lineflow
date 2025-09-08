@@ -86,6 +86,7 @@ export async function getStaticProps({ params }) {
       pageId: data?.id || null,
       productIds, // All IDs (client will fetch the full list)
       criticalProducts, // First N full products (SSR)
+      cacheBust: Date.now(), // [PATCH] Added: cache-buster that updates on every ISR rebuild / revalidate call
       bumpPrice: data?.acf?.bump_price || null,
       companyData: {
         name: data?.acf?.user_header_title || data?.title || '',
@@ -146,6 +147,7 @@ export default function LandingPage({
   slug,
   productIds = [],
   criticalProducts = [],
+  cacheBust = 0,
   bumpPrice = null,
   companyData = {},
   seo = {},
@@ -242,7 +244,7 @@ export default function LandingPage({
     Array.isArray(productIds) && productIds.length > 0
       ? `/api/minisites/product-cards?ids=${encodeURIComponent(productIds.join(','))}&slug=${encodeURIComponent(
           slug
-        )}`
+        )}&v=${encodeURIComponent(String(cacheBust))}`
       : null;
 
   return (
@@ -278,6 +280,7 @@ export default function LandingPage({
           <ProductsShell
             slug={slug}
             productIds={productIds}
+            cacheBust={cacheBust}
             criticalProducts={criticalProducts}
             bumpPrice={bumpPrice}
             companyLogos={companyLogos}

@@ -129,3 +129,28 @@ export async function getProductCardsBatch(ids, opts = {}) {
 export function _debugSnapshot() {
   return { size: STORE.size, keys: Array.from(STORE.keys()) };
 }
+
+// [PATCH] Added: force refresh helper used by revalidate & privileged API calls
+export async function forceRefreshProducts(ids, opts = {}) {
+  const list = (ids || []).map(n => Number(n)).filter(Boolean);
+  if (!list.length) return [];
+  // Kick off refreshes serially to avoid stampede on WP for big lists
+  for (const id of list) {
+    try {
+      // if there's an inflight refresh, reuse it; else start one
+      if (!INFLIGHT.has(id)) INFLIGHT.set(id, refreshOne(id, opts));
+      await INFLIGHT.get(id);
+    } catch {
+      // ignore single-id failures and continue
+    } finally {
+      INFLIGHT.delete(id);
+    }
+  }
+  // Return fresh snapshots now in cache
+  const out = [];
+  for (const id of list) {
+    const e = STORE.get(id);
+    if (e?.data) out.push(e.data);
+  }
+  return out;
+}

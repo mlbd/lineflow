@@ -6,6 +6,8 @@ import CartPage from '@/components/cart/CartPage';
 export function ProductsShell({
   slug,
   productIds,
+  cacheBust = 0,
+  criticalProducts = [],
   bumpPrice,
   companyLogos,
   pagePlacementMap,
@@ -14,7 +16,6 @@ export function ProductsShell({
   acf,
   companyData,
   cartSectionRef,
-  criticalProducts = [],
 }) {
   const [products, setProducts] = useState(criticalProducts);
   const [loading, setLoading] = useState(false);
@@ -34,7 +35,10 @@ export function ProductsShell({
 
       try {
         const idsParam = encodeURIComponent(productIds.join(','));
-        const url = `/api/minisites/product-cards?ids=${idsParam}&slug=${encodeURIComponent(slug)}`;
+
+        // [PATCH] Append v=cacheBust so CDN won't reuse older JSON after a revalidate
+        const v = cacheBust ? `&v=${encodeURIComponent(String(cacheBust))}` : '';
+        const url = `/api/minisites/product-cards?ids=${idsParam}&slug=${encodeURIComponent(slug)}${v}`;
         const res = await fetch(url, { signal: controller.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -77,7 +81,7 @@ export function ProductsShell({
       ignore = true;
       controller.abort();
     };
-  }, [productIds, slug, criticalProducts]);
+  }, [productIds, slug, criticalProducts, cacheBust]);
 
   if (!products.length && loading) {
     return (

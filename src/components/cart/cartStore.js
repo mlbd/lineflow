@@ -267,13 +267,25 @@ export const useCartStore = create(
           const newItems = [...state.items];
           if (!newItems[index]) return { items: newItems };
 
-          const q = Math.max(0, parseInt(newQuantity) || 0);
-          newItems[index] = { ...newItems[index], quantity: q };
-
-          // ✅ Unified repricer handles both Group and Quantity pools
-          return { items: repriceAfterChange(newItems) };
-        });
-      },
+          // [PATCH] Added: enforce Quantity-type min/max when editing from cart
+          const line = newItems[index]; // current line
+          let q = Math.max(0, parseInt(newQuantity) || 0);
+          const isQuantityType =
+            line?.pricing?.type === 'Quantity' || line?.options?.line_type === 'Quantity';
+          if (isQuantityType) {
+            const MAX_QTY = 50000; // [PATCH] Added: 50k cap
+            const steps = Array.isArray(line?.pricing?.steps) ? line.pricing.steps : [];
+            const firstVisible = steps.find(s => !s?.hide) || steps[0];
+            const minStep = Math.max(1, parseInt(firstVisible?.quantity) || 1); // [PATCH] Added
+            if (q > MAX_QTY) q = MAX_QTY;
+            if (q > 0 && q < minStep) q = minStep; // allow 0 (removal), but bump lows to min
+          }
+          newItems[index] = { ...line, quantity: q };
+ 
+           // ✅ Unified repricer handles both Group and Quantity pools
+           return { items: repriceAfterChange(newItems) };
+         });
+       },
 
       clearCart: () => {
         set({ items: [] });
