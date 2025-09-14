@@ -500,7 +500,7 @@ export default function CartItem({
             // [PATCH] Updated: was conditional 3/6; now always generous to permit typing past 999
             maxLength={INPUT_MAXLEN}
           />
-          {error && <div className="text-xs text-red-500 mt-1 absolute top-full">{error}</div>}
+          {error && <div className="text-xs text-red-500 mt-1">{error}</div>}
         </div>
       </div>
 
