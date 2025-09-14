@@ -213,7 +213,7 @@ export default function CartItem({
     liveUpdateTimerRef.current = setTimeout(() => {
       updateItemQuantity(idx, n); // triggers store/backend repricing & totals
       liveUpdateTimerRef.current = null;
-    }, 400); // debounce window; adjust 600–800ms if desired
+    }, 300); // debounce window; adjust 600–800ms if desired
   };
 
   // Clean up on unmount
