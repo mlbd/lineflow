@@ -198,54 +198,99 @@ export default function CartItem({
   // [PATCH] Updated: Quantity-type gets 50k cap
   const maxQuantity = isQuantityType ? 50000 : 999;
 
-  // [PATCH] Added: commit-on-blur/enter helper to clamp and persist
-  const commitQuantityDraft = () => {
-    // Sanitize current draft
-    const raw = (localQuantity ?? '').toString();
-    let n = parseInt(raw.replace(/[^0-9]/g, '')) || 0;
+  // [PATCH] Added: debounced live updates while typing (within valid range)
+  const liveUpdateTimerRef = useRef(null);
 
-    // Clamp to min/max on commit only
-    if (!raw || n < minQuantity) n = Math.max(minQuantity, 1);
-    if (n > maxQuantity) n = maxQuantity;
-
-    setLocalQuantity(n.toString());
-    setError('');
-    updateItemQuantity(idx, n);
-  };
-
-  // [PATCH] Added: allow Enter to commit and Esc to revert while focused
-  const handleQuantityKeyDown = e => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      commitQuantityDraft();
-      e.currentTarget.blur(); // optional: leave field after commit
-    } else if (e.key === 'Escape') {
-      // Revert to store value
-      setLocalQuantity(item.quantity.toString());
-      setError('');
-      e.currentTarget.blur();
+  const cancelLiveUpdateTimer = () => {
+    if (liveUpdateTimerRef.current) {
+      clearTimeout(liveUpdateTimerRef.current);
+      liveUpdateTimerRef.current = null;
     }
   };
+
+  const scheduleLiveQuantityUpdate = (n) => {
+    cancelLiveUpdateTimer();
+    liveUpdateTimerRef.current = setTimeout(() => {
+      updateItemQuantity(idx, n); // triggers store/backend repricing & totals
+      liveUpdateTimerRef.current = null;
+    }, 400); // debounce window; adjust 600–800ms if desired
+  };
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => cancelLiveUpdateTimer();
+  }, []);
+
+  // [PATCH] Added: commit-on-blur/enter helper to clamp and persist
+  // [PATCH] Updated: commit-on-blur/enter helper to clamp and persist
+const commitQuantityDraft = () => {
+  cancelLiveUpdateTimer(); // prevent double-update after commit
+
+  // Sanitize current draft
+  const raw = (localQuantity ?? '').toString();
+  let n = parseInt(raw.replace(/[^0-9]/g, '')) || 0;
+
+  // Clamp to min/max on commit only
+  if (!raw || n < minQuantity) n = Math.max(minQuantity, 1);
+  if (n > maxQuantity) n = maxQuantity;
+
+  setLocalQuantity(n.toString());
+  setError('');
+  updateItemQuantity(idx, n);
+};
+
+// [PATCH] Updated: allow Enter to commit and Esc to revert while focused
+const handleQuantityKeyDown = e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    cancelLiveUpdateTimer();
+    commitQuantityDraft();
+    e.currentTarget.blur(); // optional: leave field after commit
+  } else if (e.key === 'Escape') {
+    cancelLiveUpdateTimer();
+    // Revert to store value
+    setLocalQuantity(item.quantity.toString());
+    setError('');
+    e.currentTarget.blur();
+  }
+};
+
 
   // [PATCH] Updated: while typing, keep a draft (no clamping, no store updates)
-  const handleQuantityChange = value => {
-    const clean = (value ?? '').toString().replace(/[^0-9]/g, '');
-    setLocalQuantity(clean);
+  // [PATCH] Updated: while typing, keep a draft; debounce live update only when in-range
+const handleQuantityChange = (value) => {
+  const clean = (value ?? '').toString().replace(/[^0-9]/g, '');
+  setLocalQuantity(clean);
 
-    if (clean === '') {
-      setError('');
-      return;
-    }
-    const n = parseInt(clean) || 0;
-    if (n > maxQuantity) {
-      // [PATCH] Updated message to clarify behavior
-      setError(`Maximum is ${maxQuantity}`);
-    } else if (isQuantityType && n > 0 && n < minQuantity) {
-      setError(`Minimum is ${minQuantity}`);
-    } else {
-      setError('');
-    }
-  };
+  if (clean === '') {
+    setError('');
+    cancelLiveUpdateTimer(); // nothing to update yet
+    return;
+  }
+
+  const n = parseInt(clean) || 0;
+
+  // Soft warnings (no clamping mid-typing)
+  if (n > maxQuantity) {
+    setError(`Maximum is ${maxQuantity}`);
+    cancelLiveUpdateTimer(); // out of range → do not live update
+    return;
+  }
+  if (isQuantityType && n > 0 && n < minQuantity) {
+    setError(`Minimum is ${minQuantity}`);
+    cancelLiveUpdateTimer(); // out of range → do not live update
+    return;
+  }
+
+  // In-range → clear warning and schedule debounced live update
+  setError('');
+  if (n > 0) {
+    scheduleLiveQuantityUpdate(n);
+  } else {
+    cancelLiveUpdateTimer();
+  }
+};
+
 
   // [PATCH] Updated: clamp & commit once on blur
   const handleQuantityBlur = () => {
