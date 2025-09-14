@@ -22,6 +22,52 @@ import AddToCartModal from '@/components/page/AddToCartModal';
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
 import { wpApiFetch } from '@/lib/wpApi';
 
+// [PATCH] Added: Normalize a placements array/string into a stable signature used for cart-only grouping
+// Put this below your imports and ABOVE findProductLocally()
+function __toPlacementSig(arrLike) {
+  let arr = [];
+  if (Array.isArray(arrLike)) {
+    arr = arrLike;
+  } else if (typeof arrLike === 'string') {
+    try {
+      const parsed = JSON.parse(arrLike);
+      if (Array.isArray(parsed)) arr = parsed;
+    } catch {}
+  }
+  if (!arr.length) return 'default';
+
+  // Build "name:active[:sideOrBack]" parts, sort for stability
+  const parts = arr
+    .map(p => {
+      if (!p) return '';
+      const name = String(p?.name || '')
+        .trim()
+        .toLowerCase();
+      const active = p?.active ? 1 : 0;
+      const side = p?.side ? String(p.side).trim().toLowerCase() : p?.__forceBack ? 'back' : '';
+      return `${name}:${active}${side ? `:${side}` : ''}`;
+    })
+    .filter(Boolean)
+    .sort();
+
+  return parts.length ? parts.join('|') : 'default';
+}
+
+// [PATCH] Added: Get a cart-line’s placements signature (works for both Group and Quantity flows)
+function placementSigForCart(item) {
+  // Quantity flow: you already set this in AddToCartQuantity.jsx
+  const explicit = item?.options?.placement_merge_key;
+  if (explicit) return String(explicit);
+
+  // If filter/placements were never changed, consider it "default"
+  if (!item?.filter_was_changed) return 'default';
+
+  // Otherwise derive from frozen snapshot on the line (both flows store it)
+  const coords = item?.placement_coordinates || item?.options?.placement_coordinates;
+  const sig = __toPlacementSig(coords);
+  return sig || 'default';
+}
+
 function findProductLocally(id, initialProducts, companyData) {
   const pid = String(id);
   if (Array.isArray(initialProducts)) {
@@ -62,24 +108,54 @@ export default function CartPage({
   // 🔧 Toggle if you ever want to switch grouping off quickly
   const GROUP_CART_BY_PRODUCT = true;
 
-  // Arrange items so that same product_id are siblings (stable by first appearance).
-  // IMPORTANT: we keep each entry's original store index so remove/update still target correctly.
+  // [PATCH] Updated: Arrange items by product_id, then by placement signature (cart-only visual grouping)
   const arranged = useMemo(() => {
     if (!GROUP_CART_BY_PRODUCT) {
       return (Array.isArray(items) ? items : []).map((it, idx) => ({ it, storeIndex: idx }));
     }
+
+    // Keep original store index so remove/update still target correctly
     const withIndex = (Array.isArray(items) ? items : []).map((it, idx) => ({
       it,
       storeIndex: idx,
     }));
-    const groups = new Map(); // pid -> entries[]
+
+    // 1) Group by product_id in first-seen order
+    const byPid = new Map(); // pid -> entries[]
+    const pidOrder = [];
     for (const entry of withIndex) {
       const pid = String(entry.it?.product_id ?? '');
-      if (!groups.has(pid)) groups.set(pid, []);
-      groups.get(pid).push(entry);
+      if (!byPid.has(pid)) {
+        byPid.set(pid, []);
+        pidOrder.push(pid);
+      }
+      byPid.get(pid).push(entry);
     }
+
+    // 2) Within each product, subgroup by placements signature in first-seen order
     const out = [];
-    for (const entries of groups.values()) out.push(...entries);
+    for (const pid of pidOrder) {
+      const entries = byPid.get(pid) || [];
+
+      const bySig = new Map(); // sig -> entries[]
+      const sigOrder = [];
+      for (const e of entries) {
+        const sig = placementSigForCart(e.it);
+        if (!bySig.has(sig)) {
+          bySig.set(sig, []);
+          sigOrder.push(sig);
+        }
+        bySig.get(sig).push(e);
+      }
+
+      // Keep stable order within each subgroup by original index
+      for (const sig of sigOrder) {
+        const sub = bySig.get(sig) || [];
+        sub.sort((a, b) => a.storeIndex - b.storeIndex);
+        out.push(...sub);
+      }
+    }
+
     return out;
   }, [items]);
 

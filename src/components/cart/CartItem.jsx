@@ -11,6 +11,9 @@ import {
 } from '@/utils/cloudinaryMockup';
 import Tooltip from '@/components/ui/Tooltip';
 
+// [PATCH] Added: generous max length for typing (we clamp on blur/enter)
+const INPUT_MAXLEN = 7; // allows typing up to millions if needed, but we clamp on commit
+
 // [PATCH] Added: money helpers for precise line totals
 const toCents = v => Math.round(Number(v ?? 0) * 100);
 const fmt2 = cents => (Math.max(0, Number(cents || 0)) / 100).toFixed(2);
@@ -195,41 +198,58 @@ export default function CartItem({
   // [PATCH] Updated: Quantity-type gets 50k cap
   const maxQuantity = isQuantityType ? 50000 : 999;
 
-  const handleQuantityChange = value => {
-    // [PATCH] Updated: sanitize & clamp per dynamic min/max (50k for Quantity-type)
-    let cleanValue = value.replace(/[^0-9]/g, '');
-    if (cleanValue.length > 1 && cleanValue[0] === '0') cleanValue = cleanValue.replace(/^0+/, '');
+  // [PATCH] Added: commit-on-blur/enter helper to clamp and persist
+  const commitQuantityDraft = () => {
+    // Sanitize current draft
+    const raw = (localQuantity ?? '').toString();
+    let n = parseInt(raw.replace(/[^0-9]/g, '')) || 0;
 
-    // Allow empty while typing; commit on blur or next key
-    if (cleanValue === '') {
-      setLocalQuantity('');
-      setError('');
-      return;
-    }
+    // Clamp to min/max on commit only
+    if (!raw || n < minQuantity) n = Math.max(minQuantity, 1);
+    if (n > maxQuantity) n = maxQuantity;
 
-    let n = parseInt(cleanValue || 0) || 0;
-    if (n > maxQuantity) {
-      setError(`Maximum quantity: ${maxQuantity}`);
-      n = maxQuantity;
-    } else if (isQuantityType && n > 0 && n < minQuantity) {
-      setError(`Minimum quantity is ${minQuantity}`);
-      n = minQuantity;
-    } else {
-      setError('');
-    }
     setLocalQuantity(n.toString());
+    setError('');
     updateItemQuantity(idx, n);
   };
 
-  const handleQuantityBlur = () => {
-    // [PATCH] Updated: coerce to min on blur when empty or below min
-    const n = parseInt(localQuantity || 0) || 0;
-    if (!localQuantity || n < minQuantity) {
-      const coerced = Math.max(minQuantity, 1);
-      setLocalQuantity(coerced.toString());
-      updateItemQuantity(idx, coerced);
+  // [PATCH] Added: allow Enter to commit and Esc to revert while focused
+  const handleQuantityKeyDown = e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitQuantityDraft();
+      e.currentTarget.blur(); // optional: leave field after commit
+    } else if (e.key === 'Escape') {
+      // Revert to store value
+      setLocalQuantity(item.quantity.toString());
+      setError('');
+      e.currentTarget.blur();
+    }
+  };
+
+  // [PATCH] Updated: while typing, keep a draft (no clamping, no store updates)
+  const handleQuantityChange = value => {
+    const clean = (value ?? '').toString().replace(/[^0-9]/g, '');
+    setLocalQuantity(clean);
+
+    if (clean === '') {
+      setError('');
+      return;
+    }
+    const n = parseInt(clean) || 0;
+    if (n > maxQuantity) {
+      // [PATCH] Updated message to clarify behavior
+      setError(`Maximum is ${maxQuantity}`);
+    } else if (isQuantityType && n > 0 && n < minQuantity) {
+      setError(`Minimum is ${minQuantity}`);
+    } else {
       setError('');
     }
+  };
+
+  // [PATCH] Updated: clamp & commit once on blur
+  const handleQuantityBlur = () => {
+    commitQuantityDraft();
   };
 
   // [PATCH] Contrast-safe border color for color chip
@@ -465,7 +485,7 @@ export default function CartItem({
 
       {/* 4) Quantity (editable) */}
       <div className="text-center">
-        <div className="space-y-1">
+        <div className="space-y-1 relative">
           <input
             type="text"
             inputMode="numeric"
@@ -473,12 +493,14 @@ export default function CartItem({
             value={localQuantity}
             onChange={e => handleQuantityChange(e.target.value)}
             onBlur={handleQuantityBlur}
+            onKeyDown={handleQuantityKeyDown}
             className={`w-16 px-2 py-1 text-center border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
               error ? 'border-red-400 focus:ring-red-500 focus:border-red-500' : 'border-gray-300'
             }`}
-            maxLength={maxQuantity >= 1000 ? 6 : 3} // [PATCH] Updated
+            // [PATCH] Updated: was conditional 3/6; now always generous to permit typing past 999
+            maxLength={INPUT_MAXLEN}
           />
-          {error && <div className="text-sm text-red-500 mt-1">{error}</div>}
+          {error && <div className="text-xs text-red-500 mt-1 absolute top-full">{error}</div>}
         </div>
       </div>
 

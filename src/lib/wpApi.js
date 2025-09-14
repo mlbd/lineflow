@@ -29,9 +29,9 @@ export async function wpApiFetch(endpoint, options = {}) {
 
   // Server-side only: attach Basic Auth via X-Authorization
   if (!isBrowser && process.env.WP_API_USER && process.env.WP_API_PASS) {
-    const token = Buffer.from(
-      `${process.env.WP_API_USER}:${process.env.WP_API_PASS}`
-    ).toString('base64');
+    const token = Buffer.from(`${process.env.WP_API_USER}:${process.env.WP_API_PASS}`).toString(
+      'base64'
+    );
     headers['X-Authorization'] = `Basic ${token}`;
   }
 

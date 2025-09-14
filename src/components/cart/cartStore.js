@@ -281,11 +281,11 @@ export const useCartStore = create(
             if (q > 0 && q < minStep) q = minStep; // allow 0 (removal), but bump lows to min
           }
           newItems[index] = { ...line, quantity: q };
- 
-           // ✅ Unified repricer handles both Group and Quantity pools
-           return { items: repriceAfterChange(newItems) };
-         });
-       },
+
+          // ✅ Unified repricer handles both Group and Quantity pools
+          return { items: repriceAfterChange(newItems) };
+        });
+      },
 
       clearCart: () => {
         set({ items: [] });
