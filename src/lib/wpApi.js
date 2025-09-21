@@ -4,8 +4,10 @@ const isBrowser = typeof window !== 'undefined';
 
 /**
  * Wrapper for WP REST API requests.
- * On server: calls WP directly with Basic Auth (env secrets) via X-Authorization header.
+ * On server: calls WP directly with Basic Auth (env secrets) via Authorization header.
  * On client: calls our Next.js API proxy to avoid exposing secrets.
+ *
+ * Supports both Basic Auth and X-Authorization headers.
  */
 export async function wpApiFetch(endpoint, options = {}) {
   const ep = String(endpoint || '').replace(/^\//, '');
@@ -21,22 +23,18 @@ export async function wpApiFetch(endpoint, options = {}) {
     ...(options.headers || {}),
   };
 
-  // If caller accidentally set "Authorization", move it to "X-Authorization"
-  if (headers.Authorization) {
-    headers['X-Authorization'] = headers.Authorization;
-    delete headers.Authorization;
-  }
+  // --- Auth handling ---
+  // 1) If caller set Authorization explicitly, keep it.
+  // 2) If caller only set X-Authorization, keep that.
+  // 3) If nothing provided and we’re on server, inject Basic Auth automatically.
+  const hasAuth = !!headers.Authorization || !!headers['X-Authorization'];
 
-  // Server-side only: attach Basic Auth via X-Authorization
-  if (!isBrowser && process.env.WP_API_USER && process.env.WP_API_PASS) {
-    const token = Buffer.from(`${process.env.WP_API_USER}:${process.env.WP_API_PASS}`).toString(
-      'base64'
-    );
-    headers['X-Authorization'] = `Basic ${token}`;
+  if (!hasAuth && !isBrowser && process.env.WP_API_USER && process.env.WP_API_PASS) {
+    const token = Buffer.from(
+      `${process.env.WP_API_USER}:${process.env.WP_API_PASS}`
+    ).toString('base64');
+    headers.Authorization = `Basic ${token}`;
   }
-
-  // Do NOT log secrets. Keep logs minimal if needed.
-  // console.log('[wpApiFetch]', { url, isBrowser });
 
   const res = await fetch(url, { ...options, headers });
 

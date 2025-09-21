@@ -6,6 +6,17 @@ export default {
     './src/components/**/*.{js,jsx,ts,tsx}',
   ],
   theme: {
+    container: {
+      center: true,
+      padding: '1rem',
+      screens: {
+        sm: '600px',
+        md: '728px',
+        lg: '984px',
+        xl: '1240px',
+        '2xl': '1440px',
+      },
+    },
     extend: {
       colors: {
         primary: '#1a1a1a',
@@ -17,7 +28,7 @@ export default {
         pink: '#bf1363',
       },
       fontFamily: {
-        sans: ['Heebo', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['Figtree', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
     },
   },

@@ -14,6 +14,20 @@ function isSameOrigin(req) {
   return (origin && origin.startsWith(allowedHost)) || (referer && referer.startsWith(allowedHost));
 }
 
+// --- Auth header builder (supports both Authorization & X-Authorization) ---
+function buildAuthHeaders(extra = {}) {
+  const headers = { ...extra };
+
+  const hasAuth = !!headers.Authorization || !!headers['X-Authorization'];
+
+  if (!hasAuth && WP_USER && WP_PASS) {
+    const token = Buffer.from(`${WP_USER}:${WP_PASS}`).toString('base64');
+    headers.Authorization = `Basic ${token}`;
+  }
+
+  return headers;
+}
+
 export async function POST(req, ctx) {
   const { mini = [] } = (await ctx.params) || {};
   const parts = Array.isArray(mini) ? mini : [mini];
@@ -24,17 +38,17 @@ export async function POST(req, ctx) {
     return NextResponse.json({ message: 'Forbidden: cross-site request' }, { status: 403 });
   }
 
-  if (!WP_USER || !WP_PASS) {
-    return NextResponse.json({ message: 'WP credentials missing on server' }, { status: 500 });
+  if (!WP_URL) {
+    return NextResponse.json({ message: 'WP URL missing on server' }, { status: 500 });
   }
 
   let payload = {};
   try {
     payload = await req.json();
-  } catch {}
+  } catch {
+    // ignore parse errors, leave payload empty
+  }
 
-  // Build Basic token and send via custom header (X-Authorization)
-  const auth = Buffer.from(`${WP_USER}:${WP_PASS}`).toString('base64');
   const url = `${WP_URL}/wp-json/mini-sites/v1/${endpoint}`;
 
   console.log(`[proxy] ${url}`);
@@ -42,11 +56,9 @@ export async function POST(req, ctx) {
 
   const wpRes = await fetch(url, {
     method: 'POST',
-    headers: {
+    headers: buildAuthHeaders({
       'Content-Type': 'application/json',
-      // IMPORTANT: use custom header so upstream that strips "Authorization" won't break auth
-      'X-Authorization': `Basic ${auth}`,
-    },
+    }),
     body: JSON.stringify(payload),
   });
 

@@ -16,12 +16,23 @@ const WP_URL = (process.env.WP_SITE_URL || '').replace(/\/$/, '');
 const WP_USER = process.env.WP_API_USER || '';
 const WP_PASS = process.env.WP_API_PASS || '';
 
-function authHeader() {
-  if (WP_USER && WP_PASS) {
+/**
+ * Build authentication headers.
+ * Supports both Authorization and X-Authorization.
+ * - If caller provides either, it is preserved.
+ * - If none present, auto-add Basic Auth on server from env vars.
+ */
+function buildAuthHeaders(extra = {}) {
+  const headers = { ...extra };
+
+  const hasAuth = !!headers.Authorization || !!headers['X-Authorization'];
+
+  if (!hasAuth && WP_USER && WP_PASS) {
     const b64 = Buffer.from(`${WP_USER}:${WP_PASS}`).toString('base64');
-    return { 'X-Authorization': `Basic ${b64}` };
+    headers.Authorization = `Basic ${b64}`;
   }
-  return {};
+
+  return headers;
 }
 
 function write(id, data, { ttlSeconds = 60 * 60 * 6, staleSeconds = 60 * 60 * 24 } = {}) {
@@ -59,7 +70,9 @@ async function fetchProductsFromWP(ids) {
   if (!WP_URL) throw new Error('Missing WP_SITE_URL / NEXT_PUBLIC_WP_SITE_URL');
   if (!Array.isArray(ids) || ids.length === 0) return [];
   const url = `${WP_URL}/wp-json/mini-sites/v1/get-products-by-ids?ids=${encodeURIComponent(ids.join(','))}`;
-  const res = await fetch(url, { headers: { Accept: 'application/json', ...authHeader() } });
+  const res = await fetch(url, {
+    headers: buildAuthHeaders({ Accept: 'application/json' }),
+  });
   if (!res.ok) throw new Error(`WP ${res.status} for ${url}`);
   const json = await res.json().catch(() => ({}));
   return Array.isArray(json?.products) ? json.products : Array.isArray(json) ? json : [];

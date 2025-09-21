@@ -25,7 +25,26 @@ export async function getStaticProps({ params }) {
   try {
     // 1) Company page data
     const res = await wpApiFetch(`company-page?slug=${params.slug}`);
-    if (!res.ok) throw new Error(`company-page fetch failed ${res.status}`);
+    if (!res.ok) {
+     // Try to read body as text for debugging
+     let bodyPreview = '';
+     try {
+       bodyPreview = await res.text();
+     } catch (e) {
+       bodyPreview = '[no body text available]';
+     }
+     console.error(
+       '[getStaticProps] company-page fetch failed',
+       {
+         slug: params.slug,
+         status: res.status,
+         url: res.url,
+         headers: Object.fromEntries(res.headers.entries?.() || []),
+         bodyPreview: bodyPreview.slice(0, 300) // cap length
+       }
+     );
+     throw new Error(`company-page fetch failed ${res.status}`);
+   }
     const data = await res.json();
 
     // 2) Normalize product IDs (avoid serializing huge arrays into Next data)

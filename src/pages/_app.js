@@ -1,16 +1,16 @@
 // src/pages/_app.js
-import { Heebo } from 'next/font/google';
+import { Figtree } from 'next/font/google';
 import '@/app/globals.css';
 
-const heebo = Heebo({
+const figtree = Figtree({
   subsets: ['latin'],
-  weight: ['300', '400', '500', '700'],
+  weight: ['300', '400', '500', '600', '700'],
   display: 'swap',
 });
 
 export default function MyApp({ Component, pageProps }) {
   return (
-    <div className={`${heebo.className}`}>
+    <div className={`${figtree.className}`}>
       <Component {...pageProps} />
     </div>
   );
