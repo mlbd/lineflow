@@ -208,7 +208,7 @@ export default function CartItem({
     }
   };
 
-  const scheduleLiveQuantityUpdate = (n) => {
+  const scheduleLiveQuantityUpdate = n => {
     cancelLiveUpdateTimer();
     liveUpdateTimerRef.current = setTimeout(() => {
       updateItemQuantity(idx, n); // triggers store/backend repricing & totals
@@ -223,74 +223,72 @@ export default function CartItem({
 
   // [PATCH] Added: commit-on-blur/enter helper to clamp and persist
   // [PATCH] Updated: commit-on-blur/enter helper to clamp and persist
-const commitQuantityDraft = () => {
-  cancelLiveUpdateTimer(); // prevent double-update after commit
+  const commitQuantityDraft = () => {
+    cancelLiveUpdateTimer(); // prevent double-update after commit
 
-  // Sanitize current draft
-  const raw = (localQuantity ?? '').toString();
-  let n = parseInt(raw.replace(/[^0-9]/g, '')) || 0;
+    // Sanitize current draft
+    const raw = (localQuantity ?? '').toString();
+    let n = parseInt(raw.replace(/[^0-9]/g, '')) || 0;
 
-  // Clamp to min/max on commit only
-  if (!raw || n < minQuantity) n = Math.max(minQuantity, 1);
-  if (n > maxQuantity) n = maxQuantity;
+    // Clamp to min/max on commit only
+    if (!raw || n < minQuantity) n = Math.max(minQuantity, 1);
+    if (n > maxQuantity) n = maxQuantity;
 
-  setLocalQuantity(n.toString());
-  setError('');
-  updateItemQuantity(idx, n);
-};
-
-// [PATCH] Updated: allow Enter to commit and Esc to revert while focused
-const handleQuantityKeyDown = e => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    cancelLiveUpdateTimer();
-    commitQuantityDraft();
-    e.currentTarget.blur(); // optional: leave field after commit
-  } else if (e.key === 'Escape') {
-    cancelLiveUpdateTimer();
-    // Revert to store value
-    setLocalQuantity(item.quantity.toString());
+    setLocalQuantity(n.toString());
     setError('');
-    e.currentTarget.blur();
-  }
-};
+    updateItemQuantity(idx, n);
+  };
 
+  // [PATCH] Updated: allow Enter to commit and Esc to revert while focused
+  const handleQuantityKeyDown = e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      cancelLiveUpdateTimer();
+      commitQuantityDraft();
+      e.currentTarget.blur(); // optional: leave field after commit
+    } else if (e.key === 'Escape') {
+      cancelLiveUpdateTimer();
+      // Revert to store value
+      setLocalQuantity(item.quantity.toString());
+      setError('');
+      e.currentTarget.blur();
+    }
+  };
 
   // [PATCH] Updated: while typing, keep a draft (no clamping, no store updates)
   // [PATCH] Updated: while typing, keep a draft; debounce live update only when in-range
-const handleQuantityChange = (value) => {
-  const clean = (value ?? '').toString().replace(/[^0-9]/g, '');
-  setLocalQuantity(clean);
+  const handleQuantityChange = value => {
+    const clean = (value ?? '').toString().replace(/[^0-9]/g, '');
+    setLocalQuantity(clean);
 
-  if (clean === '') {
+    if (clean === '') {
+      setError('');
+      cancelLiveUpdateTimer(); // nothing to update yet
+      return;
+    }
+
+    const n = parseInt(clean) || 0;
+
+    // Soft warnings (no clamping mid-typing)
+    if (n > maxQuantity) {
+      setError(`Maximum is ${maxQuantity}`);
+      cancelLiveUpdateTimer(); // out of range → do not live update
+      return;
+    }
+    if (isQuantityType && n > 0 && n < minQuantity) {
+      setError(`Minimum is ${minQuantity}`);
+      cancelLiveUpdateTimer(); // out of range → do not live update
+      return;
+    }
+
+    // In-range → clear warning and schedule debounced live update
     setError('');
-    cancelLiveUpdateTimer(); // nothing to update yet
-    return;
-  }
-
-  const n = parseInt(clean) || 0;
-
-  // Soft warnings (no clamping mid-typing)
-  if (n > maxQuantity) {
-    setError(`Maximum is ${maxQuantity}`);
-    cancelLiveUpdateTimer(); // out of range → do not live update
-    return;
-  }
-  if (isQuantityType && n > 0 && n < minQuantity) {
-    setError(`Minimum is ${minQuantity}`);
-    cancelLiveUpdateTimer(); // out of range → do not live update
-    return;
-  }
-
-  // In-range → clear warning and schedule debounced live update
-  setError('');
-  if (n > 0) {
-    scheduleLiveQuantityUpdate(n);
-  } else {
-    cancelLiveUpdateTimer();
-  }
-};
-
+    if (n > 0) {
+      scheduleLiveQuantityUpdate(n);
+    } else {
+      cancelLiveUpdateTimer();
+    }
+  };
 
   // [PATCH] Updated: clamp & commit once on blur
   const handleQuantityBlur = () => {

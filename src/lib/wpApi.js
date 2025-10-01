@@ -30,9 +30,9 @@ export async function wpApiFetch(endpoint, options = {}) {
   const hasAuth = !!headers.Authorization || !!headers['X-Authorization'];
 
   if (!hasAuth && !isBrowser && process.env.WP_API_USER && process.env.WP_API_PASS) {
-    const token = Buffer.from(
-      `${process.env.WP_API_USER}:${process.env.WP_API_PASS}`
-    ).toString('base64');
+    const token = Buffer.from(`${process.env.WP_API_USER}:${process.env.WP_API_PASS}`).toString(
+      'base64'
+    );
     headers.Authorization = `Basic ${token}`;
   }
 

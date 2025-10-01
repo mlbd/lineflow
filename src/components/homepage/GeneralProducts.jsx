@@ -1,22 +1,8 @@
 // components/page/ProductsShell.jsx
 import { useEffect, useState } from 'react';
-import ProductListSection from '@/components/page/ProductListSection';
-import CartPage from '@/components/cart/CartPage';
+import ProductSectionNoAction from '@/components/homepage/ProductSectionNoAction';
 
-export function ProductsShell({
-  slug,
-  productIds,
-  cacheBust = 0,
-  criticalProducts = [],
-  bumpPrice,
-  companyLogos,
-  pagePlacementMap,
-  customBackAllowedSet,
-  shippingOptions,
-  acf,
-  companyData,
-  cartSectionRef,
-}) {
+function GeneralProducts({ productIds, criticalProducts = [], cacheBust = 0 }) {
   const [products, setProducts] = useState(criticalProducts);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -38,7 +24,7 @@ export function ProductsShell({
 
         // [PATCH] Append v=cacheBust so CDN won't reuse older JSON after a revalidate
         const v = cacheBust ? `&v=${encodeURIComponent(String(cacheBust))}` : '';
-        const url = `/api/minisites/product-cards?ids=${idsParam}&slug=${encodeURIComponent(slug)}${v}`;
+        const url = `/api/minisites/product-cards?ids=${idsParam}${v}`;
         const res = await fetch(url, { signal: controller.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -82,7 +68,7 @@ export function ProductsShell({
       ignore = true;
       controller.abort();
     };
-  }, [productIds, slug, criticalProducts, cacheBust]);
+  }, [productIds, criticalProducts, cacheBust]);
 
   if (!products.length && loading) {
     return (
@@ -100,38 +86,23 @@ export function ProductsShell({
     );
   }
 
+  console.log('ProductsShell products:', products);
+
   return (
     <>
-      <ProductListSection
-        products={products}
-        bumpPrice={bumpPrice}
-        onCartAddSuccess={() => {
-          if (cartSectionRef?.current) {
-            cartSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
-        }}
-        companyLogos={companyLogos}
-        pagePlacementMap={pagePlacementMap}
-        customBackAllowedSet={customBackAllowedSet}
-      />
-
-      <div className="w-full" ref={cartSectionRef}>
-        <CartPage
-          initialProducts={products}
-          products={products}
-          shippingOptions={shippingOptions}
-          shippingLoading={false}
-          acf={acf}
-          companyData={companyData}
-          companyLogos={companyLogos}
-          pagePlacementMap={pagePlacementMap}
-          customBackAllowedSet={customBackAllowedSet}
-          slug={slug}
-        />
+      <div className="w-full pt-[80px]">
+        <div className="container mx-auto">
+          <div>
+            <h2 className="text-secondary typo-h2 font-bold">
+              Our <span className="text-tertiary">Sample</span> Products
+            </h2>
+          </div>
+          <ProductSectionNoAction products={products} />
+        </div>
       </div>
     </>
   );
 }
 
 // IMPORTANT: default-export the component too
-export default ProductsShell;
+export default GeneralProducts;

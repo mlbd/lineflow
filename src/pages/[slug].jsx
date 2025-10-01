@@ -10,6 +10,9 @@ import InfoBoxSection from '@/components/page/InfoBoxSection';
 import Footer from '@/components/page/Footer';
 import ProductsShell from '@/components/page/ProductsShell';
 
+import CompletionDialog from '@/components/catalog/CompletionDialog';
+import { useRouter } from 'next/router';
+
 import { getOrFetchShipping } from '@/lib/shippingCache';
 import { wpApiFetch } from '@/lib/wpApi';
 import { getProductCardsBatch } from '@/lib/productCache'; // server-side helper
@@ -26,26 +29,25 @@ export async function getStaticProps({ params }) {
     // 1) Company page data
     const res = await wpApiFetch(`company-page?slug=${params.slug}`);
     if (!res.ok) {
-     // Try to read body as text for debugging
-     let bodyPreview = '';
-     try {
-       bodyPreview = await res.text();
-     } catch (e) {
-       bodyPreview = '[no body text available]';
-     }
-     console.error(
-       '[getStaticProps] company-page fetch failed',
-       {
-         slug: params.slug,
-         status: res.status,
-         url: res.url,
-         headers: Object.fromEntries(res.headers.entries?.() || []),
-         bodyPreview: bodyPreview.slice(0, 300) // cap length
-       }
-     );
-     throw new Error(`company-page fetch failed ${res.status}`);
-   }
+      // Try to read body as text for debugging
+      let bodyPreview = '';
+      try {
+        bodyPreview = await res.text();
+      } catch (e) {
+        bodyPreview = '[no body text available]';
+      }
+      console.error('[getStaticProps] company-page fetch failed', {
+        slug: params.slug,
+        status: res.status,
+        url: res.url,
+        headers: Object.fromEntries(res.headers.entries?.() || []),
+        bodyPreview: bodyPreview.slice(0, 300), // cap length
+      });
+      throw new Error(`company-page fetch failed ${res.status}`);
+    }
     const data = await res.json();
+
+    const status = data?.status || null;
 
     // 2) Normalize product IDs (avoid serializing huge arrays into Next data)
     const productIdsRaw = data?.acf?.selected_products || [];
@@ -102,6 +104,7 @@ export async function getStaticProps({ params }) {
     // ---- Build props so we can measure page-data size before returning ----
     const props = {
       slug: params.slug,
+      status,
       pageId: data?.id || null,
       productIds, // All IDs (client will fetch the full list)
       criticalProducts, // First N full products (SSR)
@@ -164,6 +167,7 @@ export async function getStaticProps({ params }) {
  * --------------------------------------------------------- */
 export default function LandingPage({
   slug,
+  status,
   productIds = [],
   criticalProducts = [],
   cacheBust = 0,
@@ -180,6 +184,8 @@ export default function LandingPage({
 }) {
   const [animationDone, setAnimationDone] = useState(false);
   const cartSectionRef = useRef(null);
+
+  const [completed, setCompleted] = useState(false);
 
   const handleScrollToCart = () => {
     if (cartSectionRef.current) {
@@ -314,6 +320,15 @@ export default function LandingPage({
           <Footer />
         </main>
       </div>
+
+      {status === 'pending' && !completed && (
+        <CompletionDialog
+          slug={slug}
+          pageId={typeof window === 'undefined' ? null : undefined /* runtime not needed */}
+          onSuccess={() => setCompleted(true)}
+          catalogDomain={process.env.NEXT_PUBLIC_CATALOG_DOMAIN || 'catalog.lineflow.ai'}
+        />
+      )}
     </>
   );
 }

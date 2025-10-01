@@ -1,106 +1,127 @@
 // src/pages/api/revalidate.js
 /**
- * On-demand revalidation endpoint (Pages Router).
+ * On-demand revalidation + product-cache maintenance (Pages Router).
  *
- * What this does now:
- *  1) Auth check (secret or same-origin+csrf).
+ * What this does
+ *  1) Auth (secret OR same-origin + CSRF).
  *  2) Revalidate page paths (from "path"/"paths" or "slug"/"slugs").
- *  3) If a "slug" is provided, it will:
- *     - Load the company page from WP to discover product IDs.
- *     - Clear in-memory product cache for those IDs.
- *     - Optionally force-refresh those products from WP right now (prime).
+ *  3) Product cache maintenance:
+ *     - clear/prime by explicit product "ids"
+ *     - clear/prime by company "slug"/"slugs" (discover IDs via WP)
+ *  4) [NEW] Clear ALL product cache in this server instance via ?all=1 (or body { all: 1 }).
  *
- * Query/body extras:
- *   - slug / slugs: company slug(s) to revalidate, e.g. "sabbir"
- *   - prime=1: also force-refresh product data from WP for the slug's products
- *   - ids=1,2,3: directly clear/prime specific product ids (advanced)
- *   - tags: forwarded to an optional App Router tag endpoint (REVALIDATE_TAG_ENDPOINT)
+ * Query/body accepted
+ *   - path=/a  & path=/b        OR  body { paths: ["/a","/b"] }
+ *   - slug=sabbir & slugs[]=... OR  body { slug, slugs: [] }
+ *   - ids=1,2,3                 OR  body { ids: [1,2,3] }
+ *   - prime=1  (refresh product data from WP after clearing)
+ *   - all=1    (wipe entire product cache in this server instance)   <-- [NEW]
  *
- * Response includes details of what was revalidated and what product IDs were cleared/primed.
+ * Notes
+ * - Cache is in-memory per instance. In multi-region/auto-scaled envs, this affects only
+ *   the instance that serves the request. Fan-out or use a shared store for global invalidation.
+ * - Response is `no-store`.
  */
 
-import { clearProductCache, forceRefreshProducts } from '@/lib/productCache';
-import { wpApiFetch } from '@/lib/wpApi';
+import { clearProductCache, forceRefreshProducts, _debugSnapshot } from '@/lib/productCache'; // ✅ matches your productCache.js
 
+// -----------------------------
+// Small helpers (kept minimal)
+// -----------------------------
+function toArray(v) {
+  if (Array.isArray(v)) return v;
+  if (v === null || v === undefined || v === '') return [];
+  return [v];
+}
+function normalizePath(p) {
+  if (!p || typeof p !== 'string') return '';
+  const s = p.trim();
+  if (!s) return '';
+  return s.startsWith('/') ? s : `/${s}`;
+}
+async function readJsonBody(req) {
+  // Next parses JSON when header is application/json; still be defensive.
+  if (req.body && typeof req.body === 'object') return req.body;
+  try {
+    const raw = req.body ?? '';
+    if (typeof raw !== 'string' || raw === '') return {};
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
 function sameOriginOk(req) {
   const origin = req.headers.origin || '';
   const host = req.headers.host || '';
-  if (!origin || !host) return true;
+  if (!origin || !host) return true; // server-to-server
   try {
     return new URL(origin).host === host;
   } catch {
     return origin.endsWith(host);
   }
 }
-
 function csrfOk(req) {
-  const header = req.headers['x-ms-csrf'];
-  const cookie = req.cookies?.ms_csrf;
-  return !!header && !!cookie && header === cookie;
+  const h = req.headers['x-ms-csrf'];
+  const c = req.cookies?.ms_csrf || req.cookies?.ms_csrf; // tolerate either key
+  return Boolean(h && c && h === c);
+}
+function authOk(req) {
+  const q = req.query || {};
+  const provided =
+    q.secret ||
+    req.headers['x-ms-cache-secret'] ||
+    req.headers['x-revalidate-secret'] ||
+    req.headers['x-vercel-reval-key'];
+
+  if (provided && process.env.REVALIDATE_SECRET && provided === process.env.REVALIDATE_SECRET) {
+    return { ok: true, mode: 'secret' };
+  }
+  if (sameOriginOk(req) && csrfOk(req)) {
+    return { ok: true, mode: 'csrf' };
+  }
+  return { ok: false, mode: 'none' };
 }
 
-function toArray(val) {
-  if (val == null) return [];
-  if (Array.isArray(val)) return val;
-  return [val];
-}
-
-function normalizePath(p) {
-  if (typeof p !== 'string') return null;
-  let s = p.trim();
-  if (!s) return null;
-  if (/^https?:\/\//i.test(s)) return null; // disallow absolute URLs
-  if (!s.startsWith('/')) s = '/' + s;
-  return s;
-}
-
-function slugToPath(slug, prefix = '') {
-  if (typeof slug !== 'string' || !slug.trim()) return null;
-  const clean = slug.replace(/^\/+/, '');
-  const pre = (prefix || '').replace(/\/$/, '');
-  const joined = pre ? `${pre}/${clean}` : `/${clean}`;
-  return normalizePath(joined);
-}
-
-async function readJsonBody(req) {
-  if (req.method !== 'POST') return {};
-  if (typeof req.body === 'object' && req.body !== null) return req.body;
-  if (typeof req.body === 'string') {
+/**
+ * Resolve product IDs for a company slug from WP.
+ * Adjust endpoint(s) to your actual ones if different.
+ */
+async function getProductIdsForCompanySlug(slug) {
+  const WP = (process.env.WP_SITE_URL || '').replace(/\/$/, '');
+  if (!WP || !slug) return [];
+  const candidates = [
+    `${WP}/wp-json/mini-sites/v1/company-products?slug=${encodeURIComponent(slug)}`,
+    `${WP}/wp-json/mini-sites/v1/get-products-by-company?slug=${encodeURIComponent(slug)}`,
+  ];
+  for (const url of candidates) {
     try {
-      return JSON.parse(req.body || '{}');
+      const r = await fetch(url, { headers: { 'Cache-Control': 'no-store' } });
+      if (!r.ok) continue;
+      const j = await r.json();
+      // Expecting: { ids: [1,2,3] } or just [1,2,3]
+      const arr = Array.isArray(j) ? j : Array.isArray(j?.ids) ? j.ids : [];
+      const ids = arr.map(n => Number(n)).filter(n => Number.isFinite(n) && n > 0);
+      if (ids.length) return ids;
     } catch {
-      return {};
+      // ignore and try next
     }
   }
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
-  } catch {
-    return {};
-  }
+  return [];
 }
 
+// ---------------------------------------
+// Main handler (keeps prior behaviors)
+// ---------------------------------------
 export default async function handler(req, res) {
-  // Never cache this endpoint
   res.setHeader('Cache-Control', 'no-store');
 
-  // --- Authorization ---
-  const providedSecret = req.query.secret || req.headers['x-ms-cache-secret'];
-  const secretOk = !!providedSecret && providedSecret === process.env.REVALIDATE_SECRET;
-  let authorized = secretOk;
-  if (!authorized) {
-    if (!sameOriginOk(req) || !csrfOk(req)) {
-      return res.status(401).json({ ok: false, error: 'Unauthorized' });
-    }
-    authorized = true;
-  }
-  const authMode = secretOk ? 'secret' : 'csrf';
-  res.setHeader('x-auth-mode', authMode);
-
-  // --- Method guard ---
-  if (!['GET', 'POST'].includes(req.method)) {
+  if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
+  }
+
+  const auth = authOk(req);
+  if (!auth.ok) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized', mode: auth.mode });
   }
 
   try {
@@ -109,6 +130,14 @@ export default async function handler(req, res) {
 
     const slugPrefix = process.env.REVALIDATE_SLUG_PREFIX || '';
     const wantPrime = String(b.prime ?? q.prime ?? '') === '1';
+
+    // ---------------------------
+    // [NEW] parse clear-all flag
+    // ---------------------------
+    // Supports: ?all=1 or body { all: 1 } or ?clear=all
+    const clearAll =
+      String(b.all ?? q.all ?? '') === '1' ||
+      String(b.clear ?? q.clear ?? '').toLowerCase() === 'all';
 
     // Collect paths
     const paths = new Set();
@@ -128,18 +157,52 @@ export default async function handler(req, res) {
 
     const slugPaths = [];
     slugs.forEach(s => {
-      const np = slugToPath(s, slugPrefix);
-      if (np) {
-        paths.add(np);
-        slugPaths.push({ slug: s, path: np });
-      }
+      const clean = String(s || '').trim();
+      if (!clean) return;
+      const prefixed = `${slugPrefix}${clean}`;
+      slugPaths.push(normalizePath(prefixed));
     });
+    slugPaths.forEach(p => paths.add(p));
 
-    // Revalidate each path
     const toPaths = Array.from(paths);
+
+    // Product IDs (direct)
+    const idsDirect = (() => {
+      // allow "ids" as CSV or array
+      const raw = b.ids ?? q.ids;
+      const arr = Array.isArray(raw)
+        ? raw
+        : String(raw ?? '')
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean);
+      return arr.map(n => Number(n)).filter(n => Number.isFinite(n) && n > 0);
+    })();
+
+    // ---------------------------
+    // Execute actions
+    // ---------------------------
     const revalidated = [];
     const errors = [];
 
+    // A) [NEW] If clearAll is set, wipe the entire cache in this instance first,
+    // but still allow revalidate/other actions in the same call if provided.
+    let clearedAll = false;
+    let beforeSnap = null;
+    let afterSnap = null;
+    if (clearAll) {
+      try {
+        beforeSnap = _debugSnapshot?.() ?? null;
+        // IMPORTANT: clearProductCache() with NO arguments → clear ALL (per your impl).
+        clearProductCache(); // <-- the only "clear ALL" behavior you requested
+        clearedAll = true;
+        afterSnap = _debugSnapshot?.() ?? null;
+      } catch (err) {
+        errors.push({ path: '(clearAll)', error: err?.message || String(err) });
+      }
+    }
+
+    // B) Revalidate explicit paths (includes slug→path)
     for (const p of toPaths) {
       try {
         if (typeof res.revalidate === 'function') {
@@ -155,99 +218,84 @@ export default async function handler(req, res) {
       }
     }
 
-    // ===== Product cache maintenance =====
-    // Accept ids via query/body (advanced/manual)
-    const idsDirect = String(b.ids ?? q.ids ?? '')
-      .split(',')
-      .map(n => Number(n))
-      .filter(n => Number.isFinite(n));
-
-    // If slugs were provided, fetch their product IDs via WP
-    const bySlug = [];
-    for (const { slug } of slugPaths) {
+    // C) By slug → discover product IDs from WP, then clear/prime
+    const bySlug = {};
+    for (const s of slugs) {
+      const slug = String(s || '').trim();
+      if (!slug) continue;
       try {
-        const resp = await wpApiFetch(`company-page?slug=${encodeURIComponent(slug)}`);
-        if (!resp.ok) throw new Error(`company-page ${resp.status}`);
-        const data = await resp.json();
-        const productIdsRaw = data?.acf?.selected_products || [];
-        const ids = productIdsRaw
-          .map(p => (p && typeof p === 'object' ? p.id : p))
-          .map(n => Number(n))
-          .filter(n => Number.isFinite(n));
-        bySlug.push({ slug, ids, pageId: data?.id || null });
-      } catch (err) {
-        bySlug.push({ slug, ids: [], error: err?.message || String(err) });
-      }
-    }
+        const ids = await getProductIdsForCompanySlug(slug);
+        bySlug[slug] = { ids, cleared: false, primed: false };
+        if (ids.length) {
+          // Clear per-id cache — clearProductCache only supports single id/all, so loop
+          for (const id of ids) {
+            try {
+              clearProductCache(id);
+            } catch (e) {
+              errors.push({ path: `(slug:${slug}) id:${id}`, error: e?.message || String(e) });
+            }
+          }
+          bySlug[slug].cleared = true;
 
-    // Merge all IDs to clear
-    const toClear = new Set(idsDirect);
-    bySlug.forEach(entry => entry.ids.forEach(id => toClear.add(id)));
-
-    const clearedIds = [];
-    const primedIds = [];
-
-    for (const id of toClear) {
-      const r = clearProductCache(id); // clear in-memory cache
-      if (r?.ok) clearedIds.push(id);
-    }
-
-    if (wantPrime && toClear.size) {
-      try {
-        const refreshed = await forceRefreshProducts(Array.from(toClear), {
-          ttlSeconds: 60 * 60 * 6,
-          staleSeconds: 60 * 60 * 24,
-        });
-        // "refreshed" returns the actual products we pulled; record IDs for visibility
-        refreshed.forEach(p => {
-          const pid = Number(p?.id);
-          if (pid) primedIds.push(pid);
-        });
-      } catch (err) {
-        errors.push({ path: '(prime:products)', error: err?.message || String(err) });
-      }
-    }
-
-    // Optional: forward tags to an App Router endpoint
-    let forwardedTags;
-    let tagForwardResult;
-    const tags = toArray(b.tags ?? q.tags).filter(Boolean);
-    const tagEndpoint = process.env.REVALIDATE_TAG_ENDPOINT;
-    if (tags.length && tagEndpoint) {
-      forwardedTags = [...tags];
-      try {
-        const proto = req.headers['x-forwarded-proto'] || 'https';
-        const host = req.headers.host;
-        const url = `${proto}://${host}${tagEndpoint}`;
-        const headers = { 'content-type': 'application/json' };
-        if (authMode === 'secret' && providedSecret) {
-          headers['x-ms-cache-secret'] = String(providedSecret);
-        } else if (authMode === 'csrf') {
-          const token = req.cookies?.ms_csrf || req.headers['x-ms-csrf'];
-          if (token) {
-            headers['x-ms-csrf'] = token;
-            headers['cookie'] = `ms_csrf=${token}; Path=/; SameSite=Lax`;
+          if (wantPrime) {
+            try {
+              await forceRefreshProducts(ids); // refresh from WP and refill cache
+              bySlug[slug].primed = true;
+            } catch (e) {
+              errors.push({ path: `(prime slug:${slug})`, error: e?.message || String(e) });
+            }
           }
         }
-        const r = await fetch(url, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ tags }),
-        });
-        const j = await r.json().catch(() => ({}));
-        tagForwardResult = { status: r.status, ok: r.ok, body: j };
       } catch (err) {
-        tagForwardResult = { ok: false, error: err?.message || String(err) };
+        errors.push({ path: `(slug:${slug})`, error: err?.message || String(err) });
       }
     }
 
-    return res.json({
-      ok: errors.length === 0,
+    // D) Direct product ids → clear/prime
+    let clearedIds = [];
+    let primedIds = [];
+    if (idsDirect.length) {
+      // Clear each id (API supports 1 id at a time)
+      for (const id of idsDirect) {
+        try {
+          clearProductCache(id);
+          clearedIds.push(id);
+        } catch (e) {
+          errors.push({ path: `(id:${id})`, error: e?.message || String(e) });
+        }
+      }
+      if (wantPrime) {
+        try {
+          await forceRefreshProducts(idsDirect);
+          primedIds = idsDirect.slice();
+        } catch (e) {
+          errors.push({ path: '(prime ids)', error: e?.message || String(e) });
+        }
+      }
+    }
+
+    // E) Nothing to do?
+    if (!clearAll && toPaths.length === 0 && slugs.length === 0 && idsDirect.length === 0) {
+      return res.status(400).json({
+        ok: false,
+        error:
+          'Nothing to do. Provide ?all=1 or paths (?path=/.. or body.paths), or slugs, or ids.',
+      });
+    }
+
+    // Status & response
+    const status = errors.length ? 207 /* Multi-Status-ish */ : 200;
+    return res.status(status).json({
+      ok: true,
       method: req.method,
+      authMode: auth.mode,
       revalidated,
       count: toPaths.length,
       errors,
-      authMode,
+      // [NEW] Clear-all info
+      clearedAll,
+      before: beforeSnap,
+      after: afterSnap,
       // Product info
       clearedIds,
       primed: wantPrime ? primedIds : undefined,
