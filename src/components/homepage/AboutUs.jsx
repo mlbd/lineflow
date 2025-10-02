@@ -19,18 +19,17 @@ function AboutUs() {
 
           <div className="self-stretch inline-flex justify-start items-start gap-[60px]">
             <div className="w-2/5 inline-flex flex-col justify-start items-start gap-8">
-              <div className="self-stretch relative bg-primary-100 rounded-[20px] overflow-hidden aspect-[16/10]">
-                {/* Replaced <img> with Next/Image; added descriptive alt; fill + object-cover for responsiveness */}
+              <div className="self-stretch relative bg-primary-100 rounded-[20px] overflow-hidden">
                 <Image
                   src="/aboutus-thumb.png"
                   alt="Team working together — About us thumbnail"
-                  fill
-                  className="object-cover"
+                  width={590}
+                  height={474}
                   priority
                 />
               </div>
 
-              <div className="self-stretch flex flex-col justify-start items-start gap-5 py-5">
+              <div className="self-stretch flex flex-col justify-start items-start gap-5">
                 <div className="self-stretch inline-flex justify-start items-center gap-5">
                   <div className="flex-1 px-5 py-4 bg-[#eef6ff]/20 rounded-lg inline-flex flex-col justify-start items-center gap-2">
                     <div className="self-stretch text-center justify-center text-white typo-h1 font-semibold ">
@@ -107,7 +106,7 @@ function AboutUs() {
           </div>
 
           {/* Glimpse / Orders block with slider */}
-          <div className="self-stretch px-9 pt-9 pb-12 bg-[#eef6ff]/20 rounded-3xl flex flex-col justify-start items-center gap-8">
+          <div className="self-stretch px-9 pt-9 pb-12 bg-[#eef6ff]/20 rounded-3xl flex flex-col justify-start items-center gap-8 mt-10">
             <div className="w-full">
               {/* Slider kept disabled for now */}
             </div>

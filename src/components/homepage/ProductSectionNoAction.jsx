@@ -11,7 +11,7 @@ import Image from 'next/image';
 import { generateProductImageUrl } from '@/utils/cloudinaryMockup';
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
 
-const PRODUCT_PER_PAGE = 12;
+const PRODUCT_PER_PAGE = 6;
 
 export default function ProductSectionNoAction({ products = [] }) {
   const bumpPrice = 0;
