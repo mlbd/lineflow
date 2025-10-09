@@ -1,20 +1,14 @@
-// src/components/catalog/CompletionDialog.jsx
+// [PATCH] Added field-level error state and helpers
 import { useState } from 'react';
 import { useRouter } from 'next/router';
 import { wpApiFetch } from '@/lib/wpApi';
 
-/**
- * Fullscreen, non-dismissible dialog that sits over the page.
- * - User can scroll the page to preview, but cannot interact with it.
- * - No close button. It only closes on successful submit.
- * - Pass withBackdrop={false} to remove the visible dark overlay while still blocking clicks.
- */
 export default function CompletionDialog({
   slug,
   pageId,
-  onSuccess, // callback when server confirms success
+  onSuccess,
   catalogDomain = 'catalog.lineflow.ai',
-  withBackdrop = true, // set false to remove overlay color
+  withBackdrop = true,
 }) {
   const router = useRouter();
 
@@ -25,20 +19,37 @@ export default function CompletionDialog({
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState('');
 
+  // [PATCH] Track per-field errors from backend: keys like email, phone, mini_url, terms_check
+  const [fieldErrors, setFieldErrors] = useState({}); // { mini_url: "message", email: "message", ... }
+
   const slugCandidate = (desiredSlug || '').trim().toLowerCase();
   const isSlugValid = !!slugCandidate && /^[a-z0-9-]+$/.test(slugCandidate);
   const isReady = !!email && !!phone && isSlugValid && agree && !submitting;
 
+  // [PATCH] Utility to add error classes when a field has an error
+  const errCls = hasErr =>
+    hasErr ? 'border-red-500 ring-1 ring-red-400 focus:ring-red-500' : 'border-grey-300 focus:ring-indigo-500';
+
+  // [PATCH] Clear a specific field error on change
+  const clearFieldError = key => {
+    if (fieldErrors[key]) {
+      setFieldErrors(prev => {
+        const clone = { ...prev };
+        delete clone[key];
+        return clone;
+      });
+    }
+  };
+
   const handleSubmit = async e => {
     e.preventDefault();
     setErr('');
+    setFieldErrors({}); // [PATCH] reset per submit
     if (submitting || !isReady) return;
 
     setSubmitting(true);
     try {
-      // Hit your WP REST endpoint to finalize catalog and update slug/status
-      // Adjust endpoint path if yours differs
-      const res = await wpApiFetch('company-complete', {
+      const res = await wpApiFetch('update-catalog', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -46,7 +57,8 @@ export default function CompletionDialog({
           source_slug: slug,
           email,
           phone,
-          desired_slug: slugCandidate,
+          mini_url: slugCandidate,
+          terms_check: agree ? 'yes' : 'no',
         }),
       });
 
@@ -56,22 +68,62 @@ export default function CompletionDialog({
       }
 
       const json = await res.json();
-      // Expecting { success: true, slug: 'my-website', url: 'https://catalog.lineflow.ai/my-website' }
-      if (!json?.success || !json?.slug) {
+      // // Expecting { success: true, slug: 'my-website', url: 'https://catalog.lineflow.ai/my-website' }
+      // if (!json?.success || !json?.data?.slug) {
+      //   throw new Error('Unexpected response from server.');
+      // }
+
+      console.log('update-catalog res', json);
+
+      if (!res.ok) {
+        if (json?.errors) {
+          setFieldErrors(json.errors);
+          // surface the first message to the banner too
+          const firstMsg = Object.values(json.errors)[0];
+          setErr(typeof firstMsg === 'string' ? firstMsg : 'Please check the highlighted fields.');
+        } else {
+          const msg = await safeReadText(res);
+          setErr(msg || `Request failed (${res.status})`);
+        }
+        setSubmitting(false);
+        return;
+      }
+
+      // Expecting success flag from server; also handle success:false with errors
+      if (!json?.success) {
+        if (json?.errors && typeof json.errors === 'object') {
+          setFieldErrors(json.errors);
+          const firstMsg = Object.values(json.errors)[0];
+          setErr(typeof firstMsg === 'string' ? firstMsg : 'Please check the highlighted fields.');
+        } else {
+          setErr(json?.message || 'Unexpected response from server.');
+        }
+        setSubmitting(false);
+        return;
+      }
+
+      // Success path
+      const nextSlug = json?.data?.slug;
+      if (!nextSlug) {
         throw new Error('Unexpected response from server.');
       }
 
       if (typeof onSuccess === 'function') onSuccess(json);
 
-      // Update the URL to the new pretty slug.
-      // Use replace so back button doesn’t return to the temp link.
-      await router.replace(`/${json.slug}`);
-      // Component is intended to be unmounted by parent when status changes or local flag toggles.
+      // [PATCH] Instant navigation: use hard replace for zero-lag redirect
+      // This avoids Router prefetch/ISR timing and goes immediately.
+      router.push(`${nextSlug}`);
+
+      // If you prefer Next Router but want it snappier, you could keep:
+      // await router.replace(`/${nextSlug}`);
     } catch (e2) {
       setErr(e2?.message || 'Something went wrong. Please try again.');
       setSubmitting(false);
     }
   };
+
+  console.log('fieldErrors', fieldErrors);
+  console.log('fieldErrors', fieldErrors);
 
   return (
     <div
@@ -100,12 +152,26 @@ export default function CompletionDialog({
                 <input
                   type="email"
                   placeholder="myemail@email.com"
-                  className="mt-1 w-full rounded-[8px] border border-grey-300 px-4 py-3 text-base outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60"
+                  // [PATCH] Add dynamic error + aria-invalid
+                  className={`mt-1 w-full rounded-[8px] border px-4 py-3 text-base outline-none disabled:opacity-60 ${errCls(
+                    !!fieldErrors.email
+                  )}`}
+                  aria-invalid={!!fieldErrors.email}
+                  aria-describedby={fieldErrors.email ? 'email-error' : undefined}
                   value={email}
-                  onChange={e => setEmail(e.target.value)}
+                  onChange={e => {
+                    setEmail(e.target.value);
+                    clearFieldError('email');
+                  }}
                   disabled={submitting}
                   required
                 />
+                {/* [PATCH] Inline error */}
+                {fieldErrors.email ? (
+                  <p id="email-error" className="mt-1 text-sm text-red-600">
+                    {fieldErrors.email}
+                  </p>
+                ) : null}
               </div>
 
               {/* Phone */}
@@ -116,12 +182,24 @@ export default function CompletionDialog({
                 <input
                   type="tel"
                   placeholder="123-456-7890"
-                  className="mt-1 w-full rounded-[8px] border border-grey-300 px-4 py-3 text-base outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60"
+                  className={`mt-1 w-full rounded-[8px] border px-4 py-3 text-base outline-none disabled:opacity-60 ${errCls(
+                    !!fieldErrors.phone
+                  )}`}
+                  aria-invalid={!!fieldErrors.phone}
+                  aria-describedby={fieldErrors.phone ? 'phone-error' : undefined}
                   value={phone}
-                  onChange={e => setPhone(e.target.value)}
+                  onChange={e => {
+                    setPhone(e.target.value);
+                    clearFieldError('phone');
+                  }}
                   disabled={submitting}
                   required
                 />
+                {fieldErrors.phone ? (
+                  <p id="phone-error" className="mt-1 text-sm text-red-600">
+                    {fieldErrors.phone}
+                  </p>
+                ) : null}
               </div>
 
               {/* Desired URL */}
@@ -130,7 +208,11 @@ export default function CompletionDialog({
                   Choose your catalog URL <span className="text-red-600">*</span>
                 </label>
 
-                <div className="mt-1 flex items-stretch rounded-[8px] border border-grey-300 overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500">
+                <div
+                  className={`mt-1 flex items-stretch rounded-[8px] border overflow-hidden focus-within:ring-2 ${
+                    fieldErrors.mini_url ? 'border-red-500 focus-within:ring-red-500' : 'border-grey-300 focus-within:ring-indigo-500'
+                  }`}
+                >
                   <span className="inline-flex items-center whitespace-nowrap pl-3 text-base text-secondary">
                     {catalogDomain}/
                   </span>
@@ -142,28 +224,46 @@ export default function CompletionDialog({
                     placeholder="my-website"
                     className="flex-1 min-w-0 pl-1 pr-4 py-3 text-base outline-none disabled:opacity-60"
                     value={desiredSlug}
-                    onChange={e => setDesiredSlug(e.target.value.toLowerCase())}
+                    onChange={e => {
+                      setDesiredSlug(e.target.value.toLowerCase());
+                      clearFieldError('mini_url'); // [PATCH]
+                    }}
                     disabled={submitting}
                     required
+                    aria-invalid={!!fieldErrors.mini_url}
+                    aria-describedby={fieldErrors.mini_url ? 'mini-url-error' : undefined}
                   />
                 </div>
-                <p className="mt-1 text-xs text-slate-500">
-                  Final URL will be{' '}
-                  <code>
-                    https://{catalogDomain}/{slugCandidate || 'my-website'}
-                  </code>
-                </p>
+                {fieldErrors.mini_url ? (
+                  <p id="mini-url-error" className="mt-1 text-sm text-red-600">
+                    {fieldErrors.mini_url}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Final URL will be{' '}
+                    <code>
+                      https://{catalogDomain}/{slugCandidate || 'my-website'}
+                    </code>
+                  </p>
+                )}
               </div>
 
               {/* Terms */}
               <label className="mt-5 flex items-start gap-3 text-sm text-primary">
                 <input
                   type="checkbox"
-                  className="mt-1 h-4 w-4 rounded border-grey-300 disabled:opacity-60"
+                  className={`mt-1 h-4 w-4 rounded disabled:opacity-60 ${
+                    fieldErrors.terms_check ? 'ring-1 ring-red-400 border-red-500' : 'border-grey-300'
+                  }`}
                   checked={agree}
-                  onChange={e => setAgree(e.target.checked)}
+                  onChange={e => {
+                    setAgree(e.target.checked);
+                    clearFieldError('terms_check'); // [PATCH]
+                  }}
                   disabled={submitting}
                   required
+                  aria-invalid={!!fieldErrors.terms_check}
+                  aria-describedby={fieldErrors.terms_check ? 'terms-error' : undefined}
                 />
                 <span className="text-base text-primary">
                   I agree to the{' '}
@@ -172,6 +272,11 @@ export default function CompletionDialog({
                   </a>{' '}
                   as set out by the user agreement.
                   <span className="text-red-600"> *</span>
+                  {fieldErrors.terms_check ? (
+                    <span id="terms-error" className="ml-2 text-sm text-red-600">
+                      {fieldErrors.terms_check}
+                    </span>
+                  ) : null}
                 </span>
               </label>
 

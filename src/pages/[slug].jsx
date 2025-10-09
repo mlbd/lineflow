@@ -167,6 +167,7 @@ export async function getStaticProps({ params }) {
  * --------------------------------------------------------- */
 export default function LandingPage({
   slug,
+  pageId,
   status,
   productIds = [],
   criticalProducts = [],
@@ -324,7 +325,7 @@ export default function LandingPage({
       {status === 'pending' && !completed && (
         <CompletionDialog
           slug={slug}
-          pageId={typeof window === 'undefined' ? null : undefined /* runtime not needed */}
+          pageId={pageId}
           onSuccess={() => setCompleted(true)}
           catalogDomain={process.env.NEXT_PUBLIC_CATALOG_DOMAIN || 'catalog.lineflow.ai'}
         />
