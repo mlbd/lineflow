@@ -644,7 +644,7 @@ export default function ProductQuickViewModal({
   return (
     <>
       <Dialog open={open} onOpenChange={onClose}>
-        <DialogContent className="!max-w-[900px] p-0 rounded-2xl overflow-hidden shadow-xl">
+        <DialogContent className="!max-w-[900px] p-0 rounded-2xl overflow-hidden shadow-xl bg-white">
           <DialogClose asChild>
             <button
               className="absolute top-2 right-2 z-10 bg-white rounded-full cursor-pointer p-2 shadow hover:bg-bglighter focus:outline-none focus:ring-2 focus:ring-skyblue"

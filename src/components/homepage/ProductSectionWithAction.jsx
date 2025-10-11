@@ -6,6 +6,8 @@ import ProductColorBoxes from '@/components/page/ProductColorBoxes';
 import ProductOrderRangeLabel from '@/components/common/ProductOrderRangeLabel';
 import ProductDescription from '@/components/common/ProductDescription';
 import FilterMenu from '@/components/homepage/FilterMenu';
+import ProductQuickViewModal from '@/components/page/ProductQuickViewModal';
+import AddToCartModal from '@/components/page/AddToCartModal';
 
 import Image from 'next/image';
 import { generateProductImageUrl } from '@/utils/cloudinaryMockup';
@@ -33,21 +35,39 @@ const toBase64 = (str) =>
 
 // [PATCH] Added ShimmerImage component that uses next/image with Twitch-like shimmer overlay.
 // Fixed dimensions prevent layout shift; overlay fades out on complete.
-function ShimmerImage({ src, alt, priority = false }) {
+function ShimmerImage({ src, alt, priority = false, onClick }) {
   const [loaded, setLoaded] = useState(false);
+  const isClickable = typeof onClick === 'function';
+
+  const handleKeyDown = (e) => {
+    if (!isClickable) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onClick(e);
+    }
+  };
+
   return (
-    <div className="relative w-[464px] h-[310px] overflow-hidden rounded-2xl">
+    <div
+      className={`relative w-[464px] h-[310px] overflow-hidden rounded-2xl ${isClickable ? 'cursor-pointer' : ''}`}
+      onClick={onClick}
+      onKeyDown={handleKeyDown}
+      role={isClickable ? 'button' : undefined}
+      tabIndex={isClickable ? 0 : undefined}
+      aria-label={isClickable ? (alt || 'Open image') : undefined}
+    >
       <Image
         src={src}
         alt={alt || ''}
         width={464}
         height={310}
-        className="rounded-2xl object-cover w-[464px] h-[310px]"
+        className="rounded-2xl object-cover w-[464px] h-[310px] select-none"
         placeholder="blur"
         blurDataURL={`data:image/svg+xml;base64,${toBase64(shimmer(464, 310))}`}
         loading={priority ? 'eager' : 'lazy'}
         priority={priority}
         onLoadingComplete={() => setLoaded(true)}
+        draggable={false}
       />
       {/* shimmer sweep overlay (like twitch) */}
       <div
@@ -74,14 +94,18 @@ function ShimmerImage({ src, alt, priority = false }) {
 
 const PRODUCT_PER_PAGE = 6;
 
-export default function ProductSectionWithAction({ products = [] }) {
-  const bumpPrice = 0;
-  const companyLogos = {};
-  const pagePlacementMap = {};
-  const customBackAllowedSet = {};
+export default function ProductSectionWithAction({ 
+   products = [],
+    bumpPrice,
+    onCartAddSuccess,
+    companyLogos = {},
+    pagePlacementMap = {},
+    customBackAllowedSet = {},
+ }) {
 
   const [page, setPage] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [modalProduct, setModalProduct] = useState(null);
   const [cartModalProduct, setCartModalProduct] = useState(null);
 
   // 🔁 re-render when any product's override changes
@@ -163,11 +187,13 @@ export default function ProductSectionWithAction({ products = [] }) {
                       src={url}
                       alt={p.name}
                       priority={idx < PRODUCT_PER_PAGE} // eager-preload only first page items
+                      onClick={() => setModalProduct(p)}
+                      className="cursor-pointer"
                     />
                   </div>
                   <div class="self-stretch flex flex-col justify-start items-start gap-[30px]">
                     <div class="self-stretch flex flex-col justify-start items-start gap-3">
-                      <div class="self-stretch justify-start text-secondary text-2xl font-semibold">
+                      <div class="self-stretch justify-start text-secondary text-2xl font-semibold cursor-pointer" onClick={() => setModalProduct(p)}>
                         {p.name}
                       </div>
                       <div class="self-stretch relative flex flex-col justify-start items-start gap-[7px]">
@@ -180,14 +206,15 @@ export default function ProductSectionWithAction({ products = [] }) {
                           <div class="justify-start"></div>
                         </div>
                       </div>
-                      <ProductColorBoxes acf={p.acf} />
+                      <ProductColorBoxes acf={p.acf} onBoxClick={() => setModalProduct(p)} />
                     </div>
                     <div class="self-stretch inline-flex justify-between items-center">
                       <ProductPriceLabel product={p} bumpPrice={null} priceMode="min" />
                       <ProductOrderRangeLabel product={p} itemsMode="min" />
                       <button
                         type="button"
-                        class="px-6 py-3 bg-tertiary rounded-[100px] shadow-[4px_4px_10px_0px_rgba(13,0,113,0.16)] flex justify-center items-center gap-1.5 text-white text-base font-semibold leading-snug"
+                        class="px-6 cursor-pointer py-3 bg-tertiary rounded-[100px] shadow-[4px_4px_10px_0px_rgba(13,0,113,0.16)] flex justify-center items-center gap-1.5 text-white text-base font-semibold leading-snug"
+                        onClick={() => setModalProduct(p)}
                       >
                         More Info
                       </button>
@@ -217,6 +244,34 @@ export default function ProductSectionWithAction({ products = [] }) {
           </div>
         )}
       </div>
+
+      {/* Modals */}
+      <ProductQuickViewModal
+        open={!!modalProduct}
+        onClose={() => setModalProduct(null)}
+        product={modalProduct}
+        onAddToCart={nextProduct => {
+          setModalProduct(null);
+          setTimeout(() => setCartModalProduct(nextProduct || modalProduct), 120);
+        }}
+        companyLogos={companyLogos}
+        bumpPrice={bumpPrice}
+        pagePlacementMap={pagePlacementMap}
+        customBackAllowedSet={customBackAllowedSet}
+      />
+      <AddToCartModal
+        open={!!cartModalProduct}
+        onClose={() => setCartModalProduct(null)}
+        product={cartModalProduct}
+        bumpPrice={bumpPrice}
+        onOpenQuickView={p => {
+          setCartModalProduct(null);
+          setTimeout(() => setModalProduct(p), 120);
+        }}
+        onCartAddSuccess={onCartAddSuccess}
+        pagePlacementMap={pagePlacementMap}
+        customBackAllowedSet={customBackAllowedSet}
+      />
     </section>
   );
 }
