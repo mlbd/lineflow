@@ -7,8 +7,9 @@ import CircleReveal from '@/components/CircleReveal';
 import TopBar from '@/components/page/TopBar';
 import HeroSection from '@/components/page/HeroSection';
 import InfoBoxSection from '@/components/page/InfoBoxSection';
-import Footer from '@/components/page/Footer';
+import Footer from '@/components/common/Footer';
 import ProductsShell from '@/components/page/ProductsShell';
+import GeneralProducts from '@/components/homepage/GeneralProducts';
 
 import CompletionDialog from '@/components/catalog/CompletionDialog';
 import { useRouter } from 'next/router';

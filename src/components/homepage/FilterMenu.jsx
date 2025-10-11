@@ -5,6 +5,7 @@ export default function FilterMenu({
   setSelectedCategory,
   allCategories,
   categoryName,
+  alignment = 'justify-start',
 }) {
   const [backgroundStyle, setBackgroundStyle] = useState({});
   const [isBackgroundVisible, setIsBackgroundVisible] = useState(false);
@@ -78,7 +79,7 @@ export default function FilterMenu({
   }, [selectedCategory]);
 
   return (
-    <div className="mb-10 flex flex-wrap gap-2 items-center justify-start">
+    <div className={`mb-10 flex flex-wrap gap-2 items-center ${alignment}`}>
       <div
         ref={menuRef}
         className="relative flex flex-wrap gap-2 items-center justify-center bg-primary-100 p-[10px] rounded-[100px]"

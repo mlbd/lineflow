@@ -1,6 +1,7 @@
 // components/page/ProductsShell.jsx
 import { useEffect, useState } from 'react';
 import ProductListSection from '@/components/page/ProductListSection';
+import ProductSectionWithAction from '@/components/homepage/ProductSectionWithAction';
 import CartPage from '@/components/cart/CartPage';
 
 export function ProductsShell({
@@ -102,18 +103,20 @@ export function ProductsShell({
 
   return (
     <>
-      <ProductListSection
-        products={products}
-        bumpPrice={bumpPrice}
-        onCartAddSuccess={() => {
-          if (cartSectionRef?.current) {
-            cartSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
-        }}
-        companyLogos={companyLogos}
-        pagePlacementMap={pagePlacementMap}
-        customBackAllowedSet={customBackAllowedSet}
-      />
+      <div className="container mx-auto">
+        <ProductSectionWithAction
+          products={products}
+          bumpPrice={bumpPrice}
+          onCartAddSuccess={() => {
+            if (cartSectionRef?.current) {
+              cartSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          }}
+          companyLogos={companyLogos}
+          pagePlacementMap={pagePlacementMap}
+          customBackAllowedSet={customBackAllowedSet}
+        />
+      </div>
 
       <div className="w-full" ref={cartSectionRef}>
         <CartPage

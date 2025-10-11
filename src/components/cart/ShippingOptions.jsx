@@ -1,6 +1,6 @@
 'use client';
 
-import { useCartItems, getTotalPrice, getCartTotalPrice } from './cartStore';
+import { getTotalPrice, useCartItems } from './cartStore';
 
 // [PATCH] Added: cents helpers for precise math + 2-decimal display
 const toCents = v => Math.round(Number(v ?? 0) * 100);
@@ -40,9 +40,9 @@ export default function ShippingOptions({
   const cartTotalPreciseCents = Math.max(0, subtotalCents - couponDiscountCents + shippingCents);
 
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl shadow-md space-y-6">
-      <h3 className="text-lg font-bold text-gray-900 text-center border-b mb-4 border-gray-200 py-6">
-        Shipping Options
+    <div className="rounded-[22px] bg-[#F3F2FF] p-6 md:p-7 lg:p-8 shadow-[0_10px_30px_rgba(10,0,110,0.08)] space-y-6">
+      <h3 className="text-[18px] font-semibold text-[#0A006E] tracking-[-0.2px]">
+        Shipping Option
       </h3>
 
       {loading ? (
@@ -53,32 +53,32 @@ export default function ShippingOptions({
             {shippingOptions.map(option => (
               <label
                 key={option.id}
-                className={`relative cursor-pointer flex py-2 px-4 items-center gap-3 transition-all text-left
-                  ${
-                    selectedShipping?.id === option.id
-                      ? 'border-blue-600 bg-blue-50 shadow'
-                      : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50'
-                  }
-                `}
+                className={`relative cursor-pointer flex items-start gap-3 rounded-2xl px-3 py-3 transition
+              ${selectedShipping?.id === option.id ? 'bg-transparent' : 'hover:bg-white/50'}
+            `}
               >
-                <span
-                  className={`absolute left-0 h-[100%] z-0 w-[30px] bg-blue-700
-                  ${selectedShipping?.id === option.id ? 'bg-blue-600' : 'bg-gray-200'}`}
-                ></span>
+                {/* radio */}
                 <input
                   type="radio"
                   name="shipping"
                   checked={selectedShipping?.id === option.id}
                   onChange={() => onShippingSelect && onShippingSelect(option)}
-                  className="mt-1 -left-[8px] shrink-0 relative z-1 accent-blue-600"
+                  className="mt-1 shrink-0 accent-[#0A006E] h-4 w-4"
                 />
+
+                {/* text */}
                 <div className="flex flex-col flex-grow">
-                  <div className="flex justify-between items-center w-full">
-                    <span className="font-semibold text-sm text-gray-900">
-                      {option.label} {option.cost === 0 ? 'Free' : `$${option.cost}`}
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-semibold text-[15px] text-gray-900">{option.label}</span>
+
+                    {/* right price */}
+                    <span className="text-[14px] font-bold text-[#0A006E]">
+                      {option.cost === 0
+                        ? '$0.00 (Free)'
+                        : `$${option.cost.toFixed?.(2) ?? option.cost}`}
                     </span>
                   </div>
-                  <span className="text-xs text-gray-500">
+                  <span className="mt-1 text-xs text-gray-500">
                     {option.method_id === 'free_shipping'
                       ? 'Free shipping / Self pickup'
                       : 'Paid shipping'}
@@ -86,6 +86,7 @@ export default function ShippingOptions({
                 </div>
               </label>
             ))}
+
             {shippingOptions.length === 0 && (
               <div className="text-gray-400 text-center py-4">
                 No shipping options available for the current cart.
@@ -93,38 +94,26 @@ export default function ShippingOptions({
             )}
           </div>
 
-          {/* Subtotal + Coupon + Checkout */}
-          <div className="space-y-4 pt-2">
-            <div className="flex flex-col justify-center items-center text-sm text-gray-700">
-              <span className="text-2xl font-bold">Total:</span>
-              <span className="text-3xl font-bold">${fmt2(cartTotalPreciseCents)}</span>
-            </div>
-            {coupon && coupon.valid && (
-              <div className="flex flex-col items-center gap-1">
-                <div className="flex items-center gap-2 text-pink-600 text-sm font-semibold">
-                  <span>Coupon:</span>
-                  <span className="font-bold">{coupon.code || couponLabel}</span>
-                  <span>-${fmt2(couponDiscountCents)}</span>
-                  {onRemoveCoupon && (
-                    <button
-                      type="button"
-                      className="text-red-500 hover:text-red-700 underline text-xs font-normal ml-2"
-                      onClick={onRemoveCoupon}
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
+          {/* Total pill */}
+          <div className="pt-2">
+            <div className="mx-auto w-full rounded-2xl bg-white px-4 py-3 shadow-[0_6px_18px_rgba(16,24,40,0.08)] ring-1 ring-black/5">
+              <div className="flex items-center justify-between">
+                <span className="text-[20px] font-bold text-gray-800">Total</span>
+                <span className="text-[28px] font-extrabold tracking-tight text-[#0A006E]">
+                  ${fmt2(cartTotalPreciseCents)}
+                </span>
               </div>
-            )}
-            <div className="text-center pb-6">
-              <button
-                className="w-[80%] py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition cursor-pointer"
-                disabled={!selectedShipping}
-              >
-                Proceed to payment
-              </button>
             </div>
+          </div>
+
+          {/* CTA */}
+          <div className="text-center pb-1">
+            <button
+              className="w-full md:w-[92%] mx-auto py-3.5 rounded-full bg-gradient-to-b from-[#0D0071] to-[#0D0071] text-white font-semibold shadow-[0_10px_24px_rgba(10,0,110,0.25)] hover:brightness-110 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!selectedShipping}
+            >
+              Proceed to Payment
+            </button>
           </div>
         </>
       )}

@@ -1,25 +1,26 @@
 // CartPage.jsx
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import CartEmpty from './CartEmpty';
+import CartItem from './CartItem';
+import CartShimmer from './CartShimmer';
 import {
   useCartItems,
-  useCustomerNote,
-  useSetCustomerNote,
   useCoupon,
-  useSetCoupon,
+  useCustomerNote,
   useRemoveCoupon,
+  useSetCoupon,
+  useSetCustomerNote,
 } from './cartStore';
-import CartItem from './CartItem';
 import Checkout from './Checkout';
-import CartEmpty from './CartEmpty';
-import ShippingOptions from './ShippingOptions';
 import CouponField from './CouponField';
-import CartShimmer from './CartShimmer';
+import ShippingOptions from './ShippingOptions';
+import StripeCheckout from './StripeCheckout';
 
-import ProductQuickViewModal from '@/components/page/ProductQuickViewModal';
-import AddToCartModal from '@/components/page/AddToCartModal';
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
+import AddToCartModal from '@/components/page/AddToCartModal';
+import ProductQuickViewModal from '@/components/page/ProductQuickViewModal';
 import { wpApiFetch } from '@/lib/wpApi';
 
 // [PATCH] Added: Normalize a placements array/string into a stable signature used for cart-only grouping
@@ -268,8 +269,8 @@ export default function CartPage({
 
   return (
     <div className="relative bg-bglight">
-      <div className="mt-16 max-w-[900px] mx-auto w-full">
-        <div className="container mx-auto py-8 px-4">
+      <div className="mt-16 w-full py-8 px-4">
+        <div className="container mx-auto">
           <h1 className="text-3xl font-bold mb-8 text-center">Shopping Cart</h1>
 
           {validating ? (
@@ -277,7 +278,7 @@ export default function CartPage({
           ) : (
             <div className="flex flex-col md:flex-row gap-8 items-start">
               {/* Cart Section */}
-              <div className="md:w-[70%] w-full">
+              <div className="md:w-[65%] w-full">
                 {/* Header */}
                 {arranged.length > 0 && (
                   <div className="grid grid-cols-7 gap-0 p-4 bg-gray-50 border border-gray-200 rounded-lg mb-4">
@@ -346,7 +347,7 @@ export default function CartPage({
               </div>
 
               {/* Shipping / Summary */}
-              <div className="md:w-[30%] min-w-[260px] max-w-[370px] w-full sticky top-8 self-start">
+              <div className="md:w-[35%] min-w-[260px] max-w-[370px] w-full sticky top-8 self-start">
                 <ShippingOptions
                   shippingOptions={shippingOptions}
                   loading={shippingLoading}
@@ -363,18 +364,18 @@ export default function CartPage({
 
       {/* Checkout block */}
       <div className="py-[50px] mt-[50px] bg-white">
-        <div className="mt-16 flex justify-center max-w-[900px] mx-auto w-full">
-          <div className="w-8/12">
-            <Checkout
-              selectedShipping={selectedShipping}
-              coupon={coupon && coupon.valid ? coupon : null}
-              userMeta={acf}
-              companyData={companyData}
-              pagePlacementMap={pagePlacementMap}
-              customBackAllowedSet={customBackAllowedSet}
-              slug={slug}
-            />
-          </div>
+        <div className="container mx-auto">
+          <div className='mt-16 flex justify-center'>
+            <StripeCheckout
+                selectedShipping={selectedShipping}
+                coupon={coupon && coupon.valid ? coupon : null}
+                userMeta={acf}
+                companyData={companyData}
+                pagePlacementMap={pagePlacementMap}
+                customBackAllowedSet={customBackAllowedSet}
+                slug={slug}
+              />
+            </div>
         </div>
       </div>
 
