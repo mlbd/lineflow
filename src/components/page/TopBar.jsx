@@ -73,7 +73,7 @@ export default function TopBar({ onCartClick }) {
           </Link>
         </div>
 
-        {/* Cart Icon */}
+        {/*Cart Icon*/}
         {/* <div className="flex items-center">
           <button
             className="relative group cursor-pointer ml-5"
