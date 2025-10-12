@@ -1,22 +1,21 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogClose,
-  DialogDescription,
-} from '@/components/ui/dialog';
-import { ChevronLeft, ChevronRight, ChevronDown, X, Check } from 'lucide-react';
+import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
 import ImageGalleryOverlay from '@/components/page/ImageGalleryOverlay';
 import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   generateProductImageUrl,
-  setForceBackOverrides,
-  clearForceBackScope,
+  setForceBackOverrides
 } from '@/utils/cloudinaryMockup';
-import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
 import { buildPlacementSignature } from '@/utils/placements';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 /* ======= Config (magnifier off by default) ======= */
 const DISPLAY_MAX = 640;
@@ -78,13 +77,13 @@ function PriceChart({ steps, regularPrice, currency = '$', extraEach = 0 }) {
 
   return (
     <div className="w-full">
-      <h2 className="text-xl font-semibold text-center mb-2">Quantity Pricing</h2>
+      <h2 className="text-xl font-semibold text-left mb-2">Quantity Pricing</h2>
       <div className="mt-4 w-full">
-        <div className="grid grid-cols-1 sm:grid-cols-2 border rounded-xl overflow-hidden">
+        <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 rounded-xl overflow-hidden">
           {steps.map((step, i) => {
             const rowIdx = Math.floor(i / 2);
             const colIdx = i % 2;
-            const checkerBg = rowIdx % 2 === colIdx % 2 ? 'bg-bglight' : '';
+            // const checkerBg = rowIdx % 2 === colIdx % 2 ? 'bg-bglight' : '';
             const stepAmt = parseMoney(step?.amount);
             const useRegularForFirstTier = i === 0 && stepAmt === 0 && regular > 0;
             const display = (
@@ -93,7 +92,7 @@ function PriceChart({ steps, regularPrice, currency = '$', extraEach = 0 }) {
             return (
               <div
                 key={i}
-                className={`flex flex-col items-center border-b last:border-b-0 sm:border-r px-4 py-3 ${checkerBg}`}
+                className={`flex flex-col items-center px-4 py-3 rounded-[8px] bg-bglight`}
               >
                 <div className="text-lg font-bold text-primary">
                   {currency}
@@ -654,29 +653,47 @@ export default function ProductQuickViewModal({
             </button>
           </DialogClose>
 
-          <div className="flex items-center justify-center w-full pt-8 pb-2">
-            <DialogTitle className="text-2xl font-bold text-deepblue mb-2">
-              {product?.name}
-            </DialogTitle>
-          </div>
-
-          <div className="flex flex-row w-full pb-8" style={{ minHeight: 360 }}>
+          <div className="flex flex-row w-full pb-10 pt-10" style={{ minHeight: 360 }}>
             {/* Left column */}
             <div
-              className="flex flex-col justify-start px-[35px] pt-2 pb-8"
-              style={{ flexBasis: '38%' }}
+              className="flex flex-col justify-between px-[35px] pt-2 pb-0"
+              style={{ flexBasis: '48%' }}
             >
+              <DialogTitle className="text-2xl font-bold text-black mb-2">
+                {product?.name}
+              </DialogTitle>
               <DialogDescription className="prose prose-sm max-w-none mb-4 text-primary">
                 {product?.acf?.pricing_description
                   ? product.acf.pricing_description.replace(/<[^>]+>/g, '')
                   : 'Product Details'}
               </DialogDescription>
 
+              <PriceChart
+                steps={steps}
+                regularPrice={product?.regular_price ?? product?.price}
+                extraEach={extraEach}
+              />
+
+              <div>
+                <button
+                  className="alarnd-btn mt-5 bg-primary-500 rounded-full font-normal text-white"
+                  onClick={handleAddToCartClick}
+                >
+                  Select Size & Quantity
+                </button>
+              </div>
+            </div>
+
+            {/* Right column */}
+            <div
+              className="flex flex-col justify-center items-center relative px-10"
+              style={{ flexBasis: '52%' }}
+            >
               {/* AREA FILTER */}
               {basePlacements.length > 0 && (
-                <div className="mb-4">
-                  <div className="text-xs text-gray-500 mb-1">Logo Placements</div>
-                  <div className="flex flex-wrap gap-2">
+                <div className="mb-4 w-full flex flex-col justify-items-start">
+                  <div className="text-lg font-bold text-gray-900 mb-5">Logo Placements</div>
+                  <div className="flex flex-wrap gap-4">
                     {basePlacements.map(p => {
                       const nm = p?.name || '';
                       const orig = !!p?.active; // from base (store/page/product)
@@ -698,15 +715,15 @@ export default function ProductQuickViewModal({
                             type="button"
                             onClick={() => toggleArea(nm)}
                             // [PATCH] Keep the same state-color logic, but make container flex to host segments
-                            className={`inline-flex items-stretch rounded-full border text-[11px] leading-[11px] font-medium transition relative cursor-pointer overflow-hidden
+                            className={`inline-flex items-stretch rounded-full border text-[14px] leading-[14px] font-medium capitalize transition relative cursor-pointer overflow-hidden
                               ${
                                 effectiveActive
-                                  ? 'bg-emerald-600 text-white border-none'
+                                  ? 'bg-primary-100 text-primary-500 ring-2 ring-primatext-primary-500 border border-white shadow-[0_6px_16px_rgba(18,10,122,0.15)]'
                                   : isAdded
-                                    ? 'bg-sky-600 text-white border-sky-600'
+                                    ? 'bg-primary-100 text-primary-500 ring-2 ring-primatext-primary-500 border border-white shadow-[0_6px_16px_rgba(18,10,122,0.15)]'
                                     : isRemoved
-                                      ? 'bg-gray-300 text-gray-700 border-gray-300'
-                                      : 'bg-white text-primary border-gray-300 hover:bg-gray-50'
+                                      ? 'bg-gray-100 text-gray-500 border border-gray-100 hover:bg-gray-200 hover:border-gray-200'
+                                      : 'bg-gray-100 text-gray-500 border border-gray-100 hover:bg-gray-200 hover:border-gray-200'
                               }`}
                             title={nm}
                             aria-label={nm}
@@ -789,31 +806,10 @@ export default function ProductQuickViewModal({
                 </div>
               )}
 
-              <PriceChart
-                steps={steps}
-                regularPrice={product?.regular_price ?? product?.price}
-                extraEach={extraEach}
-              />
-
-              <div>
-                <button
-                  className="alarnd-btn mt-5 bg-primary text-white"
-                  onClick={handleAddToCartClick}
-                >
-                  Add to cart
-                </button>
-              </div>
-            </div>
-
-            {/* Right column */}
-            <div
-              className="flex flex-col justify-center items-center relative"
-              style={{ flexBasis: '62%' }}
-            >
               <div
                 ref={containerRef}
-                className="flex items-center justify-center w-full relative"
-                style={{ height: 310 }}
+                className="flex items-center justify-center w-full mb-6 relative"
+                style={{ height: 320 }}
                 onMouseEnter={ENABLE_MAGNIFY ? () => setLensVisible(true) : undefined}
                 onMouseLeave={ENABLE_MAGNIFY ? () => setLensVisible(false) : undefined}
                 onMouseMove={ENABLE_MAGNIFY ? handleMouseMove : undefined}
@@ -823,7 +819,7 @@ export default function ProductQuickViewModal({
                     ref={imgRef}
                     src={slideSrc}
                     alt={hasSlider ? acf.color[sliderIdx]?.title || product.name : product.name}
-                    className={`max-h-[300px] max-w-full object-contain rounded-xl shadow transition-opacity duration-200 ${
+                    className={`max-h-[400px] max-w-full object-contain rounded-2xl shadow transition-opacity duration-200 ${
                       slideLoading ? 'opacity-70' : 'opacity-100'
                     } ${ENABLE_CLICK_TO_POPUP ? 'cursor-zoom-in' : 'cursor-default'}`}
                     loading="eager"
@@ -832,7 +828,7 @@ export default function ProductQuickViewModal({
                     draggable={false}
                   />
                 ) : (
-                  <div className="h-[300px] w-full max-w-[520px] rounded-xl bg-gray-100 animate-pulse" />
+                  <div className="h-[400px] w-full max-w-[520px] rounded-xl bg-gray-100 animate-pulse" />
                 )}
 
                 {(slideLoading || preloading) && (
@@ -873,45 +869,59 @@ export default function ProductQuickViewModal({
               {hasSlider && colors.length > 1 && (
                 <>
                   <button
-                    className="absolute top-1/2 mt-[-11px] left-2 -translate-y-1/2 bg-white rounded-full p-2 shadow cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="absolute bottom-0 left-10 translate-y-[6px] flex h-[64px] w-[64px] items-center justify-center rounded-full bg-[#120A7A] text-white shadow-[0_16px_40px_rgba(18,10,122,0.35)] disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={() => setSliderIdx((sliderIdx - 1 + colors.length) % colors.length)}
                     aria-label="Previous"
                     disabled={navDisabled}
                     type="button"
                   >
-                    <ChevronLeft className="w-5 h-5" />
+                    <ChevronLeft className="w-8 h-8" />
                   </button>
                   <button
-                    className="absolute top-1/2 mt-[-11px] right-2 -translate-y-1/2 bg-white rounded-full p-2 shadow cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="absolute bottom-0 right-10 translate-y-[6px] flex h-[64px] w-[64px] items-center justify-center rounded-full bg-[#120A7A] text-white shadow-[0_16px_40px_rgba(18,10,122,0.35)] disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={() => setSliderIdx((sliderIdx + 1) % colors.length)}
                     aria-label="Next"
                     disabled={navDisabled}
                     type="button"
                   >
-                    <ChevronRight className="w-5 h-5" />
+                    <ChevronRight className="w-8 h-8" />
                   </button>
                 </>
               )}
 
               {/* Color dots */}
               {hasSlider && (
-                <div className="flex justify-center mt-4 gap-2">
-                  {colors.map((clr, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setSliderIdx(idx)}
-                      disabled={navDisabled && idx !== sliderIdx}
-                      className={`w-[20px] h-[20px] rounded-[7px] border-2 shadow-[0_0_0_2px_white,0_0_0_3px_#cccccc] transition-all duration-150
-                        ${sliderIdx === idx ? 'ring-2 ring-skyblue' : ''} ${navDisabled ? 'opacity-60' : ''}`}
-                      style={{
-                        background: clr.color_hex_code,
-                        cursor: navDisabled ? 'not-allowed' : 'pointer',
-                      }}
-                      title={clr.title}
-                      aria-label={clr.title}
-                      type="button"
-                    />
-                  ))}
+                <div className="mt-4 flex justify-center gap-3">
+                  {colors.map((clr, idx) => {
+                    const isSelected = sliderIdx === idx;
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => setSliderIdx(idx)}
+                        disabled={navDisabled && idx !== sliderIdx}
+                        className={[
+                          'relative h-10 w-10 rounded-[10px] transition-all duration-150',
+                          'border-2 border-white outline outline-2 outline-[#C9CDD6]',
+                          isSelected
+                            ? 'ring-3 ring-primary-500 shadow-[0_4px_12px_rgba(0,0,0,0.10)]'
+                            : 'shadow-[0_2px_8px_rgba(0,0,0,0.06)]',
+                          navDisabled && idx !== sliderIdx
+                            ? 'opacity-60 cursor-not-allowed'
+                            : 'cursor-pointer',
+                          isSelected
+                            ? "before:content-[''] before:absolute before:inset-0 before:m-auto before:h-4 before:w-4 before:rounded-full before:bg-primary-500 before:ring-2 before:ring-white " +
+                              "after:content-[''] after:absolute after:inset-0 after:m-auto after:h-[9px] after:w-[5px] after:rotate-45 after:border-b-2 after:border-r-2 after:border-white after:bottom-0.5"
+                            : '',
+                        ].join(' ')}
+                        style={{
+                          background: clr?.color_hex_code || '#D9DDE6',
+                        }}
+                        title={clr.title}
+                        aria-label={clr.title}
+                        type="button"
+                      />
+                    );
+                  })}
                 </div>
               )}
 

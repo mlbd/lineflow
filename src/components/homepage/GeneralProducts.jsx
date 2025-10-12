@@ -1,6 +1,6 @@
 // components/page/ProductsShell.jsx
-import { useEffect, useState } from 'react';
 import ProductSectionNoAction from '@/components/homepage/ProductSectionNoAction';
+import { useEffect, useState } from 'react';
 
 function GeneralProducts({ productIds, criticalProducts = [], cacheBust = 0 }) {
   const [products, setProducts] = useState(criticalProducts);
