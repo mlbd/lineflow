@@ -107,9 +107,7 @@ function AboutUs() {
 
           {/* Glimpse / Orders block with slider */}
           <div className="self-stretch px-9 pt-9 pb-12 bg-[#eef6ff]/20 rounded-3xl flex flex-col justify-start items-center gap-8 mt-10">
-            <div className="w-full">
-              {/* Slider kept disabled for now */}
-            </div>
+            <div className="w-full">{/* Slider kept disabled for now */}</div>
 
             <div className="inline-flex justify-start items-start gap-[42px]">
               <div className="flex-1 justify-start text-white text-[28px] font-semibold ">

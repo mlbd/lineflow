@@ -67,19 +67,17 @@ export async function POST(req) {
     if (!wpRes.ok) {
       const text = await wpRes.text();
       console.error('[stripe:finalize] WP order/create failed', text);
-      return new NextResponse(
-        JSON.stringify({ error: 'WP order create failed', details: text }),
-        { status: 502 }
-      );
+      return new NextResponse(JSON.stringify({ error: 'WP order create failed', details: text }), {
+        status: 502,
+      });
     }
 
     const order = await wpRes.json();
     return NextResponse.json({ ok: true, order }, { status: 200 });
   } catch (err) {
     console.error('[stripe:finalize] error', err);
-    return new NextResponse(
-      JSON.stringify({ error: err?.message || 'Finalize failed' }),
-      { status: 400 }
-    );
+    return new NextResponse(JSON.stringify({ error: err?.message || 'Finalize failed' }), {
+      status: 400,
+    });
   }
 }

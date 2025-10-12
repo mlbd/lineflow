@@ -18,7 +18,9 @@ export async function POST(req) {
 
     const sig = req.headers.get('stripe-signature');
     if (!sig) {
-      return new NextResponse(JSON.stringify({ error: 'Missing stripe-signature header' }), { status: 400 });
+      return new NextResponse(JSON.stringify({ error: 'Missing stripe-signature header' }), {
+        status: 400,
+      });
     }
 
     // Use raw body for signature verification
@@ -26,11 +28,7 @@ export async function POST(req) {
 
     let event;
     try {
-      event = stripe.webhooks.constructEvent(
-        rawBody,
-        sig,
-        process.env.STRIPE_WEBHOOK_SECRET
-      );
+      event = stripe.webhooks.constructEvent(rawBody, sig, process.env.STRIPE_WEBHOOK_SECRET);
     } catch (e) {
       console.error('[stripe:webhook] signature verification failed', e);
       return new NextResponse(
@@ -52,12 +50,9 @@ export async function POST(req) {
           amount_received: intent.amount_received,
           currency: intent.currency,
           receipt_email:
-            intent.receipt_email ||
-            intent.charges?.data?.[0]?.billing_details?.email ||
-            null,
+            intent.receipt_email || intent.charges?.data?.[0]?.billing_details?.email || null,
           payment_meta: {
-            charge_id:
-              intent.latest_charge || intent.charges?.data?.[0]?.id || null,
+            charge_id: intent.latest_charge || intent.charges?.data?.[0]?.id || null,
           },
         };
 
@@ -92,9 +87,8 @@ export async function POST(req) {
     }
   } catch (err) {
     console.error('[stripe:webhook] error', err);
-    return new NextResponse(
-      JSON.stringify({ error: err?.message || 'Webhook error' }),
-      { status: 400 }
-    );
+    return new NextResponse(JSON.stringify({ error: err?.message || 'Webhook error' }), {
+      status: 400,
+    });
   }
 }

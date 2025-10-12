@@ -3,6 +3,14 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@theme {
+  --breakpoint-sm: 600px;
+  --breakpoint-md: 728px;
+  --breakpoint-lg: 984px;
+  --breakpoint-xl: 1240px;
+  --breakpoint-2xl: 1440px;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -433,4 +441,12 @@ button[data-slot='dialog-close']:last-of-type {
 
 .animate-sine-wave-fast {
   animation: sine-wave-fast 1.5s infinite linear;
+}
+
+
+/* tailwind globals or a css file you include */
+.allaround-scrollbar {
+  /* [PATCH] Added: reserve gutter so layout doesn’t shift when the Y scrollbar appears */
+  scrollbar-gutter: stable both-edges;
+  overscroll-behavior: contain;
 }

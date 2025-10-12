@@ -28,6 +28,6 @@ export async function getJwtToken() {
     return await fetchNewToken();
   }
 
-  console.log('getJwtToken: using cached token',accessToken);
+  console.log('getJwtToken: using cached token', accessToken);
   return accessToken;
 }

@@ -365,17 +365,17 @@ export default function CartPage({
       {/* Checkout block */}
       <div className="py-[50px] mt-[50px] bg-white">
         <div className="container mx-auto">
-          <div className='mt-16 flex justify-center'>
+          <div className="mt-16 flex justify-center">
             <StripeCheckout
-                selectedShipping={selectedShipping}
-                coupon={coupon && coupon.valid ? coupon : null}
-                userMeta={acf}
-                companyData={companyData}
-                pagePlacementMap={pagePlacementMap}
-                customBackAllowedSet={customBackAllowedSet}
-                slug={slug}
-              />
-            </div>
+              selectedShipping={selectedShipping}
+              coupon={coupon && coupon.valid ? coupon : null}
+              userMeta={acf}
+              companyData={companyData}
+              pagePlacementMap={pagePlacementMap}
+              customBackAllowedSet={customBackAllowedSet}
+              slug={slug}
+            />
+          </div>
         </div>
       </div>
 

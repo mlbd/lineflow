@@ -18,7 +18,10 @@ export async function GET(req) {
 
     const res = new NextResponse(text, { status: 200 });
     res.headers.set('Content-Type', 'text/plain; charset=utf-8');
-    res.headers.set('Cache-Control', 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400');
+    res.headers.set(
+      'Cache-Control',
+      'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400'
+    );
     return res;
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
