@@ -1,5 +1,5 @@
 import Image from 'next/image';
-import { useRef, useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export default function ProductColorBoxes({ acf }) {
   const wrapperRef = useRef(null);

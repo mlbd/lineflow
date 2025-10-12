@@ -1,17 +1,15 @@
-import { useState, useMemo, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import ProductPriceLabel from '@/components/page/ProductPriceLabel';
-import ProductColorBoxes from '@/components/page/ProductColorBoxes';
-import ProductOrderRangeLabel from '@/components/common/ProductOrderRangeLabel';
 import ProductDescription from '@/components/common/ProductDescription';
+import ProductOrderRangeLabel from '@/components/common/ProductOrderRangeLabel';
 import FilterMenu from '@/components/homepage/FilterMenu';
-import ProductQuickViewModal from '@/components/page/ProductQuickViewModal';
 import AddToCartModal from '@/components/page/AddToCartModal';
+import ProductColorBoxes from '@/components/page/ProductColorBoxes';
+import ProductPriceLabel from '@/components/page/ProductPriceLabel';
+import ProductQuickViewModal from '@/components/page/ProductQuickViewModal';
+import { useEffect, useMemo, useState } from 'react';
 
-import Image from 'next/image';
-import { generateProductImageUrl } from '@/utils/cloudinaryMockup';
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
+import { generateProductImageUrl } from '@/utils/cloudinaryMockup';
+import Image from 'next/image';
 
 // [PATCH] Added shimmer helpers for blur placeholder
 // Place near the imports at the top of the file.
@@ -28,10 +26,8 @@ const shimmer = (w, h) => `
     <rect id="r" width="${w}" height="${h}" fill="url(#g)" />
     <animate xlink:href="#r" attributeName="x" from="-${w}" to="${w}" dur="1.4s" repeatCount="indefinite"  />
   </svg>`;
-const toBase64 = (str) =>
-  typeof window === 'undefined'
-    ? Buffer.from(str).toString('base64')
-    : window.btoa(str);
+const toBase64 = str =>
+  typeof window === 'undefined' ? Buffer.from(str).toString('base64') : window.btoa(str);
 
 // [PATCH] Added ShimmerImage component that uses next/image with Twitch-like shimmer overlay.
 // Fixed dimensions prevent layout shift; overlay fades out on complete.
@@ -39,7 +35,7 @@ function ShimmerImage({ src, alt, priority = false, onClick }) {
   const [loaded, setLoaded] = useState(false);
   const isClickable = typeof onClick === 'function';
 
-  const handleKeyDown = (e) => {
+  const handleKeyDown = e => {
     if (!isClickable) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -49,19 +45,19 @@ function ShimmerImage({ src, alt, priority = false, onClick }) {
 
   return (
     <div
-      className={`relative w-[464px] h-[310px] overflow-hidden rounded-2xl ${isClickable ? 'cursor-pointer' : ''}`}
+      className={`relative max-w-[464px] max-h-[310px] overflow-hidden rounded-2xl ${isClickable ? 'cursor-pointer' : ''}`}
       onClick={onClick}
       onKeyDown={handleKeyDown}
       role={isClickable ? 'button' : undefined}
       tabIndex={isClickable ? 0 : undefined}
-      aria-label={isClickable ? (alt || 'Open image') : undefined}
+      aria-label={isClickable ? alt || 'Open image' : undefined}
     >
       <Image
         src={src}
         alt={alt || ''}
         width={464}
         height={310}
-        className="rounded-2xl object-cover w-[464px] h-[310px] select-none"
+        className="rounded-2xl object-cover max-w-full w-[464px] max-h-[310px] select-none"
         placeholder="blur"
         blurDataURL={`data:image/svg+xml;base64,${toBase64(shimmer(464, 310))}`}
         loading={priority ? 'eager' : 'lazy'}
@@ -91,18 +87,16 @@ function ShimmerImage({ src, alt, priority = false, onClick }) {
   );
 }
 
-
 const PRODUCT_PER_PAGE = 6;
 
-export default function ProductSectionWithAction({ 
-   products = [],
-    bumpPrice,
-    onCartAddSuccess,
-    companyLogos = {},
-    pagePlacementMap = {},
-    customBackAllowedSet = {},
- }) {
-
+export default function ProductSectionWithAction({
+  products = [],
+  bumpPrice,
+  onCartAddSuccess,
+  companyLogos = {},
+  pagePlacementMap = {},
+  customBackAllowedSet = {},
+}) {
   const [page, setPage] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [modalProduct, setModalProduct] = useState(null);
@@ -193,7 +187,10 @@ export default function ProductSectionWithAction({
                   </div>
                   <div class="self-stretch flex flex-col justify-start items-start gap-[30px]">
                     <div class="self-stretch flex flex-col justify-start items-start gap-3">
-                      <div class="self-stretch justify-start text-secondary text-2xl font-semibold cursor-pointer" onClick={() => setModalProduct(p)}>
+                      <div
+                        class="self-stretch justify-start text-secondary text-2xl font-semibold cursor-pointer"
+                        onClick={() => setModalProduct(p)}
+                      >
                         {p.name}
                       </div>
                       <div class="self-stretch relative flex flex-col justify-start items-start gap-[7px]">
