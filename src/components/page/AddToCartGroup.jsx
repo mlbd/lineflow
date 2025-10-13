@@ -690,31 +690,10 @@ export default function AddToCartGroup({
         </DialogClose>
 
         {/* Title */}
-        <div className="mt-3 mb-1">
+        <div className="mt-3 mb-3">
           <h2 className="text-xl font-bold text-center">{product.name}</h2>
         </div>
 
-        {/* Active areas count hint, if any */}
-        {activePlacementsUI.length > 0 && (
-          <div className="mx-auto max-w-full flex flex-wrap justify-center gap-1 mb-4">
-            {activePlacementsUI.map(pl => (
-              <div
-                key={pl.name}
-                className="inline-flex flex-row-reverse items-stretch px-0 py-0 rounded-full leading-[10px] text-[10px] font-medium border border-emerald-600 text-emerald-700 bg-emerald-50 overflow-hidden"
-                title={pl.name}
-              >
-                {pl.forceBack && (
-                  <div className="bg-black text-white flex items-center justify-center px-1.5">
-                    <span className="font-bold">B</span>
-                  </div>
-                )}
-                <div className="px-1.5 py-1">
-                  <span className="text-emerald-700 font-medium">{pl.name}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
 
         {/* Other quantity in cart */}
         {otherQtyInCart > 0 && (

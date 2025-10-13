@@ -1,7 +1,8 @@
+// ProductColorBoxes.jsx
 import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 
-export default function ProductColorBoxes({ acf }) {
+export default function ProductColorBoxes({ acf, onBoxClick = () => {} }) {
   const wrapperRef = useRef(null);
   const [layoutData, setLayoutData] = useState({
     perLine: 0,
@@ -68,6 +69,16 @@ export default function ProductColorBoxes({ acf }) {
     };
   }, [acf?.color]);
 
+  // [PATCH] Helper to dispatch clicks (mouse/keyboard)
+  const triggerBoxClick = (clr, index, event) => {
+    try {
+      onBoxClick({ color: clr, index, event, allColors: acf?.color || [] });
+    } catch (e) {
+      // swallow to avoid UI crashes if a consumer throws
+      // console.error('onBoxClick error:', e);
+    }
+  };
+
   // Only render if group_type === "Group" and color is non-empty array
   if (acf?.group_type === 'Group' && Array.isArray(acf.color) && acf.color.length > 0) {
     // Limit to perLine boxes, or show all if perLine is 0 (not calculated yet)
@@ -89,26 +100,38 @@ export default function ProductColorBoxes({ acf }) {
         data-showPerLine={showPerLine}
         data-total={acf?.color.length}
       >
-        {visibleColors.map((clr, idx) => (
-          <div
-            key={idx}
-            className={`singleColorBox size-8 p-0.5 rounded-[5px] cursor-pointer shadow-[0_0_0_2px_white,0_0_0_3px_#cccccc] hover:shadow-[0_0_0_2px_white,0_0_0_3px_#111111] transition-shadow${
-              showMoreCount > reserveSpace && idx >= showPerLine
-                ? ' absolute invisible opacity-0'
-                : ''
-            }`}
-            style={{
-              background: clr.color_hex_code || '#fff',
-            }}
-            title={clr.title || ''}
-          />
-        ))}
+        {visibleColors.map((clr, idx) => {
+          const hiddenByCap = showMoreCount > reserveSpace && idx >= showPerLine;
+          const label = clr?.title || `Color ${idx + 1}`;
+
+          return (
+            <div
+              key={idx}
+              className={`singleColorBox size-8 p-0.5 rounded-[5px] cursor-pointer shadow-[0_0_0_2px_white,0_0_0_3px_#cccccc] hover:shadow-[0_0_0_2px_white,0_0_0_3px_#111111] transition-shadow${
+                hiddenByCap ? ' absolute invisible opacity-0' : ''
+              }`}
+              style={{ background: clr?.color_hex_code || '#fff' }}
+              title={label}
+              role="button"
+              tabIndex={hiddenByCap ? -1 : 0}
+              aria-label={label}
+              onClick={(e) => triggerBoxClick(clr, idx, e)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  triggerBoxClick(clr, idx, e);
+                }
+              }}
+            />
+          );
+        })}
+
         {showMoreCount > reserveSpace && (
           <button
             className="text-sm text-primary font-medium hover:no-underline"
-            onClick={() => {
-              /* Add your see more logic here */
-            }}
+            type="button"
+            // [PATCH] Optional: still capped UI, but allow parent to open a modal if desired
+            onClick={(e) => triggerBoxClick({ __type: 'see_more' }, showPerLine, e)}
           >
             + {showMoreCount} More
           </button>

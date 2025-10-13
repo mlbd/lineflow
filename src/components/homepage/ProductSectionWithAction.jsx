@@ -203,7 +203,11 @@ export default function ProductSectionWithAction({
                           <div class="justify-start"></div>
                         </div>
                       </div>
-                      <ProductColorBoxes acf={p.acf} onBoxClick={() => setModalProduct(p)} />
+                      <ProductColorBoxes acf={p.acf} onBoxClick={({ color, index }) => {
+    // your example:
+    setModalProduct(p);
+    // (optional) you can also read which color/index was clicked via args
+  }} />
                     </div>
                     <div class="self-stretch inline-flex justify-between items-center">
                       <ProductPriceLabel product={p} bumpPrice={null} priceMode="min" />

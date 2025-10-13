@@ -529,8 +529,9 @@ export default function ProductRightColumn({
   // Animated translateX for all dots
   const trackWidthPx =
     (totalDots > 0 ? totalDots * SLOT_PX : 0) - (totalDots > 0 ? GAP_PX : 0);
-  const viewportWidthPx =
+  let viewportWidthPx =
     (Math.min(VISIBLE_DOTS, totalDots) * SLOT_PX) - (Math.min(VISIBLE_DOTS, totalDots) > 0 ? GAP_PX : 0);
+    viewportWidthPx = viewportWidthPx+10;
   const translateX = -(dotStart * SLOT_PX);
 
   if (!product) return null;
