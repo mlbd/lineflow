@@ -65,18 +65,21 @@ export default function ProductQuickViewModal({
   pagePlacementMap = {},
   customBackAllowedSet = {},
 }) {
-  if (!product) return null;
+  // [PATCH] Added safeProduct so hooks are never conditional.
+  const safeProduct = product ?? {};
 
-  const acf = product?.acf || {};
+  // [PATCH] Wrap ACF in its own memo to satisfy exhaustive-deps.
+  const acf = useMemo(() => safeProduct?.acf ?? {}, [safeProduct?.acf]);
+
   const steps = useMemo(() => {
+    // [PATCH] Same logic, but now driven by memoized `acf`
     if (acf?.group_type === 'Group' && Array.isArray(acf.discount_steps)) return acf.discount_steps;
-    if (acf?.group_type === 'Quantity' && Array.isArray(acf.quantity_steps))
-      return acf.quantity_steps;
+    if (acf?.group_type === 'Quantity' && Array.isArray(acf.quantity_steps)) return acf.quantity_steps;
     return [];
   }, [acf]);
 
   // Child → parent data flow from ProductRightColumn
-  const [previewProduct, setPreviewProduct] = useState(product);
+  const [previewProduct, setPreviewProduct] = useState(safeProduct);
   const [previewPlacements, setPreviewPlacements] = useState([]);
   const [filterWasChanged, setFilterWasChanged] = useState(false);
 
@@ -85,20 +88,22 @@ export default function ProductQuickViewModal({
     () => (Array.isArray(previewPlacements) ? previewPlacements.filter(p => p?.active).length : 0),
     [previewPlacements]
   );
-  const extraPrint = Math.max(0, Number(product?.extra_print_price) || 0);
+  const extraPrint = Math.max(0, Number(safeProduct?.extra_print_price) || 0);
   const extraPricePlaceCount = Math.max(0, Number(selectedActiveCount || 0) - 1);
   const extraEach = extraPricePlaceCount * extraPrint;
 
   const handleAddToCartClick = () => {
     onClose?.();
-    onAddToCart?.(
-      previewProduct || {
-        ...product,
-        placement_coordinates: previewPlacements,
-        filter_was_changed: filterWasChanged,
-      }
-    );
+    // [PATCH] Guard + ensure we always send the latest preview placements.
+    if (!safeProduct) return;
+    onAddToCart?.(previewProduct || {
+      ...safeProduct,
+      placement_coordinates: previewPlacements,
+      filter_was_changed: filterWasChanged,
+    });
   };
+
+  if (!product) return null;
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -120,17 +125,17 @@ export default function ProductQuickViewModal({
             style={{ flexBasis: '48%' }}
           >
             <DialogTitle className="text-2xl font-bold text-black mb-2">
-              {product?.name}
+              {safeProduct?.name}
             </DialogTitle>
             <DialogDescription className="prose prose-sm max-w-none mb-4 text-primary">
-              {product?.acf?.pricing_description
-                ? product.acf.pricing_description.replace(/<[^>]+>/g, '')
+              {safeProduct?.acf?.pricing_description
+                ? safeProduct.acf.pricing_description.replace(/<[^>]+>/g, '')
                 : 'Product Details'}
             </DialogDescription>
 
             <PriceChart
               steps={steps}
-              regularPrice={product?.regular_price ?? product?.price}
+              regularPrice={safeProduct?.regular_price ?? safeProduct?.price}
               extraEach={extraEach}
             />
 
@@ -147,7 +152,7 @@ export default function ProductQuickViewModal({
           {/* Right column → replaced with shared component */}
           <ProductRightColumn
             open={open}
-            product={product}
+            product={safeProduct}
             companyLogos={companyLogos}
             pagePlacementMap={pagePlacementMap}
             customBackAllowedSet={customBackAllowedSet}
