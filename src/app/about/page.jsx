@@ -4,7 +4,6 @@ import Head from 'next/head';
 import Image from 'next/image';
 import Link from 'next/link';
 
-// ⬇️ Adjust these to your actual component paths
 import Footer from '@/components/common/Footer';
 import HeroSection from '@/components/page/HeroSection';
 import TopBar from '@/components/page/TopBar';
