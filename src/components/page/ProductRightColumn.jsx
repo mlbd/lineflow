@@ -533,7 +533,6 @@ export default function ProductRightColumn({
     (Math.min(VISIBLE_DOTS, totalDots) * SLOT_PX) - (Math.min(VISIBLE_DOTS, totalDots) > 0 ? GAP_PX : 0);
   const translateX = -(dotStart * SLOT_PX);
 
-  // [PATCH] Added early return *here*, after all hooks, to keep hook order consistent.
   if (!product) return null;
 
   // UI
@@ -663,23 +662,18 @@ export default function ProductRightColumn({
         onMouseMove={ENABLE_MAGNIFY ? handleMouseMove : undefined}
       >
         {slideSrc ? (
-          <div className={`relative rounded-2xl shadow transition-opacity duration-200 ${slideLoading ? 'opacity-70' : 'opacity-100'}`} style={{ width: '520px', height: '400px' }}>
-            {/* [PATCH] Next/Image replacement for <img>. Keeps object-contain look. */}
-            <Image
-              ref={imgRef}
-              src={slideSrc}
-              alt={hasSlider ? acf.color[sliderIdx]?.title || product.name : product.name}
-              fill
-              // Keep containment like original <img class="object-contain max-h-400">
-              style={{ objectFit: 'contain' }}
-              sizes="(max-width: 768px) 90vw, 520px"
-              priority
-              onClick={ENABLE_CLICK_TO_POPUP ? () => setGalleryOpen(true) : undefined}
-              onLoad={measureImg}
-              draggable={false}
-              className={`${ENABLE_CLICK_TO_POPUP ? 'cursor-zoom-in' : 'cursor-default'} rounded-2xl`}
-            />
-          </div>
+          <img
+            ref={imgRef}
+            src={slideSrc}
+            alt={hasSlider ? acf.color[sliderIdx]?.title || product.name : product.name}
+            className={`max-h-[400px] max-w-full object-contain rounded-2xl shadow transition-opacity duration-200 ${
+              slideLoading ? 'opacity-70' : 'opacity-100'
+            } ${ENABLE_CLICK_TO_POPUP ? 'cursor-zoom-in' : 'cursor-default'}`}
+            loading="eager"
+            onClick={ENABLE_CLICK_TO_POPUP ? () => setGalleryOpen(true) : undefined}
+            onLoad={measureImg}
+            draggable={false}
+          />
         ) : (
           <div className="h-[400px] w-full max-w-[520px] rounded-xl bg-gray-100 animate-pulse" />
         )}
