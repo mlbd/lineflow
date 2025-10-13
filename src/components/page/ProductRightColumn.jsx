@@ -2,8 +2,6 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-// [PATCH] Use Next.js Image to satisfy @next/next/no-img-element and improve LCP.
-import Image from 'next/image'
 import ImageGalleryOverlay from '@/components/page/ImageGalleryOverlay';
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
 import { buildPlacementSignature } from '@/utils/placements';
@@ -294,7 +292,9 @@ export default function ProductRightColumn({
     if (cache.has(url)) return cache.get(url);
     const p = new Promise((resolve, reject) => {
       if (typeof window === 'undefined') return resolve(url);
-      const img = new Image();
+      // [PATCH] Use the browser's Image constructor explicitly; bail on SSR.
+      if (typeof window === 'undefined' || !window.Image) return resolve(url);
+      const img = new window.Image();
       img.onload = () => resolve(url);
       img.onerror = () => reject(new Error('Image failed: ' + url));
       img.src = url;
