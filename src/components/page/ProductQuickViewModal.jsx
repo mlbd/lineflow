@@ -11,207 +11,147 @@ import {
 } from '@/components/ui/dialog';
 import ProductRightColumn from '@/components/page/ProductRightColumn';
 
-/* ---------------------------------------
-   Local: PriceChart (pure render, no hooks)
-------------------------------------------*/
 function PriceChart({ steps, regularPrice, currency = '$', extraEach = 0 }) {
   if (!Array.isArray(steps) || steps.length === 0) return null;
 
+  const getRange = i => {
+    const thisQty = Number(steps[i]?.quantity);
+    if (i === 0) return `Quantity: 1-${thisQty}`;
+    if (i < steps.length - 1) {
+      const prevQty = Number(steps[i - 1]?.quantity);
+      return `Quantity: ${prevQty + 1}-${thisQty}`;
+    }
+    return `Quantity: ${thisQty}+`;
+  };
+
+  const parseMoney = v => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const regular = parseMoney(regularPrice);
+
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-      <h4 className="mb-2 text-sm font-semibold text-gray-800">Discount Steps</h4>
-      <div className="space-y-2 text-sm">
-        {steps.map((s, i) => {
-          const qty = Number(s?.qty ?? s?.quantity ?? 0);
-          const price = Number(s?.price ?? s?.unit_price ?? regularPrice ?? 0);
-          const withExtra = price + Number(extraEach || 0);
-          return (
-            <div
-              key={`${qty}-${price}-${i}`}
-              className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2"
-            >
-              <span className="text-gray-600">≥ {qty}</span>
-              <span className="font-medium text-gray-900">
-                {currency}
-                {withExtra.toFixed(2)}
-              </span>
-            </div>
-          );
-        })}
+    <div className="w-full">
+      <h2 className="text-xl font-semibold text-left mb-2">Quantity Pricing</h2>
+      <div className="mt-4 w-full">
+        <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 rounded-xl overflow-hidden">
+          {steps.map((step, i) => {
+            const stepAmt = parseMoney(step?.amount);
+            const useRegularForFirstTier = i === 0 && stepAmt === 0 && regular > 0;
+            const display = (useRegularForFirstTier ? regular : stepAmt) + (Number(extraEach) || 0);
+            return (
+              <div
+                key={i}
+                className="flex flex-col items-center px-4 py-3 rounded-[8px] bg-bglight"
+              >
+                <div className="text-lg font-bold text-primary">
+                  {currency}
+                  {display.toFixed(2)}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">{getRange(i)}</div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
 }
 
-/* ---------------------------------------
-   Modal Component
-------------------------------------------*/
 export default function ProductQuickViewModal({
   open,
   onClose,
   product,
   onAddToCart,
   bumpPrice, // kept for compat
-  companyLogos,
+  companyLogos = {},
+  pagePlacementMap = {},
+  customBackAllowedSet = {},
 }) {
-  // -------------------------------
-  // [PATCH] Hooks: top-level only
-  // -------------------------------
+  if (!product) return null;
 
-  // [PATCH] Stable ACF snapshot. Never use a freshly created {} as a dep.
-  const acf = useMemo(() => product?.acf ?? null, [product?.acf]);
-
-  // [PATCH] Stable price/currency reads from product/ACF.
-  const regularPrice = useMemo(() => {
-    // try common fields: Woo JSON (price_html aside)
-    const rp =
-      product?.regular_price ??
-      product?.price ??
-      acf?.regular_price ??
-      acf?.base_price ??
-      0;
-    const n = Number(rp);
-    return Number.isFinite(n) ? n : 0;
-  }, [product?.regular_price, product?.price, acf?.regular_price, acf?.base_price]);
-
-  const salePrice = useMemo(() => {
-    const sp =
-      product?.sale_price ??
-      acf?.sale_price ??
-      null;
-    const n = Number(sp);
-    return Number.isFinite(n) ? n : null;
-  }, [product?.sale_price, acf?.sale_price]);
-
-  const currency = useMemo(() => {
-    return product?.currency_symbol || acf?.currency_symbol || '$';
-  }, [product?.currency_symbol, acf?.currency_symbol]);
-
-  // [PATCH] Steps derived in one place; identity stable.
+  const acf = product?.acf || {};
   const steps = useMemo(() => {
-    const gt = acf?.group_type;
-    if (gt === 'Group' && Array.isArray(acf?.discount_steps)) {
-      return acf.discount_steps;
-    }
-    if (gt === 'Quantity' && Array.isArray(acf?.quantity_steps)) {
+    if (acf?.group_type === 'Group' && Array.isArray(acf.discount_steps)) return acf.discount_steps;
+    if (acf?.group_type === 'Quantity' && Array.isArray(acf.quantity_steps))
       return acf.quantity_steps;
-    }
     return [];
-  }, [acf?.group_type, acf?.discount_steps, acf?.quantity_steps]);
+  }, [acf]);
 
-  // [PATCH] Extra per-unit adjustments (if any).
-  const extraEach = useMemo(() => {
-    const e =
-      acf?.extra_each ??
-      acf?.extra_price_each ??
-      0;
-    const n = Number(e);
-    return Number.isFinite(n) ? n : 0;
-  }, [acf?.extra_each, acf?.extra_price_each]);
-
-  // [PATCH] Local preview states (top-level, not conditional).
-  const [previewProduct, setPreviewProduct] = useState(null);
+  // Child → parent data flow from ProductRightColumn
+  const [previewProduct, setPreviewProduct] = useState(product);
   const [previewPlacements, setPreviewPlacements] = useState([]);
   const [filterWasChanged, setFilterWasChanged] = useState(false);
 
-  // [PATCH] Derived title & description safely.
-  const title = useMemo(
-    () => product?.name ?? acf?.title ?? 'Product',
-    [product?.name, acf?.title]
+  // Compute extraEach from current previewPlacements
+  const selectedActiveCount = useMemo(
+    () => (Array.isArray(previewPlacements) ? previewPlacements.filter(p => p?.active).length : 0),
+    [previewPlacements]
   );
-  const shortDesc = useMemo(
-    () => product?.short_description ?? acf?.short_description ?? '',
-    [product?.short_description, acf?.short_description]
-  );
+  const extraPrint = Math.max(0, Number(product?.extra_print_price) || 0);
+  const extraPricePlaceCount = Math.max(0, Number(selectedActiveCount || 0) - 1);
+  const extraEach = extraPricePlaceCount * extraPrint;
 
-  // [PATCH] Company logo map (stable).
-  const companyLogosMap = useMemo(() => {
-    if (!companyLogos || typeof companyLogos !== 'object') return {};
-    return companyLogos;
-  }, [companyLogos]);
+  const handleAddToCartClick = () => {
+    onClose?.();
+    onAddToCart?.(
+      previewProduct || {
+        ...product,
+        placement_coordinates: previewPlacements,
+        filter_was_changed: filterWasChanged,
+      }
+    );
+  };
 
-  // [PATCH] Optionally pass placements/back-allowed via ACF.
-  const pagePlacementMap = useMemo(() => {
-    return acf?.pagePlacementMap ?? {};
-  }, [acf?.pagePlacementMap]);
-
-  const customBackAllowedSet = useMemo(() => {
-    const raw = acf?.customBackAllowed ?? [];
-    return new Set(Array.isArray(raw) ? raw : []);
-  }, [acf?.customBackAllowed]);
-
-  // -------------------------------
-  // Render
-  // -------------------------------
-  // NOTE: We do NOT early-return before hooks. We can conditionally render inside JSX.
   return (
-    <Dialog open={!!open} onOpenChange={val => !val && onClose?.()}>
-      <DialogContent
-        onInteractOutside={e => {
-          // keep default close; customize if needed
-        }}
-        className="max-w-6xl"
-      >
-        <div className="flex flex-col gap-6 md:flex-row">
-          {/* Left Column: Title + Chart */}
-          <div className="w-full md:w-[48%] space-y-4">
-            <div>
-              <DialogTitle className="text-xl font-bold text-gray-900">
-                {title}
-              </DialogTitle>
-              <DialogDescription className="text-sm text-gray-600">
-                {shortDesc}
-              </DialogDescription>
-            </div>
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="!max-w-[900px] p-0 rounded-2xl overflow-hidden shadow-xl bg-white">
+        <DialogClose asChild>
+          <button
+            className="absolute top-2 right-2 z-10 bg-white rounded-full cursor-pointer p-2 shadow hover:bg-bglighter focus:outline-none focus:ring-2 focus:ring-skyblue"
+            aria-label="Close"
+          >
+            {/* X icon is handled by CSS class in your design system */}
+            <span className="block w-5 h-5">✕</span>
+          </button>
+        </DialogClose>
 
-            {/* Prices */}
-            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="flex items-end gap-3">
-                {salePrice ? (
-                  <>
-                    <div className="text-2xl font-bold text-gray-900">
-                      {currency}
-                      {Number(salePrice + extraEach).toFixed(2)}
-                    </div>
-                    <div className="text-sm text-gray-500 line-through">
-                      {currency}
-                      {Number(regularPrice + extraEach).toFixed(2)}
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-2xl font-bold text-gray-900">
-                    {currency}
-                    {Number(regularPrice + extraEach).toFixed(2)}
-                  </div>
-                )}
-              </div>
-            </div>
+        <div className="flex flex-row w-full pb-10 pt-10" style={{ minHeight: 360 }}>
+          {/* Left column (kept) */}
+          <div
+            className="flex flex-col justify-between px-[35px] pt-2 pb-0"
+            style={{ flexBasis: '48%' }}
+          >
+            <DialogTitle className="text-2xl font-bold text-black mb-2">
+              {product?.name}
+            </DialogTitle>
+            <DialogDescription className="prose prose-sm max-w-none mb-4 text-primary">
+              {product?.acf?.pricing_description
+                ? product.acf.pricing_description.replace(/<[^>]+>/g, '')
+                : 'Product Details'}
+            </DialogDescription>
 
-            {/* Discount/Quantity steps */}
             <PriceChart
               steps={steps}
-              regularPrice={regularPrice}
-              currency={currency}
+              regularPrice={product?.regular_price ?? product?.price}
               extraEach={extraEach}
             />
+
+            <div>
+              <button
+                className="alarnd-btn mt-5 bg-primary-500 rounded-full font-normal text-white"
+                onClick={handleAddToCartClick}
+              >
+                Select Size & Quantity
+              </button>
+            </div>
           </div>
 
-          {/* Right Column: ProductRightColumn (unchanged API) */}
+          {/* Right column → replaced with shared component */}
           <ProductRightColumn
+            open={open}
             product={product}
-            previewProduct={previewProduct}
-            setPreviewProduct={setPreviewProduct}
-            previewPlacements={previewPlacements}
-            setPreviewPlacements={setPreviewPlacements}
-            filterWasChanged={filterWasChanged}
-            setFilterWasChanged={setFilterWasChanged}
-            onAddToCart={onAddToCart}
-            // optional props you referenced earlier
-            companyLogosMap={companyLogosMap}
+            companyLogos={companyLogos}
             pagePlacementMap={pagePlacementMap}
             customBackAllowedSet={customBackAllowedSet}
             onPlacementsChange={(placements, wasChanged) => {
-              // [PATCH] Keep local state syncs stable.
               setPreviewPlacements(Array.isArray(placements) ? placements : []);
               setFilterWasChanged(!!wasChanged);
             }}

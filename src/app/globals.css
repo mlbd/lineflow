@@ -444,9 +444,20 @@ button[data-slot='dialog-close']:last-of-type {
 }
 
 
-/* tailwind globals or a css file you include */
+/* [PATCH] Added: nicer both-axis scrollbar styling */
 .allaround-scrollbar {
-  /* [PATCH] Added: reserve gutter so layout doesn’t shift when the Y scrollbar appears */
-  scrollbar-gutter: stable both-edges;
-  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #9ca3af transparent; /* thumb / track */
+}
+
+.allaround-scrollbar::-webkit-scrollbar {
+  width: 10px;   /* vertical */
+  height: 10px;  /* horizontal */
+}
+.allaround-scrollbar::-webkit-scrollbar-thumb {
+  background: #9ca3af;
+  border-radius: 8px;
+}
+.allaround-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
 }
