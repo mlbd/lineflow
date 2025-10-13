@@ -16,6 +16,12 @@ const LENS_BORDER = '2px solid rgba(0,0,0,0.35)';
 const ENABLE_MAGNIFY = false;
 const ENABLE_CLICK_TO_POPUP = true;
 
+/* ======= Color dots window config ======= */
+const VISIBLE_DOTS = 5;        // show at most 5
+const DOT_PX = 36;             // h-9 w-9 -> 36px
+const GAP_PX = 12;             // gap-3 -> 12px
+const SLOT_PX = DOT_PX + GAP_PX; // 48px per item width including gap
+
 /* ======= Helpers ======= */
 const parseMaybeArray = val => {
   if (Array.isArray(val)) return val;
@@ -54,6 +60,9 @@ export default function ProductRightColumn({
   style = {},
   flexBasis = '52%', // default column width
 }) {
+
+  const isOpen = open ?? true;
+
   const [sliderIdx, setSliderIdx] = useState(0);
   const [slideLoading, setSlideLoading] = useState(false);
   const [slideSrc, setSlideSrc] = useState('');
@@ -61,6 +70,8 @@ export default function ProductRightColumn({
   const [preloading, setPreloading] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const preloadCacheRef = useRef(new Map());
+
+  const lastNotifyRef = useRef({ sig: '', changed: null });
 
   const containerRef = useRef(null);
   const imgRef = useRef(null);
@@ -143,7 +154,7 @@ export default function ProductRightColumn({
 
   // Reset state on product/open
   useEffect(() => {
-    if (!product || !open) return;
+    if (!product || !isOpen) return;
     setAreaOn(new Set());
     setAreaOff(new Set());
     setOpenBackFor('');
@@ -151,7 +162,7 @@ export default function ProductRightColumn({
       .toString(36)
       .slice(2, 7)}`;
     setBackScope(token);
-  }, [product?.id, open]);
+  }, [product?.id, isOpen]);
 
   // Persist __forceBack overrides globally per product and scope
   useEffect(() => {
@@ -239,26 +250,40 @@ export default function ProductRightColumn({
     [previewPlacements, sourcePlacements]
   );
 
-  // Notify parent about placements & preview product
+  // Notify parent about placements & preview product (guarded to prevent loops)
   useEffect(() => {
     const pid = product?.id;
     if (!pid) return;
+
     const effSig = placementsSig(previewPlacements);
     const storeSig = placementsSig(storePlacements);
+
+    // Sync store only when store differs from current effective
     if (effSig !== storeSig) {
       setFilter(pid, previewPlacements);
     }
-    onPlacementsChange?.(previewPlacements, filterWasChanged);
 
-    if (onPreviewProduct) {
-      onPreviewProduct({
+    // Only notify parent when the effective signature or "changed" flag differs
+    const last = lastNotifyRef.current;
+    if (last.sig !== effSig || last.changed !== filterWasChanged) {
+      onPlacementsChange?.(previewPlacements, filterWasChanged);
+      onPreviewProduct?.({
         ...product,
         placement_coordinates: previewPlacements,
         filter_was_changed: filterWasChanged,
       });
+      lastNotifyRef.current = { sig: effSig, changed: filterWasChanged };
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [product?.id, previewPlacements, filterWasChanged]);
+  }, [
+    product?.id,
+    previewPlacements,
+    filterWasChanged,
+    storePlacements,
+    setFilter,
+    onPlacementsChange,
+    onPreviewProduct,
+    product,
+  ]);
 
   // ===== Images (preload / slide) =====
   const preloadImage = url => {
@@ -359,7 +384,7 @@ export default function ProductRightColumn({
 
   // Load current display slide
   useEffect(() => {
-    if (!open || !product) return;
+    if (!isOpen || !product) return;
     if (!modalSlideUrls.length) return;
 
     const url = modalSlideUrls[hasSlider ? sliderIdx : 0];
@@ -388,11 +413,11 @@ export default function ProductRightColumn({
     return () => {
       cancelled = true;
     };
-  }, [open, sliderIdx, hasSlider, modalSlideUrls, ready, product]);
+  }, [isOpen, sliderIdx, hasSlider, modalSlideUrls, ready, product]);
 
   // Preload all display slides on open
   useEffect(() => {
-    if (!open || !product) return;
+    if (!isOpen || !product) return;
     if (!modalSlideUrls.length) return;
 
     let cancelled = false;
@@ -416,12 +441,12 @@ export default function ProductRightColumn({
     return () => {
       cancelled = true;
     };
-  }, [open, modalSlideUrls, product]);
+  }, [isOpen, modalSlideUrls, product]);
 
   // Preload the CURRENT zoom slide
   useEffect(() => {
     if (!ENABLE_MAGNIFY) return;
-    if (!open || !product) return;
+    if (!isOpen || !product) return;
     if (!zoomSlideUrls.length) return;
 
     const idx = hasSlider ? sliderIdx : 0;
@@ -441,7 +466,7 @@ export default function ProductRightColumn({
     return () => {
       cancelled = true;
     };
-  }, [open, sliderIdx, hasSlider, zoomSlideUrls, product]);
+  }, [isOpen, sliderIdx, hasSlider, zoomSlideUrls, product]);
 
   const measureImg = () => {
     const el = imgRef.current;
@@ -459,7 +484,7 @@ export default function ProductRightColumn({
 
   if (!product) return null;
 
-  const navDisabled = preloading || slideLoading || !open;
+  const navDisabled = preloading || slideLoading;
   const handleMouseMove = e => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
@@ -469,6 +494,42 @@ export default function ProductRightColumn({
     y = Math.max(0, Math.min(rect.height, y));
     setLensPos({ x, y });
   };
+
+  /* =========================================================================
+   * Dots window state (no force-centering):
+   * - Maintain a moving window start index (dotStart).
+   * - When sliderIdx moves beyond the window, shift the window just enough.
+   * - If total dots <= 5, dotStart = 0 and we just keep them centered visually.
+   * ========================================================================= */
+  const totalDots = colors.length;
+  const [dotStart, setDotStart] = useState(0);
+
+  // Reset window on product change or when colors change drastically
+  useEffect(() => {
+    setDotStart(0);
+  }, [product?.id, totalDots]);
+
+  // Slide the window ONLY when active moves outside current window
+  useEffect(() => {
+    if (!hasSlider) return;
+    if (totalDots <= VISIBLE_DOTS) {
+      if (dotStart !== 0) setDotStart(0);
+      return;
+    }
+    const windowEnd = dotStart + VISIBLE_DOTS - 1;
+    if (sliderIdx < dotStart) {
+      setDotStart(sliderIdx);
+    } else if (sliderIdx > windowEnd) {
+      setDotStart(sliderIdx - VISIBLE_DOTS + 1);
+    }
+  }, [sliderIdx, hasSlider, totalDots, dotStart]);
+
+  // Animated translateX for all dots
+  const trackWidthPx =
+    (totalDots > 0 ? totalDots * SLOT_PX : 0) - (totalDots > 0 ? GAP_PX : 0);
+  const viewportWidthPx =
+    (Math.min(VISIBLE_DOTS, totalDots) * SLOT_PX) - (Math.min(VISIBLE_DOTS, totalDots) > 0 ? GAP_PX : 0);
+  const translateX = -(dotStart * SLOT_PX);
 
   // UI
   return (
@@ -548,7 +609,7 @@ export default function ProductRightColumn({
                   {/* Back-mode dropdown */}
                   {canBack && openBackFor === nm && (
                     <div
-                      className="absolute z-20 left-0 top-full mt-1 min-w-[140px] rounded-md border bg-white overflow-hidden"
+                      className="absolute z-20 left-0 top-full mt-1 min-w=[140px] rounded-md border bg-white overflow-hidden"
                       onMouseLeave={() => setOpenBackFor('')}
                       role="menu"
                       aria-label={`${nm} logo side`}
@@ -650,7 +711,7 @@ export default function ProductRightColumn({
       {hasSlider && colors.length > 1 && (
         <>
           <button
-            className="cursor-pointer absolute bottom-0 left-10 translate-y-[6px] flex h-[64px] w-[64px] items-center justify-center rounded-full bg-[#120A7A] text-white shadow-[0_16px_40px_rgba(18,10,122,0.35)] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="cursor-pointer z-20 absolute bottom-0 left-10 translate-y-[6px] flex h-[64px] w-[64px] items-center justify-center rounded-full bg-[#120A7A] text-white shadow-[0_16px_40px_rgba(18,10,122,0.35)] disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={() => setSliderIdx((sliderIdx - 1 + colors.length) % colors.length)}
             aria-label="Previous"
             disabled={navDisabled}
@@ -659,7 +720,7 @@ export default function ProductRightColumn({
             <ChevronLeft className="w-8 h-8" />
           </button>
           <button
-            className="cursor-pointer absolute bottom-0 right-10 translate-y-[6px] flex h-[64px] w-[64px] items-center justify-center rounded-full bg-[#120A7A] text-white shadow-[0_16px_40px_rgba(18,10,122,0.35)] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="cursor-pointer z-20 absolute bottom-0 right-10 translate-y-[6px] flex h-[64px] w-[64px] items-center justify-center rounded-full bg-[#120A7A] text-white shadow-[0_16px_40px_rgba(18,10,122,0.35)] disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={() => setSliderIdx((sliderIdx + 1) % colors.length)}
             aria-label="Next"
             disabled={navDisabled}
@@ -670,39 +731,68 @@ export default function ProductRightColumn({
         </>
       )}
 
-      {/* Color dots */}
-      {hasSlider && (
-        <div className="slider-dots relative">
-          <div className="mt-4 -top-[5px] relative flex justify-center gap-3">
-            {colors.map((clr, idx) => {
-              const isSelected = sliderIdx === idx;
-              return (
-                <button
-                  key={idx}
-                  onClick={() => setSliderIdx(idx)}
-                  disabled={navDisabled && idx !== sliderIdx}
-                  className={[
-                    'relative h-9 w-9 rounded-[3px] transition-all duration-150',
-                    'border-2 border-white outline outline-2 outline-[#C9CDD6]',
-                    isSelected
-                      ? 'ring-3 ring-primary-500 shadow-[0_4px_12px_rgba(0,0,0,0.10)]'
-                      : 'shadow-[0_2px_8px_rgba(0,0,0,0.06)]',
-                    navDisabled && idx !== sliderIdx
-                      ? 'opacity-60 cursor-not-allowed'
-                      : 'cursor-pointer',
-                    isSelected
-                      ? "before:content-[''] before:absolute before:inset-0 before:m-auto before:h-4 before:w-4 before:rounded-full before:bg-primary-500 before:ring-2 before:ring-white " +
-                        "after:content-[''] after:absolute after:inset-0 after:m-auto after:h-[9px] after:w-[5px] after:rotate-45 after:border-b-2 after:border-r-2 after:border-white after:bottom-0.5"
-                      : '',
-                  ].join(' ')}
-                  style={{ background: clr?.color_hex_code || '#D9DDE6' }}
-                  title={clr.title}
-                  aria-label={clr.title}
-                  type="button"
-                />
-              );
-            })}
+      {/* Color dots (windowed: max 5, animated slide; no force-centering) */}
+      {hasSlider && totalDots > 0 && (
+        <div className="slider-dots relative w-full mt-4">
+          <div className="relative mx-auto" style={{ width: `${viewportWidthPx}px` }}>
+            {/* Track viewport */}
+            <div className="overflow-hidden relative rounded-md p-[5px]">
+              {/* Fading edges to hint overflow */}
+              {totalDots > VISIBLE_DOTS && (
+                <>
+                  <span className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-white to-transparent" />
+                  <span className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-white to-transparent" />
+                </>
+              )}
+
+              {/* Track */}
+              <div
+                className="flex items-center gap-3 transition-transform duration-300 ease-out will-change-transform"
+                style={{
+                  width: `${trackWidthPx}px`,
+                  transform: `translateX(${translateX}px)`,
+                }}
+              >
+                {colors.map((clr, i) => {
+                  const isSelected = sliderIdx === i;
+                  return (
+                    <button
+                      key={`${i}-${clr?.title || 'clr'}`}
+                      onClick={() => setSliderIdx(i)}
+                      disabled={navDisabled && !isSelected}
+                      className={[
+                        'relative h-[36px] w-[36px] rounded-[10px] transition-all duration-150',
+                        'border-2 border-white outline outline-2 outline-[#C9CDD6]',
+                        isSelected
+                          ? 'ring-3 ring-primary-500 shadow-[0_4px_8px_rgba(0,0,0,0.10)]'
+                          : 'shadow-[0_2px_4px_rgba(0,0,0,0.06)]',
+                        navDisabled && !isSelected
+                          ? 'opacity-60 cursor-not-allowed'
+                          : 'cursor-pointer',
+                        isSelected
+                          ? "before:content-[''] before:absolute before:inset-0 before:m-auto before:h-4 before:w-4 before:rounded-full before:bg-primary-500 before:ring-2 before:ring-white " +
+                            "after:content-[''] after:absolute after:inset-0 after:m-auto after:h-[9px] after:w-[5px] after:rotate-45 after:border-b-2 after:border-r-2 after:border-white after:bottom-0.5"
+                          : '',
+                      ].join(' ')}
+                      style={{
+                        background: clr?.color_hex_code || '#D9DDE6',
+                      }}
+                      title={clr.title}
+                      aria-label={clr.title}
+                      type="button"
+                    />
+                  );
+                })}
+              </div>
+            </div>
           </div>
+
+          {/* Helper text */}
+          {totalDots > VISIBLE_DOTS && (
+            <div className="mt-2 text-center text-[11px] text-gray-500 absolute w-full -bottom-5">
+              Showing {Math.min(VISIBLE_DOTS, totalDots)} of {totalDots} colors
+            </div>
+          )}
         </div>
       )}
 
