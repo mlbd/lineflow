@@ -657,7 +657,7 @@ export default function ProductRightColumn({
       <div
         ref={containerRef}
         className="flex items-center justify-center w-full mb-6 relative"
-        style={{ height: 320 }}
+        // style={{ height: 320 }}
         onMouseEnter={ENABLE_MAGNIFY ? () => setLensVisible(true) : undefined}
         onMouseLeave={ENABLE_MAGNIFY ? () => setLensVisible(false) : undefined}
         onMouseMove={ENABLE_MAGNIFY ? handleMouseMove : undefined}
@@ -667,7 +667,7 @@ export default function ProductRightColumn({
             ref={imgRef}
             src={slideSrc}
             alt={hasSlider ? acf.color[sliderIdx]?.title || product.name : product.name}
-            className={`max-h-[400px] max-w-full object-contain rounded-2xl shadow transition-opacity duration-200 ${
+            className={`max-h-[258px] max-w-full object-contain rounded-2xl shadow transition-opacity duration-200 ${
               slideLoading ? 'opacity-70' : 'opacity-100'
             } ${ENABLE_CLICK_TO_POPUP ? 'cursor-zoom-in' : 'cursor-default'}`}
             loading="eager"
@@ -676,7 +676,7 @@ export default function ProductRightColumn({
             draggable={false}
           />
         ) : (
-          <div className="h-[400px] w-full max-w-[520px] rounded-xl bg-gray-100 animate-pulse" />
+          <div className="h-[258px] w-full max-w-[520px] rounded-xl bg-gray-100 animate-pulse" />
         )}
 
         {(slideLoading || preloading) && (
