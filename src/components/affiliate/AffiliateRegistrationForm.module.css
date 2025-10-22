@@ -1,0 +1,60 @@
+.wrapper {
+  position: relative;
+}
+
+.skeleton {
+  display: grid;
+  gap: 1rem;
+  border-radius: 2rem;
+  padding: 2rem;
+  background: linear-gradient(180deg, #ffffff 0%, #f7f7ff 100%);
+  box-shadow: 0px 25px 50px -12px rgba(9, 0, 79, 0.18);
+}
+
+.skeletonLine,
+.skeletonButton {
+  height: 1rem;
+  border-radius: 9999px;
+  background: linear-gradient(
+    90deg,
+    rgba(13, 0, 113, 0.12),
+    rgba(13, 0, 113, 0.05),
+    rgba(13, 0, 113, 0.12)
+  );
+  background-size: 200% 100%;
+  animation: affiliateWpSkeletonShimmer 1.6s infinite ease-in-out;
+}
+
+.skeletonButton {
+  margin-top: 0.5rem;
+  height: 2.75rem;
+  width: 70%;
+}
+
+@keyframes affiliateWpSkeletonShimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.feedback {
+  margin-top: 1.5rem;
+  border-radius: 1.5rem;
+  padding: 1rem 1.25rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  font-weight: 500;
+}
+
+.feedbackSuccess {
+  background: rgba(22, 162, 68, 0.12);
+  color: #0f592b;
+}
+
+.feedbackError {
+  background: rgba(229, 57, 53, 0.12);
+  color: #7c1a18;
+}

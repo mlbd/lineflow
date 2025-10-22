@@ -7,6 +7,19 @@ function extractRegistrationForm(html) {
   return match ? match[0] : null;
 }
 
+function extractFormAction(formHtml, fallbackUrl) {
+  if (!formHtml) return fallbackUrl;
+  const match = formHtml.match(/action=("|')([^"']*)("|')/i);
+  if (!match || !match[2]) return fallbackUrl;
+
+  try {
+    return new URL(match[2], fallbackUrl).toString();
+  } catch (error) {
+    console.error('Unable to resolve AffiliateWP form action URL:', error);
+    return fallbackUrl;
+  }
+}
+
 export async function fetchAffiliateRegistrationForm({
   pageUrl = DEFAULT_REGISTRATION_PAGE,
   fetchOptions = {},
@@ -43,16 +56,18 @@ export async function fetchAffiliateRegistrationForm({
       console.error('AffiliateWP registration form markup not found at %s', pageUrl);
       return {
         html: null,
+        action: extractFormAction(null, pageUrl),
         error:
           'We could not locate the AffiliateWP registration form. Please use the external sign-up link below.',
       };
     }
 
-    return { html: form, error: null };
+    return { html: form, action: extractFormAction(form, pageUrl), error: null };
   } catch (error) {
     console.error('AffiliateWP registration form fetch encountered an error:', error);
     return {
       html: null,
+      action: extractFormAction(null, pageUrl),
       error: 'Something went wrong while loading the Affiliate sign-up form.',
     };
   }
