@@ -5,9 +5,9 @@
 // - Field border turns red immediately if the slug is taken/invalid.
 // - Submit is disabled if the slug is taken/invalid; WP still does final validation.
 
-import React, { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/router';
 import { wpApiFetch } from '@/lib/wpApi';
+import { useRouter } from 'next/router';
+import { useEffect, useRef, useState } from 'react';
 
 // [PATCH] Per-prefix in-memory cache for instant checks
 // Map<prefix, Set<string>>
@@ -67,7 +67,12 @@ const RESERVED = new Set([
   'auth',
 ]);
 
-const isValidSlug = s => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(s || '');
+const isValidSlug = s => {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(s || '')) return false;
+  // disallow slugs that are numbers only (e.g. "12345")
+  if (/^\d+$/.test(s)) return false;
+  return true;
+};
 
 export default function CompletionDialog({
   slug,
@@ -75,6 +80,7 @@ export default function CompletionDialog({
   onSuccess,
   catalogDomain = 'catalog.lineflow.ai',
   withBackdrop = true,
+  onDismiss,
 }) {
   const router = useRouter();
 
@@ -181,10 +187,18 @@ export default function CompletionDialog({
 
     // Early guard on known-taken/invalid
     if (!isValidSlug(slugCandidate)) {
-      setFieldErrors(prev => ({
-        ...prev,
-        mini_url: 'Use lowercase letters, numbers and hyphens.',
-      }));
+      // If it's digits-only, show a clearer message
+      if (/^\d+$/.test(slugCandidate)) {
+        setFieldErrors(prev => ({
+          ...prev,
+          mini_url: 'Catalog URL cannot be numbers only. Include letters or hyphens.',
+        }));
+      } else {
+        setFieldErrors(prev => ({
+          ...prev,
+          mini_url: 'Use lowercase letters, numbers and hyphens.',
+        }));
+      }
       return;
     }
     if (slugStatus === 'taken') {
@@ -256,15 +270,31 @@ export default function CompletionDialog({
     }
   }
 
+  const dialogRef = useRef(null);
+
+  const handleBackdropPointerDown = event => {
+    if (!dialogRef.current) return;
+    if (dialogRef.current.contains(event.target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof onDismiss === 'function') {
+      onDismiss();
+    }
+  };
+  
   return (
     <div
       className={`fixed inset-0 z-[1000] ${withBackdrop ? 'bg-black/40' : 'bg-transparent'}`}
       aria-hidden="false"
       role="dialog"
       aria-modal="true"
+      onPointerDown={handleBackdropPointerDown}
     >
       <div className="min-h-screen w-full flex items-center justify-center p-4 md:p-8">
-        <div className="pointer-events-auto w-full max-w-xl max-h-[90vh] overflow-auto rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
+        <div
+          ref={dialogRef}
+          className="pointer-events-auto w-full max-w-xl max-h-[90vh] overflow-auto rounded-2xl bg-white shadow-2xl ring-1 ring-black/5"
+        >
           <div className="p-6 md:p-8">
             <h2 className="text-2xl font-bold text-slate-900 text-center">Show Your Catalog</h2>
 

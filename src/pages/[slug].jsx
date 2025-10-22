@@ -356,6 +356,7 @@ export default function LandingPage({
             setCompleted(true);
           }}
           catalogDomain={process.env.NEXT_PUBLIC_CATALOG_DOMAIN || 'catalog.lineflow.ai'}
+          onDismiss={() => setCompletionDialogOpen(false)}
         />
       )}
     </>
