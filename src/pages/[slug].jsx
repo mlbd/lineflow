@@ -1,22 +1,19 @@
 // pages/[slug].jsx
+import { GoogleTagManager } from '@next/third-parties/google';
 import Head from 'next/head';
 import { useEffect, useRef, useState } from 'react';
-import { GoogleTagManager } from '@next/third-parties/google';
 
-import CircleReveal from '@/components/CircleReveal';
-import TopBar from '@/components/page/TopBar';
+import Footer from '@/components/common/Footer';
 import HeroSection from '@/components/page/HeroSection';
 import InfoBoxSection from '@/components/page/InfoBoxSection';
-import Footer from '@/components/common/Footer';
 import ProductsShell from '@/components/page/ProductsShell';
-import GeneralProducts from '@/components/homepage/GeneralProducts';
+import TopBar from '@/components/page/TopBar';
 
 import CompletionDialog from '@/components/catalog/CompletionDialog';
-import { useRouter } from 'next/router';
 
+import { getProductCardsBatch } from '@/lib/productCache'; // server-side helper
 import { getOrFetchShipping } from '@/lib/shippingCache';
 import { wpApiFetch } from '@/lib/wpApi';
-import { getProductCardsBatch } from '@/lib/productCache'; // server-side helper
 
 /* -----------------------------------------------------------
  * SSG: paths & props (keep ISR to avoid cold user waits)
@@ -188,6 +185,7 @@ export default function LandingPage({
   const cartSectionRef = useRef(null);
 
   const [completed, setCompleted] = useState(false);
+  const [completionDialogOpen, setCompletionDialogOpen] = useState(false);
 
   const handleScrollToCart = () => {
     if (cartSectionRef.current) {
@@ -249,6 +247,32 @@ export default function LandingPage({
       console.warn('[PageData] (client) log failed:', e);
     }
   }, [slug]);
+
+  useEffect(() => {
+    if (status !== 'pending' || completed || completionDialogOpen) return;
+    if (typeof document === 'undefined') return;
+
+    const handlePointerDown = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (typeof event.stopImmediatePropagation === 'function') {
+        event.stopImmediatePropagation();
+      }
+      setCompletionDialogOpen(true);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown, true);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+    };
+  }, [status, completed, completionDialogOpen]);
+
+  useEffect(() => {
+    if (status !== 'pending' || completed) {
+      setCompletionDialogOpen(false);
+    }
+  }, [status, completed]);
 
   // if (!animationDone) return <CircleReveal onFinish={() => setAnimationDone(true)} />;
 
@@ -323,11 +347,14 @@ export default function LandingPage({
         </main>
       </div>
 
-      {status === 'pending' && !completed && (
+      {status === 'pending' && !completed && completionDialogOpen && (
         <CompletionDialog
           slug={slug}
           pageId={pageId}
-          onSuccess={() => setCompleted(true)}
+          onSuccess={() => {
+            setCompletionDialogOpen(false);
+            setCompleted(true);
+          }}
           catalogDomain={process.env.NEXT_PUBLIC_CATALOG_DOMAIN || 'catalog.lineflow.ai'}
         />
       )}
