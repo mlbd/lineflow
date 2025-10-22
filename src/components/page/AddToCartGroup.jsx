@@ -1,13 +1,13 @@
 // !fullupdate
-import { useState, useMemo, useLayoutEffect, useEffect, useRef } from 'react';
-import { Dialog, DialogContent, DialogClose } from '@/components/ui/dialog';
-import clsx from 'clsx';
-import { applyBumpPrice, applyBumpToRegular } from '@/utils/price';
-import { X } from 'lucide-react';
-import { useCartStore } from '@/components/cart/cartStore';
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
-import { buildPlacementSignature } from '@/utils/placements';
+import { useCartStore } from '@/components/cart/cartStore';
 import ProductRightColumn from '@/components/page/ProductRightColumn';
+import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
+import { buildPlacementSignature } from '@/utils/placements';
+import { applyBumpPrice, applyBumpToRegular } from '@/utils/price';
+import clsx from 'clsx';
+import { X } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 // Cache the first non-empty baseline per product id, so user filters can't mutate it later.
 const __baselinePlacementCache =
@@ -646,7 +646,7 @@ export default function AddToCartGroup({
         <div className="w-full flex justify-between gap-3 mt-7">
           <button
             type="button"
-            class="px-15 cursor-pointer py-3 bg-white rounded-[100px] border border-tertiary text-tertiary text-base font-semibold leading-snug"
+            className="px-15 cursor-pointer py-3 bg-white rounded-[100px] border border-tertiary text-tertiary text-base font-semibold leading-snug"
             onClick={() => {
               onClose?.();
               setTimeout(() => onOpenQuickView?.(product), 0);
@@ -658,7 +658,7 @@ export default function AddToCartGroup({
           <button
             type="button"
             disabled={quantities.flat().every(v => (parseInt(v || 0) || 0) === 0)}
-            class="px-15 cursor-pointer py-3 bg-tertiary rounded-[100px] shadow-[4px_4px_10px_0px_rgba(13,0,113,0.16)] text-white text-base font-semibold leading-snug"
+            className="px-15 cursor-pointer py-3 bg-tertiary rounded-[100px] shadow-[4px_4px_10px_0px_rgba(13,0,113,0.16)] text-white text-base font-semibold leading-snug"
             onClick={handleAddToCart}
           >
             Add to Cart

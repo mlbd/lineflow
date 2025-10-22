@@ -443,7 +443,7 @@ export default function CompletionDialog({
                   />
                   <svg
                     viewBox="0 0 20 20"
-                    class="pointer-events-none absolute inset-0 m-auto w-3.5 h-3.5
+                    className="pointer-events-none absolute inset-0 m-auto w-3.5 h-3.5
              opacity-0 transition-opacity duration-150
              peer-checked:opacity-100 z-[2]"
                   >

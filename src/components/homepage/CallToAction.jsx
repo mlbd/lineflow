@@ -1,4 +1,3 @@
-import React from 'react';
 
 function CallToAction() {
   return (
@@ -6,9 +5,9 @@ function CallToAction() {
       <div className="w-full pt-[80px]">
         <div className="container mx-auto">
           <div className="flex items-center bg-[url('/cta-gradient.png')] bg-no-repeat bg-cover bg-center rounded-2xl">
-            <div class="flex-1 px-10">
+            <div className="flex-1 px-10">
               <div className="relative md:max-w-[90%] pl-[8%]">
-                <h2 class="text-white typo-h2 font-bold mb-5">Ready to See Your Catalog?</h2>
+                <h2 className="text-white typo-h2 font-bold mb-5">Ready to See Your Catalog?</h2>
                 <p className="text-white">
                   Upload your logo today and get a personalized catalog of branded products — fast,
                   simple, and made for your business.
@@ -31,8 +30,8 @@ function CallToAction() {
               </div>
             </div>
 
-            <div class="basis-5/12 flex items-center justify-center">
-              <img src="/cta-thumb.png" alt="Call To Action" class="max-w-full h-auto" />
+            <div className="basis-5/12 flex items-center justify-center">
+              <img src="/cta-thumb.png" alt="Call To Action" className="max-w-full h-auto" />
             </div>
           </div>
         </div>
