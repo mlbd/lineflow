@@ -55,7 +55,7 @@ const Body = z.object({
 });
 
 /* ------------------------------ Helpers ------------------------------ */
-const toCents = (n) => Math.round(Number(n || 0) * 100);
+const toCents = n => Math.round(Number(n || 0) * 100);
 
 function computeAmountCents(items = [], { coupon = null, shippingCost = 0 } = {}) {
   const subtotalCents = items.reduce(
@@ -83,7 +83,7 @@ function stableStringify(value) {
     return '[' + value.map(stableStringify).join(',') + ']';
   } else if (value && typeof value === 'object') {
     const keys = Object.keys(value).sort();
-    return '{' + keys.map((k) => JSON.stringify(k) + ':' + stableStringify(value[k])).join(',') + '}';
+    return '{' + keys.map(k => JSON.stringify(k) + ':' + stableStringify(value[k])).join(',') + '}';
   } else {
     return JSON.stringify(value);
   }
@@ -102,7 +102,7 @@ function maskEmail(email = '') {
 }
 
 function summarizeItems(items = []) {
-  return items.map((i) => `${i.product_id}:${i.quantity}x@$${Number(i.price).toFixed(2)}`).join(', ');
+  return items.map(i => `${i.product_id}:${i.quantity}x@$${Number(i.price).toFixed(2)}`).join(', ');
 }
 
 /* ------------------------------ Handler ------------------------------ */
@@ -112,7 +112,9 @@ export async function POST(req) {
 
   if (!stripeSecret.startsWith('sk_')) {
     console.error(`[stripe:create-intent][${reqId}] ❌ STRIPE_SECRET_KEY missing or invalid`);
-    return new NextResponse(JSON.stringify({ error: 'Stripe secret key not configured.' }), { status: 500 });
+    return new NextResponse(JSON.stringify({ error: 'Stripe secret key not configured.' }), {
+      status: 500,
+    });
   }
 
   const currency = (process.env.STRIPE_CURRENCY || 'usd').toLowerCase();
@@ -165,11 +167,19 @@ export async function POST(req) {
 
     if (!Number.isFinite(amount) || amount <= 0) {
       console.warn(`[stripe:create-intent][${reqId}] ⚠️ Computed amount <= 0 (rejecting)`, amount);
-      return new NextResponse(JSON.stringify({ error: 'Cart total is zero or invalid.' }), { status: 400 });
+      return new NextResponse(JSON.stringify({ error: 'Cart total is zero or invalid.' }), {
+        status: 400,
+      });
     }
     if (amount < 50) {
-      console.warn(`[stripe:create-intent][${reqId}] ⚠️ Amount below Stripe minimum (50 cents):`, amount);
-      return new NextResponse(JSON.stringify({ error: 'Amount too low (must be at least $0.50).' }), { status: 400 });
+      console.warn(
+        `[stripe:create-intent][${reqId}] ⚠️ Amount below Stripe minimum (50 cents):`,
+        amount
+      );
+      return new NextResponse(
+        JSON.stringify({ error: 'Amount too low (must be at least $0.50).' }),
+        { status: 400 }
+      );
     }
 
     if (DEBUG) {
@@ -180,12 +190,15 @@ export async function POST(req) {
           JSON.stringify({ id: acct.id, livemode: acct.livemode })
         );
       } catch (e) {
-        console.warn(`[stripe:create-intent][${reqId}] ⚠️ unable to retrieve account`, e?.message || e);
+        console.warn(
+          `[stripe:create-intent][${reqId}] ⚠️ unable to retrieve account`,
+          e?.message || e
+        );
       }
     }
 
     // 🔐 Idempotency key – now includes attemptId to ensure a NEW PI per click
-    const itemsKey = input.items.map((i) => ({
+    const itemsKey = input.items.map(i => ({
       id: i.product_id,
       q: Number(i.quantity || 0),
       p: Number(i.price || 0),
@@ -226,15 +239,16 @@ export async function POST(req) {
 
     // Detect suspicious reuse: a "create" that returns a non-initial status
     const suspiciousReuse =
-      intent.status !== 'requires_payment_method' &&
-      intent.status !== 'requires_confirmation';
+      intent.status !== 'requires_payment_method' && intent.status !== 'requires_confirmation';
 
     console.log(
       `[stripe:create-intent][${reqId}] ✅ created`,
       JSON.stringify({
         pi: intent.id,
         status_on_create: intent.status,
-        client_secret_preview: intent.client_secret ? intent.client_secret.slice(0, 12) + '…' : null,
+        client_secret_preview: intent.client_secret
+          ? intent.client_secret.slice(0, 12) + '…'
+          : null,
         amount_cents: amount,
         currency,
         livemode: intent.livemode,

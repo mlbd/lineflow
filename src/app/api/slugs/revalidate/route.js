@@ -26,5 +26,9 @@ async function handle(req) {
   return NextResponse.json({ ok: true, revalidated: true, tag: 'mini-slugs' }, { status: 200 });
 }
 
-export async function GET(req)  { return handle(req); }
-export async function POST(req) { return handle(req); }
+export async function GET(req) {
+  return handle(req);
+}
+export async function POST(req) {
+  return handle(req);
+}

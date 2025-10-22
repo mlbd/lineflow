@@ -36,24 +36,24 @@ export default function CouponField({
 
   return (
     <form onSubmit={handleApply} className="relative mt-4">
-      <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6 flex flex-col gap-3">
-        <div className="flex flex-col justify-between sm:flex-row gap-2 items-center">
-          <div>
+      <div className="bg-white border border-gray-200 rounded-lg p-4 flex flex-col gap-3">
+        <div className="flex flex-col justify-between items-center gap-3">
+          <div className='w-full'>
             <input
               type="text"
               placeholder="Coupon code"
               value={couponInput}
               onChange={e => setCouponInput(e.target.value)}
-              className="flex-grow py-2 px-4 border rounded-lg text-left focus:ring focus:ring-skyblue"
+              className="flex-grow py-2 px-4 border rounded-[8px] h-[58px] text-left focus:ring focus:ring-skyblue w-full bg-grey-100 border-grey-300"
               disabled={validating}
               autoComplete="off"
             />
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-row w-full gap-2">
             {couponDetails && couponDetails.valid && (
               <button
                 type="button"
-                className="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-lg font-bold transition"
+                className="flex-1 cursor-pointer px-8 py-3.5 bg-tertiary text-white rounded-[100px] shadow-[4px_4px_10px_0px_rgba(13,0,113,0.16)] text-base font-semibold leading-snug"
                 onClick={handleRemove}
               >
                 Remove
@@ -62,7 +62,7 @@ export default function CouponField({
             <button
               type="submit"
               disabled={validating}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-bold transition"
+              className="flex-1 cursor-pointer px-8 py-3.5 border border-tertiary rounded-[100px] text-tertiary hover:bg-tertiary hover:text-white text-base font-semibold leading-snug"
             >
               Apply coupon
             </button>
@@ -71,14 +71,14 @@ export default function CouponField({
       </div>
       {error && <div className="text-red-600 text-base text-center">{error}</div>}
       {couponDetails && couponDetails.valid && (
-        <div className="text-green-700 text-center text-sm">
+        <div className="text-green-700 text-center text-sm absolute -bottom-10 w-full">
           Coupon applied successfully: {couponDetails.description || couponDetails.type} (
           {couponDetails.amount}
           {couponDetails.type === 'percent' ? '%' : '$'})
         </div>
       )}
       {couponDetails && !couponDetails.valid && (
-        <div className="text-red-600 text-center text-sm">
+        <div className="text-red-600 text-center text-sm absolute -bottom-10 w-full">
           Invalid coupon: {couponDetails.error}
         </div>
       )}

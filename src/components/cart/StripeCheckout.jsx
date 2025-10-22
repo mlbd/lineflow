@@ -2,12 +2,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import {
-  useCartItems,
-  useCustomerNote,
-  useClearCart,
-  useCoupon,
-} from './cartStore';
+import { useCartItems, useCustomerNote, useClearCart, useCoupon } from './cartStore';
 import { loadStripe } from '@stripe/stripe-js';
 import {
   Elements,
@@ -40,7 +35,7 @@ const floatLabelRaised = 'top-2 text-xs translate-y-0 text-gray-600';
 // ---- Local helpers ----
 function toProducts(items = []) {
   // Normalize your cart items to a minimal product line array
-  return (Array.isArray(items) ? items : []).map((it) => ({
+  return (Array.isArray(items) ? items : []).map(it => ({
     product_id: it.product_id,
     quantity: Number(it.quantity || 0),
     price: Number(it.price || 0),
@@ -56,14 +51,10 @@ function calcSubtotal(products = []) {
 
 function getShippingCost(selectedShipping) {
   const v = Number(
-    selectedShipping?.price ??
-      selectedShipping?.cost ??
-      selectedShipping?.amount ??
-      0
+    selectedShipping?.price ?? selectedShipping?.cost ?? selectedShipping?.amount ?? 0
   );
   return Number.isFinite(v) ? v : 0;
 }
-
 
 // [PATCH] Updated CountrySelect to only allow United States (US)
 function CountrySelect({ valueCode, onChange, className = '' }) {
@@ -104,7 +95,6 @@ function StripeCheckoutInner({
   slug = '',
   onClearCart, // optional callback from parent to clear cart
 }) {
-
   // [PATCH] Added prefill control flags (lock_profile & dummy_email)
   const locked = !!userMeta?.lock_profile;
   const dummyEmail = !!userMeta?.dummy_email;
@@ -142,16 +132,16 @@ function StripeCheckoutInner({
   // [PATCH] Added a helper to compute prefill from userMeta respecting lock_profile & dummy_email
   // Place this just after the `const [cvcComplete, setCvcComplete] = useState(false);`
   const computePrefill = useCallback(
-    (base) => ({
+    base => ({
       ...base,
       // Email honors both lock_profile and dummy_email
       email:
         locked || dummyEmail
           ? ''
-          : (userMeta?.email_address || userMeta?.email_adress || base.email || ''),
+          : userMeta?.email_address || userMeta?.email_adress || base.email || '',
       // Phone/City only honor lock_profile
-      phone: locked ? base.phone : (userMeta?.phone || base.phone || ''),
-      city: locked ? base.city : (userMeta?.city || base.city || ''),
+      phone: locked ? base.phone : userMeta?.phone || base.phone || '',
+      city: locked ? base.city : userMeta?.city || base.city || '',
       // (Optional examples for future use, kept commented to avoid changing prior behavior)
       // firstName: locked ? base.firstName : (userMeta?.full_name ? String(userMeta.full_name).split(' ')[0] : base.firstName),
       // lastName:  locked ? base.lastName  : (userMeta?.full_name ? String(userMeta.full_name).split(' ').slice(1).join(' ') : base.lastName),
@@ -163,7 +153,7 @@ function StripeCheckoutInner({
   // [PATCH] Update the initial prefill effect to use computePrefill helper
   // Replace the existing useEffect that prefilled email/phone/city with the block below.
   useEffect(() => {
-    setForm((f) =>
+    setForm(f =>
       computePrefill({
         ...f,
       })
@@ -187,7 +177,7 @@ function StripeCheckoutInner({
       console.warn('[stripe] clear elements failed:', e);
     }
     // Force remount as a fallback across browsers (e.g., Safari)
-    setCardElementsKey((k) => k + 1);
+    setCardElementsKey(k => k + 1);
 
     // Also reset completeness gates so CTA stays disabled until user re-enters card
     setCardComplete(false);
@@ -222,13 +212,14 @@ function StripeCheckoutInner({
   // ---------- 2) Still inside StripeCheckoutInner — add a prefill effect (once) ----------
   // [PATCH] Prefill form values from userMeta (email/phone/city) respecting lock_profile & dummy_email
   useEffect(() => {
-    setForm((f) => ({
+    setForm(f => ({
       ...f,
-      email: locked || dummyEmail
-        ? ''
-        : (userMeta?.email_address || userMeta?.email_adress || f.email || ''),
-      phone: locked ? f.phone : (userMeta?.phone || f.phone || ''),
-      city: locked ? f.city : (userMeta?.city || f.city || ''),
+      email:
+        locked || dummyEmail
+          ? ''
+          : userMeta?.email_address || userMeta?.email_adress || f.email || '',
+      phone: locked ? f.phone : userMeta?.phone || f.phone || '',
+      city: locked ? f.city : userMeta?.city || f.city || '',
       // (Optional) You can uncomment the following lines if you'd also like to prefill names/addresses safely:
       // firstName: locked ? f.firstName : (userMeta?.full_name ? String(userMeta.full_name).split(' ')[0] : f.firstName),
       // lastName:  locked ? f.lastName  : (userMeta?.full_name ? String(userMeta.full_name).split(' ').slice(1).join(' ') : f.lastName),
@@ -242,10 +233,7 @@ function StripeCheckoutInner({
   const elements = useElements();
 
   const products = useMemo(() => toProducts(items), [items]);
-  const shippingCost = useMemo(
-    () => getShippingCost(selectedShipping),
-    [selectedShipping]
-  );
+  const shippingCost = useMemo(() => getShippingCost(selectedShipping), [selectedShipping]);
   const subtotal = useMemo(() => calcSubtotal(products), [products]);
   const total = useMemo(() => {
     // Display-only math; server validates again
@@ -253,9 +241,7 @@ function StripeCheckoutInner({
     const shippingCents = Math.round(Number(shippingCost || 0) * 100);
     let discountCents = 0;
     if (couponObj && couponObj.valid) {
-      const type = String(
-        couponObj.type || couponObj.discount_type || ''
-      ).toLowerCase();
+      const type = String(couponObj.type || couponObj.discount_type || '').toLowerCase();
       const amount = Number(couponObj.amount || 0);
       if (['percent', 'percentage', 'percent_cart'].includes(type)) {
         discountCents = Math.round((subtotalCents * amount) / 100);
@@ -289,7 +275,6 @@ function StripeCheckoutInner({
     cvcComplete
   );
 
-
   const [status, setStatus] = useState({ kind: 'idle' }); // idle | paying | finalizing | success | error
 
   // Guards to avoid reconfirming the same PI and to block double-submit
@@ -302,7 +287,7 @@ function StripeCheckoutInner({
     last_name: form.lastName,
     email: form.email,
     phone: form.phone,
-    country: form.countryCode,     // ISO 2 (US, GB, BD, …)
+    country: form.countryCode, // ISO 2 (US, GB, BD, …)
     state: form.state,
     city: form.city,
     postcode: form.zip,
@@ -333,16 +318,19 @@ function StripeCheckoutInner({
   // === 1) ADD: new server-authoritative verifier ===
   // [PATCH] Added verifyAndCreateOrder (server decides success; client only reflects it)
   // Place this helper near your other helpers (e.g., right above handlePay or where finalizeOrder used to be).
-  async function verifyAndCreateOrder(intentId, {
-    customerForWoo,
-    itemsForSnapshot,
-    customerNote,
-    selectedShipping,
-    couponObj,
-    slug,
-    setStatus,
-    confirmingRef
-  }) {
+  async function verifyAndCreateOrder(
+    intentId,
+    {
+      customerForWoo,
+      itemsForSnapshot,
+      customerNote,
+      selectedShipping,
+      couponObj,
+      slug,
+      setStatus,
+      confirmingRef,
+    }
+  ) {
     const res = await fetch('/api/payments/stripe/finalize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -404,7 +392,7 @@ function StripeCheckoutInner({
 
       // [PATCH] Added a per-click attemptId to force a fresh PaymentIntent for each checkout attempt
       const attemptId =
-        (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -486,29 +474,24 @@ function StripeCheckoutInner({
       }
       confirmingRef.current = true;
 
-      const { error, paymentIntent } = await stripe.confirmCardPayment(
-        clientSecret,
-        {
-          payment_method: {
-            card,
-            billing_details: {
-              name:
-                form.cardholder ||
-                `${form.firstName} ${form.lastName}`.trim(),
-              email: form.email,
-              phone: form.phone,
-              address: {
-                country: form.countryCode,
-                line1: form.address,
-                line2: form.address2 || undefined,
-                city: form.city,
-                state: form.state,
-                postal_code: form.zip,
-              },
+      const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+        payment_method: {
+          card,
+          billing_details: {
+            name: form.cardholder || `${form.firstName} ${form.lastName}`.trim(),
+            email: form.email,
+            phone: form.phone,
+            address: {
+              country: form.countryCode,
+              line1: form.address,
+              line2: form.address2 || undefined,
+              city: form.city,
+              state: form.state,
+              postal_code: form.zip,
             },
           },
-        }
-      );
+        },
+      });
 
       if (error) {
         // If PI is already in a terminal state (often "succeeded"), treat as success
@@ -606,7 +589,7 @@ function StripeCheckoutInner({
                   label="First Name"
                   placeholder="First Name"
                   value={form.firstName}
-                  onChange={(v) => setForm((f) => ({ ...f, firstName: v }))}
+                  onChange={v => setForm(f => ({ ...f, firstName: v }))}
                   required
                 />
                 <FloatingField
@@ -614,7 +597,7 @@ function StripeCheckoutInner({
                   label="Last Name"
                   placeholder="Last Name"
                   value={form.lastName}
-                  onChange={(v) => setForm((f) => ({ ...f, lastName: v }))}
+                  onChange={v => setForm(f => ({ ...f, lastName: v }))}
                   required
                 />
               </div>
@@ -627,7 +610,7 @@ function StripeCheckoutInner({
                   label="Email"
                   placeholder="Email"
                   value={form.email}
-                  onChange={(v) => setForm((f) => ({ ...f, email: v }))}
+                  onChange={v => setForm(f => ({ ...f, email: v }))}
                   required
                   autoComplete="email"
                 />
@@ -636,7 +619,7 @@ function StripeCheckoutInner({
                   label="Phone"
                   placeholder="Phone"
                   value={form.phone}
-                  onChange={(v) => setForm((f) => ({ ...f, phone: v }))}
+                  onChange={v => setForm(f => ({ ...f, phone: v }))}
                   required
                   autoComplete="tel"
                 />
@@ -648,11 +631,10 @@ function StripeCheckoutInner({
 
               {/* Country/Region (default: United States) */}
               <div className="relative">
-       
                 <CountrySelect
                   valueCode={form.countryCode}
                   onChange={({ code, label }) =>
-                    setForm((f) => ({ ...f, countryCode: code, country: label }))
+                    setForm(f => ({ ...f, countryCode: code, country: label }))
                   }
                   className="h-[66px]"
                 />
@@ -665,7 +647,7 @@ function StripeCheckoutInner({
                   label="Address"
                   placeholder="Address"
                   value={form.address}
-                  onChange={(v) => setForm((f) => ({ ...f, address: v }))}
+                  onChange={v => setForm(f => ({ ...f, address: v }))}
                   required
                   autoComplete="address-line1"
                 />
@@ -678,7 +660,7 @@ function StripeCheckoutInner({
                   label="Additional Info (Optional)"
                   placeholder="Additional Info (Optional)"
                   value={form.address2}
-                  onChange={(v) => setForm((f) => ({ ...f, address2: v }))}
+                  onChange={v => setForm(f => ({ ...f, address2: v }))}
                   autoComplete="address-line2"
                 />
               </div>
@@ -690,7 +672,7 @@ function StripeCheckoutInner({
                   label="City"
                   placeholder="City"
                   value={form.city}
-                  onChange={(v) => setForm((f) => ({ ...f, city: v }))}
+                  onChange={v => setForm(f => ({ ...f, city: v }))}
                   required
                   autoComplete="address-level2"
                 />
@@ -699,7 +681,7 @@ function StripeCheckoutInner({
                   label="State"
                   placeholder="State"
                   value={form.state}
-                  onChange={(v) => setForm((f) => ({ ...f, state: v }))}
+                  onChange={v => setForm(f => ({ ...f, state: v }))}
                   autoComplete="address-level1"
                 />
                 <FloatingField
@@ -707,7 +689,7 @@ function StripeCheckoutInner({
                   label="ZIP Code"
                   placeholder="ZIP Code"
                   value={form.zip}
-                  onChange={(v) => setForm((f) => ({ ...f, zip: v }))}
+                  onChange={v => setForm(f => ({ ...f, zip: v }))}
                   required
                   autoComplete="postal-code"
                 />
@@ -727,44 +709,48 @@ function StripeCheckoutInner({
             <div className="space-y-3">
               <Field>
                 <div className={`${inputCls} py-3`}>
-                  <CardNumberElement key={`card-number-${cardElementsKey}`} options={{ showIcon: true }} onChange={(e) => setCardComplete(!!e?.complete)} />
+                  <CardNumberElement
+                    key={`card-number-${cardElementsKey}`}
+                    options={{ showIcon: true }}
+                    onChange={e => setCardComplete(!!e?.complete)}
+                  />
                 </div>
               </Field>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Field>
                   <div className={`${inputCls} py-3`}>
-                    <CardExpiryElement key={`card-expiry-${cardElementsKey}`} onChange={(e) => setExpComplete(!!e?.complete)} />
+                    <CardExpiryElement
+                      key={`card-expiry-${cardElementsKey}`}
+                      onChange={e => setExpComplete(!!e?.complete)}
+                    />
                   </div>
                 </Field>
                 <Field>
                   <div className={`${inputCls} py-3`}>
-                    <CardCvcElement key={`card-expiry-${cardElementsKey}`} onChange={(e) => setCvcComplete(!!e?.complete)} />
+                    <CardCvcElement
+                      key={`card-expiry-${cardElementsKey}`}
+                      onChange={e => setCvcComplete(!!e?.complete)}
+                    />
                   </div>
                 </Field>
               </div>
 
               <FloatingField
-                  id="cardholder"
-                  label="Card Holder Name"
-                  placeholder="Card Holder Name"
-                  value={form.cardholder}
-                  onChange={(v) => setForm((f) => ({ ...f, cardholder: v }))}
-                />
+                id="cardholder"
+                label="Card Holder Name"
+                placeholder="Card Holder Name"
+                value={form.cardholder}
+                onChange={v => setForm(f => ({ ...f, cardholder: v }))}
+              />
             </div>
 
             {/* Summary */}
             <div className="bg-indigo-50 rounded-xl p-4 mt-6 text-sm">
               <Row k="Subtotal" v={`$${Number(subtotal).toFixed(2)}`} />
-              <Row
-                k="Shipping"
-                v={shippingCost > 0 ? `$${shippingCost.toFixed(2)}` : 'Free'}
-              />
+              <Row k="Shipping" v={shippingCost > 0 ? `$${shippingCost.toFixed(2)}` : 'Free'} />
               {couponObj && (
-                <Row
-                  k={couponObj?.code ? `Coupon (${couponObj.code})` : 'Coupon'}
-                  v="applied"
-                />
+                <Row k={couponObj?.code ? `Coupon (${couponObj.code})` : 'Coupon'} v="applied" />
               )}
               <div className="border-t mt-2 pt-2 flex justify-between font-semibold text-lg">
                 <span>Total</span>
@@ -779,7 +765,7 @@ function StripeCheckoutInner({
               aria-disabled={!canSubmit || status.kind === 'paying' || status.kind === 'finalizing'}
               aria-busy={status.kind === 'paying' || status.kind === 'finalizing'}
               className={`w-full cursor-pointer mt-4 py-3 rounded-lg font-semibold text-white transition ${
-                (!canSubmit || status.kind === 'paying' || status.kind === 'finalizing')
+                !canSubmit || status.kind === 'paying' || status.kind === 'finalizing'
                   ? 'bg-gray-400 cursor-not-allowed'
                   : 'bg-indigo-900 hover:bg-indigo-800'
               }`}
@@ -844,7 +830,7 @@ function FloatingField({
         className={floatInput} // h-[66px] with transitions already defined globally
         placeholder=" " // keep placeholder hidden; floating label acts as visual placeholder
         value={value}
-        onChange={(e) => onChange?.(e.target.value)}
+        onChange={e => onChange?.(e.target.value)}
         required={required}
         autoComplete={autoComplete}
         aria-label={label}
@@ -904,8 +890,7 @@ function OrderSuccessModal({ order, total, email, onClose }) {
 
         <div className="space-y-2 text-sm text-gray-800">
           <div>
-            <span className="font-semibold">Order ID:</span>{' '}
-            {orderId || 'N/A'}
+            <span className="font-semibold">Order ID:</span> {orderId || 'N/A'}
           </div>
           <div>
             <span className="font-semibold">Total:</span>{' '}
@@ -917,10 +902,7 @@ function OrderSuccessModal({ order, total, email, onClose }) {
         </div>
 
         {orderId && (
-          <a
-            href={`/order/${orderId}`}
-            className="inline-block mt-4 underline text-indigo-700"
-          >
+          <a href={`/order/${orderId}`} className="inline-block mt-4 underline text-indigo-700">
             View order details
           </a>
         )}

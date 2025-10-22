@@ -386,7 +386,7 @@ export default function AddToCartQuantity({
       }}
     >
       <DialogContent
-        className="rounded-2xl shadow-xl p-0"
+        className="rounded-2xl shadow-xl p-0 bg-white"
         style={{ width: '470px', minWidth: '470px', maxWidth: '100vw' }}
       >
         <DialogClose asChild>

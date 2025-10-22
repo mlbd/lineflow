@@ -1,3 +1,4 @@
+// !fullupdate
 import { useState, useMemo, useLayoutEffect, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogClose } from '@/components/ui/dialog';
 import clsx from 'clsx';
@@ -6,6 +7,7 @@ import { X } from 'lucide-react';
 import { useCartStore } from '@/components/cart/cartStore';
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
 import { buildPlacementSignature } from '@/utils/placements';
+import ProductRightColumn from '@/components/page/ProductRightColumn';
 
 // Cache the first non-empty baseline per product id, so user filters can't mutate it later.
 const __baselinePlacementCache =
@@ -19,8 +21,7 @@ const toNumber = v => {
   return Number.isFinite(n) ? n : 0;
 };
 
-// [PATCH] Added: money helpers for precise totals in the modal
-const toCents = v => Math.round(Number(v ?? 0) * 100);
+// money helpers
 const fmt2 = cents => (Math.max(0, Number(cents || 0)) / 100).toFixed(2);
 
 function getLuminance(hex) {
@@ -109,7 +110,7 @@ function coercePlacementArray(val, pid) {
   return [];
 }
 
-// signature used in cart merge: 'default' if not changed; else names sorted
+// signature used in cart merge
 const effectiveSigForCartItem = it => {
   return it?.options?.group_type === 'Group'
     ? it?.filter_was_changed
@@ -126,6 +127,8 @@ export default function AddToCartGroup({
   onOpenQuickView,
   onCartAddSuccess,
   pagePlacementMap = {},
+  companyLogos = {},
+  customBackAllowedSet = {},
 }) {
   const acf = product?.acf || {};
   const sizes = (acf.omit_sizes_from_chart || []).map(s => s.value);
@@ -136,7 +139,6 @@ export default function AddToCartGroup({
 
   const computedWidth = useResponsiveModalWidth(sizes);
   const dialogPadding = 100;
-  const modalWidth = computedWidth + dialogPadding;
 
   const [quantities, setQuantities] = useState(() => colors.map(() => sizes.map(() => '')));
   const [error, setError] = useState(null);
@@ -145,7 +147,7 @@ export default function AddToCartGroup({
   const clearFilter = useAreaFilterStore(s => s.clearFilter);
   const mode = useAreaFilterStore(s => s.mode);
 
-  // Local matrix total (what the user is about to set for THIS signature)
+  // Local matrix total
   const localTotal = useMemo(() => {
     let t = 0;
     for (const row of quantities) for (const val of row) t += parseInt(val || 0);
@@ -173,32 +175,23 @@ export default function AddToCartGroup({
     );
   };
 
-  // —— Effective placements & baseline same as add logic ——
+  // —— Effective placements
   const pid = String(product?.id || '');
   const effectivePlacements = useMemo(() => {
     let eff = Array.isArray(product?.placement_coordinates) ? product.placement_coordinates : [];
     if (filters && filters[pid] && Array.isArray(filters[pid])) {
-      eff = filters[pid]; // user filter wins
+      eff = filters[pid];
     } else if (
       pagePlacementMap &&
       typeof pagePlacementMap === 'object' &&
       !Array.isArray(pagePlacementMap) &&
       pagePlacementMap[pid]
     ) {
-      eff = coercePlacementArray(pagePlacementMap[pid], product?.id); // page override
+      eff = coercePlacementArray(pagePlacementMap[pid], product?.id);
     }
     return eff;
   }, [product?.placement_coordinates, product?.id, filters, pid, pagePlacementMap]);
 
-  const activeAreaNames = useMemo(
-    () =>
-      (Array.isArray(effectivePlacements) ? effectivePlacements : [])
-        .filter(p => p?.active && p?.name)
-        .map(p => String(p.name)),
-    [effectivePlacements]
-  );
-
-  // [PATCH] Added richer placement list for UI: name + __forceBack + extraPrice
   const activePlacementsUI = useMemo(
     () =>
       (Array.isArray(effectivePlacements) ? effectivePlacements : [])
@@ -211,7 +204,7 @@ export default function AddToCartGroup({
     [effectivePlacements]
   );
 
-  // —— Baseline placements (FIRST non-empty snapshot from product.placement_coordinates; cached per product id) ——
+  // —— Baseline placements (cached per product id)
   const baselinePlacementsRef = useMemo(() => {
     const key = String(product?.id || '');
     const cached = __baselinePlacementCache.get(key);
@@ -221,13 +214,12 @@ export default function AddToCartGroup({
       : coercePlacementArray(product?.placement_coordinates, product?.id);
     const hasActive = Array.isArray(raw) && raw.some(p => p?.active);
     if (hasActive) {
-      const clone = JSON.parse(JSON.stringify(raw)); // deep clone to avoid external mutation
+      const clone = JSON.parse(JSON.stringify(raw));
       __baselinePlacementCache.set(key, clone);
       return clone;
     }
-    // fall back to cached (if any) or empty array
     return Array.isArray(raw) ? raw : [];
-  }, [product?.id]); // IMPORTANT: depend only on product id
+  }, [product?.id]);
 
   const placementSignature = useMemo(
     () => buildPlacementSignature(effectivePlacements),
@@ -237,11 +229,9 @@ export default function AddToCartGroup({
     () => buildPlacementSignature(baselinePlacementsRef),
     [product?.id]
   );
-
   const filterWasChanged = placementSignature !== baselineSignature;
 
-  // ----- Price preview must reflect pooled quantity across cart (same product_id) -----
-  // Build signatures for pricing ONLY (avoid interfering with later merge logic)
+  // ----- Price preview: pooled quantity across cart -----
   const placementSignatureForPrice = useMemo(
     () => buildPlacementSignature(effectivePlacements),
     [effectivePlacements]
@@ -253,7 +243,6 @@ export default function AddToCartGroup({
   const filterWasChangedForPrice = placementSignatureForPrice !== baselineSignatureForPrice;
   const expectedSigForPrice = filterWasChangedForPrice ? placementSignatureForPrice : 'default';
 
-  // Pool sizes across ALL Group lines for this product id; exclude the current signature being edited
   const { cartAllQtyForPrice, cartThisSigQtyForPrice } = useMemo(() => {
     let all = 0;
     let thisSig = 0;
@@ -268,66 +257,46 @@ export default function AddToCartGroup({
     return { cartAllQtyForPrice: all, cartThisSigQtyForPrice: thisSig };
   }, [cartItems, pid, expectedSigForPrice]);
 
-  // Preview pool after this submission: replace current-sig qty with matrix total
   const previewPooledTotal = useMemo(
     () => Math.max(0, cartAllQtyForPrice - cartThisSigQtyForPrice) + localTotal,
     [cartAllQtyForPrice, cartThisSigQtyForPrice, localTotal]
   );
 
-  // Final step info (for pricing UI) based on the pooled preview
   const stepInfo = useMemo(
     () => resolveStepPricing(previewPooledTotal, regularPrice, discountSteps),
     [previewPooledTotal, regularPrice, discountSteps]
   );
 
-  // "Other in cart" = total for this product in cart - qty of this signature in cart
-  // Note: depends ONLY on cart state for this product; does NOT use local form totals,
-  // so it won't change when the user types in the matrix.
   const otherQtyInCart = useMemo(
     () => Math.max(0, (cartAllQtyForPrice || 0) - (cartThisSigQtyForPrice || 0)),
     [cartAllQtyForPrice, cartThisSigQtyForPrice]
   );
 
-  // [PATCH] Updated: extra_print_price counts ONLY placements flagged extraPrice===true AND active
   const countActive = arr => (Array.isArray(arr) ? arr.filter(p => p?.active).length : 0);
-  const baselineActiveCount = useMemo(
-    () => countActive(baselinePlacementsRef),
-    [product?.id] // kept for backward-compat displays / meta
-  );
-
+  const baselineActiveCount = useMemo(() => countActive(baselinePlacementsRef), [product?.id]);
   const selectedActiveCount = useMemo(
     () => countActive(effectivePlacements),
     [effectivePlacements]
   );
-
-  // [PATCH] Updated: "extra placement" count = max(0, selectedActiveCount - 1)
   const extraPricePlaceCount = useMemo(
     () => Math.max(0, Number(selectedActiveCount || 0) - 1),
     [selectedActiveCount]
   );
-
-  // [PATCH] Guard: charge only if product.extra_print_price > 0
   const extraPrint = useMemo(
     () => Math.max(0, toNumber(product?.extra_print_price)),
     [product?.extra_print_price]
   );
-
-  // [PATCH] Updated: per-unit extra cost
   const extraEach = useMemo(
     () => extraPricePlaceCount * extraPrint,
     [extraPricePlaceCount, extraPrint]
   );
-
   const unitWithExtra = useMemo(
     () => toNumber(stepInfo.price) + extraEach,
     [stepInfo.price, extraEach]
   );
-
-  // [PATCH] Updated: only mark as "has extra" when it’s actually billable
   const hasExtraSelection = extraPricePlaceCount > 0 && extraPrint > 0;
-
   const nextStepAmountWithExtra = useMemo(
-    () => (stepInfo?.nextStep ? toNumber(stepInfo.nextStep.amount) + extraEach : 0),
+    () => (stepInfo?.nextStep ? Number(stepInfo.nextStep.amount) + extraEach : 0),
     [stepInfo?.nextStep, extraEach]
   );
 
@@ -358,7 +327,7 @@ export default function AddToCartGroup({
     return base;
   }, [cartItems, colors, sizes, pid, filterWasChanged, placementSignature]);
 
-  // ✅ Initialize once per open (avoid updates during Dialog transitions)
+  // ✅ Initialize once per open
   const didPrefillRef = useRef(false);
   useEffect(() => {
     if (open && !didPrefillRef.current) {
@@ -371,10 +340,8 @@ export default function AddToCartGroup({
 
   // —— REPLACE semantics on submit ——
   const handleAddToCart = () => {
-    // No-op if grid all zero
     const flatTotal = quantities.flat().reduce((s, v) => s + (parseInt(v || 0) || 0), 0);
     if (flatTotal === 0) {
-      // if there are existing items for this signature, remove them all
       const expectedSig = filterWasChanged ? placementSignature : 'default';
       const now = useCartStore.getState().items;
       const matches = now
@@ -391,7 +358,6 @@ export default function AddToCartGroup({
       onCartAddSuccess?.();
       onClose();
 
-      // Clear all area filters after successful add
       try {
         const resetAll = useAreaFilterStore.getState().resetAll;
         resetAll?.();
@@ -404,11 +370,9 @@ export default function AddToCartGroup({
     const placement_signature = filterWasChanged ? placementSignature : 'default';
     const expectedSig = placement_signature;
 
-    // Build index maps for existing + new grid values
     const colorIndex = new Map(colors.map((c, i) => [String(c.title), i]));
     const sizeIndex = new Map(sizes.map((s, i) => [String(s), i]));
 
-    // 1) Snapshot of current matching cart lines (same product + sig)
     const now = useCartStore.getState().items;
     const existing = now
       .map((it, idx) => ({ it, idx }))
@@ -419,7 +383,6 @@ export default function AddToCartGroup({
           effectiveSigForCartItem(it) === expectedSig
       );
 
-    // Map existing by color|size
     const keyOf = (color, size) => `${String(color)}|${String(size)}`;
     const existMap = new Map();
     for (const { it, idx } of existing) {
@@ -429,10 +392,9 @@ export default function AddToCartGroup({
       });
     }
 
-    // 2) Compute actions
-    const updates = []; // [{ idx, qty }]
-    const removals = []; // [idx]
-    const additions = []; // [item]
+    const updates = [];
+    const removals = [];
+    const additions = [];
 
     colors.forEach((color, rIdx) => {
       sizes.forEach((size, cIdx) => {
@@ -442,11 +404,10 @@ export default function AddToCartGroup({
         if (existMap.has(k)) {
           const { idx, qty: oldQty } = existMap.get(k);
           if (newQty === 0) {
-            removals.push(idx); // delete only if it originally existed
+            removals.push(idx);
           } else if (newQty !== oldQty) {
-            updates.push({ idx, qty: newQty }); // replace value
+            updates.push({ idx, qty: newQty });
           }
-          // if equal, do nothing
         } else {
           if (newQty > 0) {
             additions.push({
@@ -454,7 +415,7 @@ export default function AddToCartGroup({
               name: product.name,
               thumbnail: product.thumbnail,
               thumbnail_meta: product.thumbnail_meta,
-              price: Number(unitWithExtra) || 0, // will be repriced by store
+              price: Number(unitWithExtra) || 0,
               extra_unit_add: Number(extraEach) || 0,
               quantity: newQty,
               pricing: {
@@ -463,21 +424,19 @@ export default function AddToCartGroup({
                 discount_steps: discountSteps,
               },
               placement_signature: expectedSig,
-              placement_coordinates: effectivePlacements, // frozen snapshot
+              placement_coordinates: effectivePlacements,
               product: {
                 id: product.id,
                 placement_coordinates: effectivePlacements,
                 acf: { color: Array.isArray(product?.acf?.color) ? product.acf.color : [] },
               },
               filter_was_changed: filterWasChanged,
-              // [PATCH] Updated: persisted meta related to extra prints
-              baseline_active_count: baselineActiveCount, // kept
-              selected_active_count: selectedActiveCount, // kept
-              selected_extra_price_count: extraPricePlaceCount, // updated source
-              has_extra_selection: hasExtraSelection, // now respects extra_print_price > 0
+              baseline_active_count: baselineActiveCount,
+              selected_active_count: selectedActiveCount,
+              selected_extra_price_count: extraPricePlaceCount,
+              has_extra_selection: hasExtraSelection,
               extra_print_price: Number(product?.extra_print_price) || 0,
-              pricing_group_key: hasExtraSelection ? `sig:${placementSignature}` : 'default', // only splits when billable
-
+              pricing_group_key: hasExtraSelection ? `sig:${placementSignature}` : 'default',
               options: {
                 group_type: 'Group',
                 color: color.title,
@@ -491,19 +450,10 @@ export default function AddToCartGroup({
       });
     });
 
-    // 3) Apply actions
-    //    Order matters to keep indices sane AND pricing correct at the end.
-
-    // 3a) Updates (safe: indices valid pre-removal)
     updates.forEach(({ idx, qty }) => updateItemQuantity(idx, qty));
-
-    // 3b) Additions (store will reprice after each add)
     additions.forEach(item => addOrUpdateItem(item));
-
-    // 3c) Removals — do in descending order to avoid index shift
     removals.sort((a, b) => b - a).forEach(idx => removeItem(idx));
 
-    // 3d) Final reprice in case last operation was removal only
     const after = useCartStore.getState().items;
     const remainingOfPid = after
       .map((it, idx) => ({ it, idx }))
@@ -512,7 +462,7 @@ export default function AddToCartGroup({
       );
     if (remainingOfPid.length > 0) {
       const { it, idx } = remainingOfPid[0];
-      updateItemQuantity(idx, it.quantity); // nudge to trigger group repricing
+      updateItemQuantity(idx, it.quantity);
     }
 
     onCartAddSuccess?.();
@@ -525,6 +475,199 @@ export default function AddToCartGroup({
 
   if (!product) return null;
 
+  const leftColumn = (
+    <form className="flex items-center flex-col relative allaround--group-form w-full">
+      <div
+  className={clsx(
+    // [PATCH] Updated: allow both scrollbars and keep layout stable
+    'overflow-x-auto overflow-y-auto scrollbar-thin allaround-scrollbar rounded-lg bg-white mb-4',
+    // (You had these separately; combining is fine)
+  )}
+  style={{
+    width: `100%`,
+    maxWidth: `600px`,
+    minWidth: '300px',
+    maxHeight: '357px', // vertical scroll triggers when content exceeds this
+    transition: 'width 0.2s cubic-bezier(.42,0,.58,1)',
+    // [PATCH] Added: reserve space for scrollbars to avoid layout shift (supported in modern Chromium/Firefox)
+    scrollbarGutter: 'stable both-edges',
+  }}
+>
+  {/* Sticky header stays the same */}
+  <div className="w-full bg-white sticky top-0 z-10 sticky-top-size-ttile">
+    <div className="flex items-center">
+      <div className="w-[110px] min-w-[110px] h-[52px] bg-white px-2 flex items-center"></div>
+
+      {/* [PATCH] Updated: fixed-width 60px columns for sizes */}
+      <div className="flex gap-[10px] pl-2">
+        {sizes.map((size, cIdx) => (
+          <div key={cIdx} className="block py-1.5 w-[60px] min-w-[60px] max-w-[60px]">
+            <div className="w-full text-center font-regular py-2 text-base bg-bglight">
+              {size}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+
+  <div className="w-full">
+    {colors.map((color, rIdx) => {
+      const bg = color.color_hex_code || '#fff';
+      const dark = isDarkColor(bg);
+      return (
+        <div key={rIdx} className="flex items-center border-b" style={{ borderColor: '#eee' }}>
+          <div className="w-[110px] min-w-[110px] px-2 flex items-center">
+            <span
+              className={clsx(
+                'inline-block border',
+                'text-[16px] font-medium px-[10px] leading-[2] py-[5px] rounded-[5px]',
+                'border-[#ccc]',
+                dark ? 'text-white' : 'text-[#222]'
+              )}
+              style={{ background: bg, width: '100%', textAlign: 'center' }}
+            >
+              {color.title}
+            </span>
+          </div>
+
+          {/* [PATCH] Updated: fixed-width 60px columns for inputs too */}
+          <div className="flex gap-[10px] pl-2">
+            {sizes.map((size, cIdx) => (
+              <div key={cIdx} className="block py-1.5 w-[60px] min-w-[60px] max-w-[60px]">
+                <input
+                  className={clsx(
+                    'text-center outline-none',
+                    'border border-[#ccc] rounded-[6px] bg-white text-[#222222]',
+                    'text-sm leading-[2] py-[5px] px-[6px]',
+                    'w-full',
+                    'focus:ring focus:ring-skyblue',
+                    error && 'border-red-400'
+                  )}
+                  style={{ boxShadow: `0px 0px 0px 1px ${bg}` }}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={3}
+                  value={quantities[rIdx][cIdx]}
+                  onChange={e => handleInput(rIdx, cIdx, e.target.value)}
+                  onBlur={() => setError(null)}
+                  autoComplete="off"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    })}
+  </div>
+</div>
+
+      <div className="w-full">
+        <div className="flex items-center">
+          <div className="w-full">
+            <div className="flex items-start justify-between gap-10">
+              {/* LEFT COLUMN */}
+              <div className="flex flex-col min-w-0 flex-1">
+                <div className="flex items-center justify-between">
+                  <div className="min-w-0">
+                    <p className="text-base">Current Price per Unit:</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="alarnd--group-price text-lg font-semibold">
+                      <span>
+                        <span className="woocommerce-Price-currencySymbol">$</span>
+                        <span className="current_price">{unitWithExtra.toFixed(2)}</span>
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex-1">
+                  {error ? (
+                    <div className="text-red-500 text-sm text-left mb-2">{error}</div>
+                  ) : stepInfo.nextStep ? (
+                    <div className="text-pink text-sm pt-[10px] text-left mb-2 flex flex-col">
+                      <span className='inline'>
+                        Add {stepInfo.unitsToNext} more items to lower the price to{' '}
+                        <b>${nextStepAmountWithExtra.toFixed(2)}</b> per unit 
+                        <span className="line-through current_price inline"> (Currently ${unitWithExtra.toFixed(2)})</span>
+                      </span>
+                      
+                    </div>
+                  ) : (
+                    flatTotalFromMatrix(quantities) > 0 && (
+                      <div className="text-green-600 text-left mb-2">
+                        {`Unit price: $${unitWithExtra.toFixed(2)}`}
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+
+              {/* RIGHT COLUMN */}
+              <div className="flex flex-col min-w-[170px] shrink-0 text-right">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-base">Total Units:</p>
+                  </div>
+                  <div>
+                    <p className="alarnd--group-price text-lg font-semibold">
+                      {quantities.flat().reduce((s, v) => s + (parseInt(v || 0) || 0), 0)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-base">Total:</p>
+                  </div>
+                  <div>
+                    <p className="alarnd--group-price text-lg font-semibold">
+                      <span className="alarnd--total-price">
+                        <span className="current_total_price text-tertiary text-2xl">
+                          <span className="woocommerce-Price-currencySymbol">$</span>
+                          {(() => {
+                            const qty = quantities
+                              .flat()
+                              .reduce((s, v) => s + (parseInt(v || 0) || 0), 0);
+                            const totalCents = Math.round(qty * Number(unitWithExtra || 0) * 100);
+                            return fmt2(totalCents);
+                          })()}
+                        </span>
+                      </span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="w-full flex justify-between gap-3 mt-7">
+          <button
+            type="button"
+            class="px-15 cursor-pointer py-3 bg-white rounded-[100px] border border-tertiary text-tertiary text-base font-semibold leading-snug"
+            onClick={() => {
+              onClose?.();
+              setTimeout(() => onOpenQuickView?.(product), 0);
+            }}
+          >
+            Quick View
+          </button>
+
+          <button
+            type="button"
+            disabled={quantities.flat().every(v => (parseInt(v || 0) || 0) === 0)}
+            class="px-15 cursor-pointer py-3 bg-tertiary rounded-[100px] shadow-[4px_4px_10px_0px_rgba(13,0,113,0.16)] text-white text-base font-semibold leading-snug"
+            onClick={handleAddToCart}
+          >
+            Add to Cart
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+
   return (
     <Dialog
       open={open}
@@ -533,13 +676,11 @@ export default function AddToCartGroup({
       }}
     >
       <DialogContent
-        className="rounded-2xl shadow-xl"
+        className="rounded-2xl shadow-xl bg-white"
         style={{
-          width: `${modalWidth}px`,
-          minWidth: `600px`,
+          width: 'min(1100px, 100vw)',
           maxWidth: '100vw',
-          padding: '20px 50px 30px',
-          transition: 'width 0.2s cubic-bezier(.42,0,.58,1)',
+          padding: '20px 30px 30px',
         }}
       >
         <DialogClose asChild>
@@ -548,199 +689,33 @@ export default function AddToCartGroup({
           </button>
         </DialogClose>
 
-        {/* Title centered */}
-        <div className="mt-3 mb-1">
+        {/* Title */}
+        <div className="mt-3 mb-3">
           <h2 className="text-xl font-bold text-center">{product.name}</h2>
         </div>
 
-        {/* Active areas — below title, flow left→right and wrap, capped width */}
-        {activePlacementsUI.length > 0 && (
-          <div className="mx-auto max-w-full flex flex-wrap justify-center gap-1 mb-4">
-            {activePlacementsUI.map(pl => (
-              <div
-                key={pl.name}
-                className="inline-flex flex-row-reverse items-stretch px-0 py-0 rounded-full leading-[10px] text-[10px] font-medium border border-emerald-600 text-emerald-700 bg-emerald-50 overflow-hidden"
-                title={pl.name}
-              >
-                {/* Left: Back badge */}
-                {pl.forceBack && (
-                  <div className="bg-black text-white flex items-center justify-center px-1.5">
-                    <span className="font-bold">B</span>
-                  </div>
-                )}
 
-                {/* Middle: Name */}
-                <div className="px-1.5 py-1">
-                  <span className="text-emerald-700 font-medium">{pl.name}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Other quantity in cart (stable; unaffected by form typing) */}
+        {/* Other quantity in cart */}
         {otherQtyInCart > 0 && (
           <div className="text-center text-xs text-gray-600 -mt-2 mb-3">
             {otherQtyInCart} more in cart
           </div>
         )}
 
-        <form className="flex items-center flex-col relative allaround--group-form">
-          <div
-            className={clsx(
-              'overflow-x-auto overflow-y-auto rounded-lg bg-white mb-4',
-              'scrollbar-thin allaround-scrollbar'
-            )}
-            style={{
-              width: `${computedWidth}px`,
-              minWidth: `300px`,
-              maxHeight: '357px',
-              transition: 'width 0.2s cubic-bezier(.42,0,.58,1)',
-            }}
-          >
-            <div className="w-full bg-white sticky top-0 z-10 sticky-top-size-ttile">
-              <div className="flex items-center">
-                <div className="w-[110px] min-w-[110px] h-[52px] bg-white px-2 flex items-center"></div>
-                <div className="flex flow gap-[10px] pl-2 flex-1">
-                  {sizes.map((size, cIdx) => (
-                    <div key={cIdx} className="block flex-1 py-1.5">
-                      <div className="w-full text-center font-regular py-2 text-base bg-bglight">
-                        {size}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+        {/* Two-column layout: left (form) + right (preview/placements) */}
+        <div className="flex flex-col lg:flex-row gap-2">
+          <div className="flex-1">{leftColumn}</div>
 
-            <div className="w-full">
-              {colors.map((color, rIdx) => {
-                const bg = color.color_hex_code || '#fff';
-                const dark = isDarkColor(bg);
-                return (
-                  <div key={rIdx} className="flex items-center" style={{ borderColor: '#eee' }}>
-                    <div className="w-[110px] min-w-[110px] px-2 flex items-center">
-                      <span
-                        className={clsx(
-                          'inline-block border',
-                          'text-[16px] font-medium px-[10px] leading-[2] py-[5px] rounded-[5px]',
-                          'border-[#ccc]',
-                          dark ? 'text-white' : 'text-[#222]'
-                        )}
-                        style={{ background: bg, width: '100%', textAlign: 'center' }}
-                      >
-                        {color.title}
-                      </span>
-                    </div>
-                    <div className="flex gap-[10px] pl-2 flex-1">
-                      {sizes.map((size, cIdx) => (
-                        <div key={cIdx} className="block flex-1 py-1.5">
-                          <input
-                            className={clsx(
-                              'text-center outline-none',
-                              'border border-[#ccc] rounded-[6px] bg-white text-[#222222]',
-                              'text-sm leading-[2] py-[5px] px-[6px]',
-                              'w-full',
-                              'focus:ring focus:ring-skyblue',
-                              error && 'border-red-400'
-                            )}
-                            style={{ boxShadow: `0px 0px 0px 1px ${bg}` }}
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            maxLength={3}
-                            value={quantities[rIdx][cIdx]}
-                            onChange={e => handleInput(rIdx, cIdx, e.target.value)}
-                            onBlur={() => setError(null)}
-                            autoComplete="off"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="w-full">
-            {error ? (
-              <div className="text-red-500 text-sm text-center mb-2">{error}</div>
-            ) : stepInfo.nextStep ? (
-              <div className="text-pink text-xl pt-[10px] text-center mb-2 flex flex-col">
-                <span>
-                  Add {stepInfo.unitsToNext} more items to lower the price to{' '}
-                  <b>${nextStepAmountWithExtra.toFixed(2)}</b> per unit
-                </span>
-                <span className="line-through current_price">
-                  (Currently ${unitWithExtra.toFixed(2)})
-                </span>
-              </div>
-            ) : (
-              flatTotalFromMatrix(quantities) > 0 && (
-                <div className="text-green-600 text-center mb-2">
-                  {`Unit price: $${unitWithExtra.toFixed(2)}`}
-                </div>
-              )
-            )}
-
-            <div className="flex justify-between items-center">
-              <div className="flex-shrink-0">
-                <button
-                  type="button"
-                  className="trigger-view-modal-btn alarnd-btn"
-                  onClick={() => {
-                    onClose?.();
-                    setTimeout(() => onOpenQuickView?.(product), 0);
-                  }}
-                >
-                  Quick View
-                </button>
-              </div>
-              <div className="flex-1 text-center">
-                <div className="alarnd--price-by-shirt text-center my-4">
-                  <p className="alarnd--group-price text-lg font-semibold">
-                    <span>
-                      <span className="woocommerce-Price-currencySymbol">$</span>
-                      <span className="current_price">{unitWithExtra.toFixed(2)}</span>
-                    </span>{' '}
-                    / {acf.first_line_keyword || 'Bag'}
-                  </p>
-                  <p>
-                    Total units:{' '}
-                    <span className="alarnd__total_qty">
-                      {quantities.flat().reduce((s, v) => s + (parseInt(v || 0) || 0), 0)}
-                    </span>
-                  </p>
-                  <span className="alarnd--total-price">
-                    Total:{' '}
-                    <span>
-                      <span className="current_total_price">
-                        <span className="woocommerce-Price-currencySymbol">$</span>
-                        {(() => {
-                          const qty = quantities
-                            .flat()
-                            .reduce((s, v) => s + (parseInt(v || 0) || 0), 0);
-                          const totalCents = Math.round(qty * Number(unitWithExtra || 0) * 100);
-                          return fmt2(totalCents);
-                        })()}
-                      </span>
-                    </span>
-                  </span>
-                </div>
-              </div>
-              <div className="flex-shrink-0">
-                <button
-                  type="button"
-                  disabled={quantities.flat().every(v => (parseInt(v || 0) || 0) === 0)}
-                  className="alarnd-btn"
-                  onClick={handleAddToCart}
-                >
-                  Add to Cart
-                </button>
-              </div>
-            </div>
-          </div>
-        </form>
+          <ProductRightColumn
+            open={open}
+            product={product}
+            companyLogos={companyLogos}
+            pagePlacementMap={pagePlacementMap}
+            customBackAllowedSet={customBackAllowedSet}
+            className="lg:max-w-[48%] w-full"
+            flexBasis="48%"
+          />
+        </div>
       </DialogContent>
     </Dialog>
   );

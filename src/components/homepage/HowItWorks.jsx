@@ -110,7 +110,7 @@ function HowItWorks() {
                 </div>
               </div>
             </div>
-          </div>          
+          </div>
         </div>
       </div>
     </>

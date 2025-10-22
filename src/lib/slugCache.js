@@ -5,8 +5,8 @@
 import 'server-only';
 import { unstable_cache as unstableCache } from 'next/cache';
 
-const PAGE_SIZE = 1000;   // slugs per shard in the API
-const WP_PER_PAGE = 100;  // WP REST per_page (max ~100)
+const PAGE_SIZE = 1000; // slugs per shard in the API
+const WP_PER_PAGE = 100; // WP REST per_page (max ~100)
 
 async function fetchAllPublishedSlugsFromWP() {
   const base = (process.env.WP_SITE_URL || '').replace(/\/$/, '');
@@ -33,11 +33,11 @@ async function fetchAllPublishedSlugsFromWP() {
 
   // Fetch remaining pages in parallel
   const rest = await Promise.all(
-    Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map((p) =>
+    Array.from({ length: totalPages - 1 }, (_, i) => i + 2).map(p =>
       fetch(
         `${base}/wp-json/wp/v2/pages?status=publish&per_page=${WP_PER_PAGE}&page=${p}&_fields=slug`,
         { headers, cache: 'no-store' }
-      ).then((r) => (r.ok ? r.json() : []))
+      ).then(r => (r.ok ? r.json() : []))
     )
   );
 
@@ -74,7 +74,7 @@ export const getSlugCache = unstableCache(
   },
   ['mini-slugs-cache-key'],
   {
-    tags: ['mini-slugs'],   // used by the /api/slugs/revalidate route
-    revalidate: 60 * 60,    // background TTL (1 hour) in case you don’t manually revalidate
+    tags: ['mini-slugs'], // used by the /api/slugs/revalidate route
+    revalidate: 60 * 60, // background TTL (1 hour) in case you don’t manually revalidate
   }
 );

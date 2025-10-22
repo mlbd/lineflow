@@ -13,7 +13,6 @@ import {
   useSetCoupon,
   useSetCustomerNote,
 } from './cartStore';
-import Checkout from './Checkout';
 import CouponField from './CouponField';
 import ShippingOptions from './ShippingOptions';
 import StripeCheckout from './StripeCheckout';
@@ -323,24 +322,28 @@ export default function CartPage({
                 {/* Coupon */}
                 {arranged.length > 0 && (
                   <>
-                    <CouponField
-                      couponInput={couponInput}
-                      setCouponInput={setCouponInput}
-                      onValidate={handleValidateCoupon}
-                      validating={validating}
-                      couponDetails={coupon}
-                      onRemoveCoupon={handleRemoveCoupon}
-                    />
+                    <div className="flex gap-5">
+                      {/* Customer Note */}
+                      <div className="mt-4 flex-1">
+                        <textarea
+                          value={customerNote}
+                          onChange={e => setCustomerNote(e.target.value)}
+                          placeholder="Any notes regarding the order can be entered here."
+                          className="w-full border rounded-[8px] px-3 py-2 outline-none bg-grey-100 border-grey-300 h-[100%]"
+                          rows={3}
+                        />
+                      </div>
 
-                    {/* Customer Note */}
-                    <div className="mt-4">
-                      <textarea
-                        value={customerNote}
-                        onChange={e => setCustomerNote(e.target.value)}
-                        placeholder="Any notes regarding the order can be entered here."
-                        className="w-full border rounded px-3 py-2 outline-none border-gray-300 min-h-[80px] bg-white text-gray-700"
-                        rows={3}
-                      />
+                      <div className="flex-1">
+                        <CouponField
+                          couponInput={couponInput}
+                          setCouponInput={setCouponInput}
+                          onValidate={handleValidateCoupon}
+                          validating={validating}
+                          couponDetails={coupon}
+                          onRemoveCoupon={handleRemoveCoupon}
+                        />
+                      </div>
                     </div>
                   </>
                 )}
@@ -365,17 +368,18 @@ export default function CartPage({
       {/* Checkout block */}
       <div className="py-[50px] mt-[50px] bg-white">
         <div className="container mx-auto">
-          <div className='mt-16 flex justify-center'>
+          <h2 className='text-3xl font-bold mb-8 text-center w-full'>Enter <span className='text-tertiary'>Form Details</span></h2>
+          <div className="mt-10 flex justify-center">
             <StripeCheckout
-                selectedShipping={selectedShipping}
-                coupon={coupon && coupon.valid ? coupon : null}
-                userMeta={acf}
-                companyData={companyData}
-                pagePlacementMap={pagePlacementMap}
-                customBackAllowedSet={customBackAllowedSet}
-                slug={slug}
-              />
-            </div>
+              selectedShipping={selectedShipping}
+              coupon={coupon && coupon.valid ? coupon : null}
+              userMeta={acf}
+              companyData={companyData}
+              pagePlacementMap={pagePlacementMap}
+              customBackAllowedSet={customBackAllowedSet}
+              slug={slug}
+            />
+          </div>
         </div>
       </div>
 

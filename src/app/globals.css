@@ -3,6 +3,14 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@theme {
+  --breakpoint-sm: 600px;
+  --breakpoint-md: 728px;
+  --breakpoint-lg: 984px;
+  --breakpoint-xl: 1240px;
+  --breakpoint-2xl: 1440px;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -433,4 +441,23 @@ button[data-slot='dialog-close']:last-of-type {
 
 .animate-sine-wave-fast {
   animation: sine-wave-fast 1.5s infinite linear;
+}
+
+
+/* [PATCH] Added: nicer both-axis scrollbar styling */
+.allaround-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #9ca3af transparent; /* thumb / track */
+}
+
+.allaround-scrollbar::-webkit-scrollbar {
+  width: 10px;   /* vertical */
+  height: 10px;  /* horizontal */
+}
+.allaround-scrollbar::-webkit-scrollbar-thumb {
+  background: #9ca3af;
+  border-radius: 8px;
+}
+.allaround-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
 }
