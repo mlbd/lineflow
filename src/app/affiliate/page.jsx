@@ -1,4 +1,5 @@
 'use client';
+import AffiliateRegistrationForm from '@/components/affiliate/AffiliateRegistrationForm';
 import Footer from '@/components/common/Footer';
 import CallToAction from '@/components/homepage/CallToAction';
 import Faqs from '@/components/homepage/Faqs';
@@ -72,65 +73,8 @@ export default function AffiliatePage() {
                 <div className="relative w-full max-w-md">
                   {/* card */}
                   <div className="relative rounded-[24px] bg-white p-6 sm:p-8 shadow-[0_8px_24px_rgba(16,24,40,0.08)] ring-1 ring-black/5">
-                    <h2 className="text-center text-[26px] font-semibold text-primary-500">
-                      Register as an Affiliate
-                    </h2>
 
-                    <form className="mt-6 space-y-4">
-                      {/* Full Name */}
-                      <div>
-                        <label className="mb-2 block text-[13px] font-medium text-gray-700">
-                          Full Name<span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="John Carter"
-                          className="w-full h-12 rounded-xl border border-gray-300 bg-white px-4 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#0D0071] focus:ring-2 focus:ring-[#0D0071]/20"
-                        />
-                      </div>
-
-                      {/* Email */}
-                      <div>
-                        <label className="mb-2 block text-[13px] font-medium text-gray-700">
-                          Email<span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="email"
-                          placeholder="you@example.com"
-                          className="w-full h-12 rounded-xl border border-gray-300 bg-white px-4 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#0D0071] focus:ring-2 focus:ring-[#0D0071]/20"
-                        />
-                      </div>
-
-                      {/* Password */}
-                      <PasswordField label="Password" placeholder="••••••••" required />
-
-                      {/* Repeat Password */}
-                      <PasswordField label="Repeat Password" placeholder="••••••••" required />
-
-                      {/* Primary CTA */}
-                      <button
-                        type="submit"
-                        className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-[#0D0071] px-6 py-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(13,0,113,0.28)] transition hover:opacity-95 active:translate-y-[1px]"
-                      >
-                        Register Now
-                      </button>
-
-                      {/* Divider */}
-                      <div className="flex items-center gap-3 text-sm text-gray-500">
-                        <span className="h-px flex-1 bg-gray-200" />
-                        or
-                        <span className="h-px flex-1 bg-gray-200" />
-                      </div>
-
-                      {/* Google button */}
-                      <button
-                        type="button"
-                        className="w-full flex items-center justify-center gap-3 rounded-full border border-gray-300 bg-white px-5 py-3 text-[15px] font-medium text-gray-800 shadow-sm hover:bg-gray-50"
-                      >
-                        <Image src="/GIcon.svg" alt="Google" width={22} height={22} />
-                        Signup with Google
-                      </button>
-                    </form>
+                    <AffiliateRegistrationForm />
                   </div>
                 </div>
               </div>

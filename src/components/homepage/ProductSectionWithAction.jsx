@@ -175,8 +175,8 @@ export default function ProductSectionWithAction({
 
             return (
               <>
-                <div key={p.id} class="flex-1 inline-flex flex-col justify-start items-end gap-4">
-                  <div class="self-stretch bg-gray-50 rounded-2xl flex flex-col justify-start items-end gap-2.5">
+                <div key={p.id} className="flex-1 inline-flex flex-col justify-start items-end gap-4">
+                  <div className="self-stretch bg-gray-50 rounded-2xl flex flex-col justify-start items-end gap-2.5">
                     <ShimmerImage
                       src={url}
                       alt={p.name}
@@ -185,22 +185,22 @@ export default function ProductSectionWithAction({
                       className="cursor-pointer"
                     />
                   </div>
-                  <div class="self-stretch flex flex-col justify-start items-start gap-[30px]">
-                    <div class="self-stretch flex flex-col justify-start items-start gap-3">
+                  <div className="self-stretch flex flex-col justify-start items-start gap-[30px]">
+                    <div className="self-stretch flex flex-col justify-start items-start gap-3">
                       <div
-                        class="self-stretch justify-start text-secondary text-2xl font-semibold cursor-pointer"
+                        className="self-stretch justify-start text-secondary text-2xl font-semibold cursor-pointer"
                         onClick={() => setModalProduct(p)}
                       >
                         {p.name}
                       </div>
-                      <div class="self-stretch relative flex flex-col justify-start items-start gap-[7px]">
+                      <div className="self-stretch relative flex flex-col justify-start items-start gap-[7px]">
                         <ProductDescription p={p} limitLines={2} moreLabel="Read more" />
                         <div
                           data-icon="false"
                           data-property-1="Without Outline"
-                          class="size- left-[271px] top-[22px] absolute inline-flex justify-start items-center gap-[5px]"
+                          className="size- left-[271px] top-[22px] absolute inline-flex justify-start items-center gap-[5px]"
                         >
-                          <div class="justify-start"></div>
+                          <div className="justify-start"></div>
                         </div>
                       </div>
                       <ProductColorBoxes acf={p.acf} onBoxClick={({ color, index }) => {
@@ -209,12 +209,12 @@ export default function ProductSectionWithAction({
     // (optional) you can also read which color/index was clicked via args
   }} />
                     </div>
-                    <div class="self-stretch inline-flex justify-between items-center">
+                    <div className="self-stretch inline-flex justify-between items-center">
                       <ProductPriceLabel product={p} bumpPrice={null} priceMode="min" />
                       <ProductOrderRangeLabel product={p} itemsMode="min" />
                       <button
                         type="button"
-                        class="px-6 cursor-pointer py-3 bg-tertiary rounded-[100px] shadow-[4px_4px_10px_0px_rgba(13,0,113,0.16)] flex justify-center items-center gap-1.5 text-white text-base font-semibold leading-snug"
+                        className="px-6 cursor-pointer py-3 bg-tertiary rounded-[100px] shadow-[4px_4px_10px_0px_rgba(13,0,113,0.16)] flex justify-center items-center gap-1.5 text-white text-base font-semibold leading-snug"
                         onClick={() => setModalProduct(p)}
                       >
                         More Info
