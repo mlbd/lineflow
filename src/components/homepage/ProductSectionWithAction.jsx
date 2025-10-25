@@ -31,8 +31,8 @@ const toBase64 = str =>
 
 // [PATCH] Added ShimmerImage component that uses next/image with Twitch-like shimmer overlay.
 // Fixed dimensions prevent layout shift; overlay fades out on complete.
-function ShimmerImage({ src, alt, priority = false, onClick }) {
-  const [loaded, setLoaded] = useState(false);
+function ShimmerImage({ src, alt, priority = false, onClick, hoverPreviewActive = false }) {
+  const [loaded, setLoaded] = useState(true);
   const isClickable = typeof onClick === 'function';
 
   const handleKeyDown = e => {
@@ -42,6 +42,19 @@ function ShimmerImage({ src, alt, priority = false, onClick }) {
       onClick(e);
     }
   };
+
+  // Reset shimmer when src changes only if this is a hover-preview change
+  useEffect(() => {
+    try {
+      if (hoverPreviewActive) {
+        // show shimmer until image reports loaded
+        setLoaded(false);
+      } else {
+        // suppress shimmer for non-hover renders (keep image visible)
+        setLoaded(true);
+      }
+    } catch (_) {}
+  }, [src, hoverPreviewActive]);
 
   return (
     <div
@@ -96,11 +109,26 @@ export default function ProductSectionWithAction({
   companyLogos = {},
   pagePlacementMap = {},
   customBackAllowedSet = {},
+  // enable hover-to-preview in catalogs only (opt-in)
+  enableHoverPreview = false,
 }) {
   const [page, setPage] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [modalProduct, setModalProduct] = useState(null);
   const [cartModalProduct, setCartModalProduct] = useState(null);
+  const [hoveredColorIndexMap, setHoveredColorIndexMap] = useState({});
+
+  const handleBoxHover = (productId, colorIndex) => {
+    setHoveredColorIndexMap(prev => {
+      const copy = { ...(prev || {}) };
+      if (colorIndex === null || colorIndex === undefined) {
+        delete copy[String(productId)];
+      } else {
+        copy[String(productId)] = Number(colorIndex);
+      }
+      return copy;
+    });
+  };
 
   // 🔁 re-render when any product's override changes
   const filters = useAreaFilterStore(s => s.filters);
@@ -119,12 +147,14 @@ export default function ProductSectionWithAction({
 
   useEffect(() => {
     // Preload only first PRODUCT_PER_PAGE thumbnails
-    visibleProducts.forEach(p => {
+      visibleProducts.forEach(p => {
       const override = filters?.[String(p.id)] || null;
       const productForThumb = override ? { ...p, placement_coordinates: override } : p;
 
+      const hoverIdx = hoveredColorIndexMap?.[String(p.id)];
       const url = generateProductImageUrl(productForThumb, companyLogos, {
         max: 300,
+        colorIndex: typeof hoverIdx === 'number' ? hoverIdx : undefined,
         ...(override ? {} : { pagePlacementMap }),
         customBackAllowedSet,
       });
@@ -167,15 +197,17 @@ export default function ProductSectionWithAction({
             const productForThumb = override ? { ...p, placement_coordinates: override } : p;
 
             // If override exists, DO NOT pass pagePlacementMap (so it doesn't override the override)
+            const hoverIdxForRender = hoveredColorIndexMap?.[String(p.id)];
             const url = generateProductImageUrl(productForThumb, companyLogos, {
               max: 300,
+              colorIndex: typeof hoverIdxForRender === 'number' ? hoverIdxForRender : undefined,
               ...(override ? {} : { pagePlacementMap }),
               customBackAllowedSet,
             });
 
             return (
               <>
-                <div key={p.id} className="flex-1 inline-flex flex-col justify-start items-end gap-4">
+                    <div key={p.id} className="flex-1 inline-flex flex-col justify-start items-end gap-4">
                   <div className="self-stretch bg-gray-50 rounded-2xl flex flex-col justify-start items-end gap-2.5">
                     <ShimmerImage
                       src={url}
@@ -183,6 +215,7 @@ export default function ProductSectionWithAction({
                       priority={idx < PRODUCT_PER_PAGE} // eager-preload only first page items
                       onClick={() => setModalProduct(p)}
                       className="cursor-pointer"
+                      hoverPreviewActive={enableHoverPreview && typeof hoveredColorIndexMap?.[String(p.id)] === 'number'}
                     />
                   </div>
                   <div className="self-stretch flex flex-col justify-start items-start gap-[30px]">
@@ -203,11 +236,18 @@ export default function ProductSectionWithAction({
                           <div className="justify-start"></div>
                         </div>
                       </div>
-                      <ProductColorBoxes acf={p.acf} onBoxClick={({ color, index }) => {
-    // your example:
-    setModalProduct(p);
-    // (optional) you can also read which color/index was clicked via args
-  }} />
+                      <ProductColorBoxes
+                        acf={p.acf}
+                        onBoxClick={({ color, index }) => {
+                          // click behavior: open modal (existing behavior)
+                          setModalProduct(p);
+                        }}
+                        onBoxHover={(clr, index) => {
+                          if (!enableHoverPreview) return;
+                          // when index is null -> clear
+                          handleBoxHover(p.id, index);
+                        }}
+                      />
                     </div>
                     <div className="self-stretch inline-flex justify-between items-center">
                       <ProductPriceLabel product={p} bumpPrice={null} priceMode="min" />
