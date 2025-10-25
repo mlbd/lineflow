@@ -152,8 +152,9 @@ export default function ProductSectionWithAction({
       const productForThumb = override ? { ...p, placement_coordinates: override } : p;
 
       const hoverIdx = hoveredColorIndexMap?.[String(p.id)];
+      // request a higher-resolution thumbnail for product sections so images appear crisp
       const url = generateProductImageUrl(productForThumb, companyLogos, {
-        max: 300,
+        max: 1400,
         colorIndex: typeof hoverIdx === 'number' ? hoverIdx : undefined,
         ...(override ? {} : { pagePlacementMap }),
         customBackAllowedSet,
@@ -198,8 +199,9 @@ export default function ProductSectionWithAction({
 
             // If override exists, DO NOT pass pagePlacementMap (so it doesn't override the override)
             const hoverIdxForRender = hoveredColorIndexMap?.[String(p.id)];
+            // Use high-res images in product sections to avoid blurry thumbnails on larger screens
             const url = generateProductImageUrl(productForThumb, companyLogos, {
-              max: 300,
+              max: 1400,
               colorIndex: typeof hoverIdxForRender === 'number' ? hoverIdxForRender : undefined,
               ...(override ? {} : { pagePlacementMap }),
               customBackAllowedSet,
