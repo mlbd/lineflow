@@ -14,6 +14,7 @@ import CompletionDialog from '@/components/catalog/CompletionDialog';
 import { getProductCardsBatch } from '@/lib/productCache'; // server-side helper
 import { getOrFetchShipping } from '@/lib/shippingCache';
 import { wpApiFetch } from '@/lib/wpApi';
+import { generateProductImageUrl } from '@/utils/cloudinaryMockup';
 
 /* -----------------------------------------------------------
  * SSG: paths & props (keep ISR to avoid cold user waits)
@@ -142,6 +143,25 @@ export async function getStaticProps({ params }) {
       console.warn('[PageData] size check failed:', e);
     }
 
+    // Build critical image preload URLs (server-side) so browsers can preload and
+    // warm Cloudinary edges before client JS runs. Use a high-res `max` so the
+    // preloaded assets match the final rendered thumbnails.
+    try {
+      const criticalImagePreloads = (criticalProducts || [])
+        .map(p => {
+          try {
+            return generateProductImageUrl(p, props.companyLogos || {}, { max: 1400 });
+          } catch (e) {
+            return null;
+          }
+        })
+        .filter(Boolean);
+      props.criticalImagePreloads = criticalImagePreloads;
+    } catch (e) {
+      // swallow - warming preloads is best-effort
+      props.criticalImagePreloads = [];
+    }
+
     return { props, revalidate: 60 };
   } catch (error) {
     console.error('getStaticProps error for slug', params.slug, error);
@@ -169,6 +189,7 @@ export default function LandingPage({
   status,
   productIds = [],
   criticalProducts = [],
+  criticalImagePreloads = [],
   cacheBust = 0,
   bumpPrice = null,
   companyData = {},
@@ -315,6 +336,13 @@ export default function LandingPage({
       <Head>
         <title>{seo.title}</title>
         <meta name="description" content={seo.description} />
+        {/* Preconnect to Cloudinary CDN for faster image fetching */}
+        <link rel="preconnect" href="https://res.cloudinary.com" crossOrigin="anonymous" />
+        {/* Preload critical product images to help LCP and warm CDN edges */}
+        {Array.isArray(criticalImagePreloads) &&
+          criticalImagePreloads.map((u, i) => (
+            <link key={`preload-img-${i}`} rel="preload" as="image" href={u} crossOrigin="anonymous" />
+          ))}
         <meta property="og:title" content={seo.title} />
         <meta property="og:description" content={seo.description} />
         {seo.image && <meta property="og:image" content={seo.image} />}
