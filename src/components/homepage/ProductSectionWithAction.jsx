@@ -154,7 +154,7 @@ export default function ProductSectionWithAction({
       const hoverIdx = hoveredColorIndexMap?.[String(p.id)];
       // request a higher-resolution thumbnail for product sections so images appear crisp
       const url = generateProductImageUrl(productForThumb, companyLogos, {
-        max: 1400,
+        max: 1500,
         colorIndex: typeof hoverIdx === 'number' ? hoverIdx : undefined,
         ...(override ? {} : { pagePlacementMap }),
         customBackAllowedSet,
@@ -201,7 +201,7 @@ export default function ProductSectionWithAction({
             const hoverIdxForRender = hoveredColorIndexMap?.[String(p.id)];
             // Use high-res images in product sections to avoid blurry thumbnails on larger screens
             const url = generateProductImageUrl(productForThumb, companyLogos, {
-              max: 1400,
+              max: 1500,
               colorIndex: typeof hoverIdxForRender === 'number' ? hoverIdxForRender : undefined,
               ...(override ? {} : { pagePlacementMap }),
               customBackAllowedSet,

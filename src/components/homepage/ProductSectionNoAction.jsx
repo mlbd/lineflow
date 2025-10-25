@@ -42,7 +42,7 @@ export default function ProductSectionNoAction({ products = [] }) {
       const productForThumb = override ? { ...p, placement_coordinates: override } : p;
 
       const url = generateProductImageUrl(productForThumb, companyLogos, {
-        max: 300,
+        max: 1500,
         ...(override ? {} : { pagePlacementMap }),
         customBackAllowedSet,
       });
@@ -85,7 +85,7 @@ export default function ProductSectionNoAction({ products = [] }) {
 
             // If override exists, DO NOT pass pagePlacementMap (so it doesn't override the override)
             const url = generateProductImageUrl(productForThumb, companyLogos, {
-              max: 300,
+              max: 1500,
               ...(override ? {} : { pagePlacementMap }),
               customBackAllowedSet,
             });
