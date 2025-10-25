@@ -2,7 +2,7 @@
 import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 
-export default function ProductColorBoxes({ acf, onBoxClick = () => {} }) {
+export default function ProductColorBoxes({ acf, onBoxClick = () => {}, onBoxHover = () => {} }) {
   const wrapperRef = useRef(null);
   const [layoutData, setLayoutData] = useState({
     perLine: 0,
@@ -116,6 +116,29 @@ export default function ProductColorBoxes({ acf, onBoxClick = () => {} }) {
               tabIndex={hiddenByCap ? -1 : 0}
               aria-label={label}
               onClick={(e) => triggerBoxClick(clr, idx, e)}
+              onMouseEnter={(e) => {
+                try {
+                  // notify parent to preview this color (catalog hover)
+                  onBoxHover?.(clr, idx, e);
+                } catch (_) {}
+              }}
+              onMouseLeave={(e) => {
+                try {
+                  // clear hover preview
+                  onBoxHover?.(null, null, e);
+                } catch (_) {}
+              }}
+              onFocus={(e) => {
+                // keyboard accessibility: treat focus like hover
+                try {
+                  onBoxHover?.(clr, idx, e);
+                } catch (_) {}
+              }}
+              onBlur={(e) => {
+                try {
+                  onBoxHover?.(null, null, e);
+                } catch (_) {}
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
