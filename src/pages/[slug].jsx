@@ -253,12 +253,24 @@ export default function LandingPage({
     if (typeof document === 'undefined') return;
 
     const handlePointerDown = event => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (typeof event.stopImmediatePropagation === 'function') {
-        event.stopImmediatePropagation();
+      try {
+        // Only open the completion dialog when the user clicked inside the product grid
+        // (elements rendered by ProductSectionWithAction). This lets header, filters,
+        // load-more and other interactive areas behave normally.
+        const inProducts = event?.target?.closest && event.target.closest('[data-catalog-products]');
+        if (!inProducts) return; // ignore clicks outside the product list area
+
+        // stop the interaction and open the modal
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof event.stopImmediatePropagation === 'function') {
+          event.stopImmediatePropagation();
+        }
+        setCompletionDialogOpen(true);
+      } catch (e) {
+        // If anything goes wrong, don't break the page — default to opening the dialog
+        setCompletionDialogOpen(true);
       }
-      setCompletionDialogOpen(true);
     };
 
     document.addEventListener('pointerdown', handlePointerDown, true);

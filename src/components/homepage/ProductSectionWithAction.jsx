@@ -191,7 +191,7 @@ export default function ProductSectionWithAction({
         />
 
         {/* Product Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div data-catalog-products className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {visibleProducts.map((p, idx) => {
             // 🚩 Overwrite placements if user selected any for this product
             const override = filters?.[String(p.id)] || null;
@@ -209,7 +209,10 @@ export default function ProductSectionWithAction({
 
             return (
               <>
-                    <div key={p.id} className="flex-1 inline-flex flex-col justify-start items-end gap-4">
+                <div
+                  key={p.id}
+                  className="flex-1 inline-flex flex-col justify-start items-end gap-4"
+                >
                   <div className="self-stretch bg-gray-50 rounded-2xl flex flex-col justify-start items-end gap-2.5">
                     <ShimmerImage
                       src={url}
@@ -217,7 +220,10 @@ export default function ProductSectionWithAction({
                       priority={idx < PRODUCT_PER_PAGE} // eager-preload only first page items
                       onClick={() => setModalProduct(p)}
                       className="cursor-pointer"
-                      hoverPreviewActive={enableHoverPreview && typeof hoveredColorIndexMap?.[String(p.id)] === 'number'}
+                      hoverPreviewActive={
+                        enableHoverPreview &&
+                        typeof hoveredColorIndexMap?.[String(p.id)] === 'number'
+                      }
                     />
                   </div>
                   <div className="self-stretch flex flex-col justify-start items-start gap-[30px]">
