@@ -5,7 +5,7 @@ import AddToCartModal from '@/components/page/AddToCartModal';
 import ProductColorBoxes from '@/components/page/ProductColorBoxes';
 import ProductPriceLabel from '@/components/page/ProductPriceLabel';
 import ProductQuickViewModal from '@/components/page/ProductQuickViewModal';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
 import { generateProductImageUrl, generateProductImageUrlWithOverlay } from '@/utils/cloudinaryMockup';
@@ -124,9 +124,27 @@ export default function ProductSectionWithAction({
   const [cartModalProduct, setCartModalProduct] = useState(null);
   const [hoveredColorIndexMap, setHoveredColorIndexMap] = useState({});
 
+  // Keep per-product pending preload controllers so we can cancel or dedupe
+  const preloadControllersRef = useRef({});
+
   // product is the full product object so we can generate the exact overlay URL and warm it
+  // We wait briefly (race) for the prefetch to complete before setting hovered state so the
+  // displayed <Image> can reuse the browser cache and avoid an extra network roundtrip.
   const handleBoxHover = (product, colorIndex) => {
     try {
+      const pid = String(product.id);
+
+      // cancel any previous pending preload for this product
+      const previous = preloadControllersRef.current[pid];
+      if (previous) {
+        try {
+          previous.img.onload = null;
+          previous.img.onerror = null;
+        } catch (__) {}
+        clearTimeout(previous.timeout);
+        delete preloadControllersRef.current[pid];
+      }
+
       // if hovering a color (not clearing)
       if (colorIndex !== null && colorIndex !== undefined) {
         const override = filters?.[String(product.id)] || null;
@@ -140,27 +158,58 @@ export default function ProductSectionWithAction({
           customBackAllowedSet,
         });
 
-        // warm the browser/CDN cache for this specific overlay image
         try {
           const img = new window.Image();
-          img.src = preloadUrl;
-        } catch (err) {
-          // ignore warming failures
-        }
-      }
+          let settled = false;
 
-      // update hover map state so UI will show shimmer and swap to the hovered variant
-      setHoveredColorIndexMap(prev => {
-        const copy = { ...(prev || {}) };
-        if (colorIndex === null || colorIndex === undefined) {
-          delete copy[String(product.id)];
-        } else {
-          copy[String(product.id)] = Number(colorIndex);
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            // set hovered index so UI swaps to preloaded url
+            setHoveredColorIndexMap(prev => {
+              const copy = { ...(prev || {}) };
+              copy[pid] = Number(colorIndex);
+              return copy;
+            });
+            // cleanup controller
+            try {
+              img.onload = null;
+              img.onerror = null;
+            } catch (__) {}
+            const c = preloadControllersRef.current[pid];
+            if (c) {
+              clearTimeout(c.timeout);
+              delete preloadControllersRef.current[pid];
+            }
+          };
+
+          img.onload = finish;
+          img.onerror = finish;
+          img.src = preloadUrl;
+
+          // fallback: don't wait more than 180ms to avoid blocking UI
+          const timeout = setTimeout(finish, 180);
+
+          // store controller so we can cancel if another hover happens
+          preloadControllersRef.current[pid] = { img, timeout };
+        } catch (err) {
+          // warming failed; immediately set hovered state to avoid blocking UI
+          setHoveredColorIndexMap(prev => {
+            const copy = { ...(prev || {}) };
+            copy[pid] = Number(colorIndex);
+            return copy;
+          });
         }
-        return copy;
-      });
+      } else {
+        // clear hover
+        setHoveredColorIndexMap(prev => {
+          const copy = { ...(prev || {}) };
+          delete copy[String(product.id)];
+          return copy;
+        });
+      }
     } catch (e) {
-      // fail silently; don't block hover
+      // fail silently; fallback to immediate set
       setHoveredColorIndexMap(prev => {
         const copy = { ...(prev || {}) };
         if (colorIndex === null || colorIndex === undefined) {
