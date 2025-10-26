@@ -277,6 +277,9 @@ function StripeCheckoutInner({
 
   const [status, setStatus] = useState({ kind: 'idle' }); // idle | paying | finalizing | success | error
 
+  // Ref for the address input to wire Google Places Autocomplete
+  const addressRef = useRef(null);
+
   // Guards to avoid reconfirming the same PI and to block double-submit
   const lastClientSecretRef = useRef(null);
   const confirmingRef = useRef(false);
@@ -573,6 +576,80 @@ function StripeCheckoutInner({
   }, [status.kind]);
 
   // ---- UI ----
+  // Google Places Autocomplete: dynamically load the script and wire to addressRef
+  useEffect(() => {
+    if (!addressRef?.current) return;
+
+    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    if (!key) {
+      // no key configured; skip
+      // eslint-disable-next-line no-console
+      console.warn('[places] NEXT_PUBLIC_GOOGLE_MAPS_API_KEY not set; skipping Places autocomplete');
+      return;
+    }
+
+    let mounted = true;
+
+    function fillFromPlace(place) {
+      const comps = place?.address_components || [];
+      const map = {};
+      comps.forEach(c => {
+        (c.types || []).forEach(t => {
+          map[t] = c;
+        });
+      });
+
+      const streetNumber = map.street_number?.long_name || '';
+      const route = map.route?.long_name || '';
+      const addressLine = [streetNumber, route].filter(Boolean).join(' ');
+      const city = map.locality?.long_name || map.sublocality?.long_name || map.postal_town?.long_name || '';
+      const state = map.administrative_area_level_1?.short_name || '';
+      const postal = map.postal_code?.long_name || '';
+      const countryLong = map.country?.long_name || '';
+      const countryShort = map.country?.short_name || '';
+
+      if (!mounted) return;
+      setForm(f => ({ ...f, address: addressLine || f.address, city: city || f.city, state: state || f.state, zip: postal || f.zip, country: countryLong || f.country, countryCode: countryShort || f.countryCode }));
+    }
+
+    function initAutocomplete() {
+      try {
+        const opts = { types: ['address'], componentRestrictions: { country: 'us' } };
+        const ac = new window.google.maps.places.Autocomplete(addressRef.current, opts);
+        ac.setFields(['address_component', 'formatted_address']);
+        ac.addListener('place_changed', () => {
+          const place = ac.getPlace();
+          fillFromPlace(place);
+        });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[places] init failed', e);
+      }
+    }
+
+    if (window.google && window.google.maps && window.google.maps.places) {
+      initAutocomplete();
+    } else {
+      const id = 'gplaces-script';
+      let s = document.getElementById(id);
+      if (!s) {
+        s = document.createElement('script');
+        s.id = id;
+        s.async = true;
+        s.defer = true;
+        s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`;
+        s.onload = () => initAutocomplete();
+        document.head.appendChild(s);
+      } else {
+        if (s.getAttribute('data-loaded') === '1') initAutocomplete();
+        else s.addEventListener('load', initAutocomplete, { once: true });
+      }
+    }
+
+    return () => {
+      mounted = false;
+    };
+  }, [addressRef]);
   return (
     <>
       <form onSubmit={handlePay} className="grid md:grid-cols-2 gap-6">
@@ -651,10 +728,11 @@ function StripeCheckoutInner({
                   label="Address"
                   placeholder="Address"
                   // value={form.address}
-                  value=""
+                  value={form.address}
                   onChange={v => setForm(f => ({ ...f, address: v }))}
                   required
                   autoComplete="address-line1"
+                  inputRef={addressRef}
                 />
               </div>
 
@@ -825,6 +903,7 @@ function FloatingField({
   onChange,
   required = false,
   autoComplete,
+  inputRef,
 }) {
   // [PATCH] Added focus state to trigger animation before typing
   const [isFocused, setIsFocused] = useState(false);
@@ -844,6 +923,7 @@ function FloatingField({
         required={required}
         autoComplete={autoComplete}
         aria-label={label}
+        ref={inputRef}
         // [PATCH] Animate label on focus/blur (cursor enters/leaves)
         onFocus={() => setIsFocused(true)}
         onBlur={() => setIsFocused(false)}
