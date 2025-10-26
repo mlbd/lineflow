@@ -725,7 +725,6 @@ function StripeCheckoutInner({
                   id="address1"
                   label="Address"
                   placeholder="Address"
-                  // value={form.address}
                   value={form.address}
                   onChange={v => setForm(f => ({ ...f, address: v }))}
                   required
