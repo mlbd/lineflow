@@ -665,8 +665,7 @@ function StripeCheckoutInner({
                   id="firstName"
                   label="First Name"
                   placeholder="First Name"
-                  // value={form.firstName}
-                  value=""
+                  value={form.firstName}
                   onChange={v => setForm(f => ({ ...f, firstName: v }))}
                   required
                 />
@@ -674,8 +673,7 @@ function StripeCheckoutInner({
                   id="lastName"
                   label="Last Name"
                   placeholder="Last Name"
-                  // value={form.lastName}
-                  value=""
+                  value={form.lastName}
                   onChange={v => setForm(f => ({ ...f, lastName: v }))}
                   required
                 />
@@ -742,8 +740,7 @@ function StripeCheckoutInner({
                   id="address2"
                   label="Additional Info (Optional)"
                   placeholder="Additional Info (Optional)"
-                  // value={form.address2}
-                  value=""
+                  value={form.address2}
                   onChange={v => setForm(f => ({ ...f, address2: v }))}
                   autoComplete="address-line2"
                 />
@@ -755,8 +752,7 @@ function StripeCheckoutInner({
                   id="city"
                   label="City"
                   placeholder="City"
-                  // value={form.city}
-                  value=""
+                  value={form.city}
                   onChange={v => setForm(f => ({ ...f, city: v }))}
                   required
                   autoComplete="address-level2"
@@ -765,8 +761,7 @@ function StripeCheckoutInner({
                   id="state"
                   label="State"
                   placeholder="State"
-                  // value={form.state}
-                  value=""
+                  value={form.state}
                   onChange={v => setForm(f => ({ ...f, state: v }))}
                   autoComplete="address-level1"
                 />
@@ -774,8 +769,7 @@ function StripeCheckoutInner({
                   id="zip"
                   label="ZIP Code"
                   placeholder="ZIP Code"
-                  // value={form.zip}
-                  value=""
+                  value={form.zip}
                   onChange={v => setForm(f => ({ ...f, zip: v }))}
                   required
                   autoComplete="postal-code"
@@ -827,8 +821,7 @@ function StripeCheckoutInner({
                 id="cardholder"
                 label="Card Holder Name"
                 placeholder="Card Holder Name"
-                // value={form.cardholder}
-                value=""
+                value={form.cardholder}
                 onChange={v => setForm(f => ({ ...f, cardholder: v }))}
               />
             </div>
