@@ -36,8 +36,6 @@ export function ProductsShell({
 
       try {
         const idsParam = encodeURIComponent(productIds.join(','));
-
-        // [PATCH] Append v=cacheBust so CDN won't reuse older JSON after a revalidate
         const v = cacheBust ? `&v=${encodeURIComponent(String(cacheBust))}` : '';
         const url = `/api/minisites/product-cards?ids=${idsParam}&slug=${encodeURIComponent(slug)}${v}`;
         const res = await fetch(url, { signal: controller.signal });
@@ -47,28 +45,24 @@ export function ProductsShell({
         console.log('ProductsShell fetched:', json);
         const fetched = Array.isArray(json?.products) ? json.products : [];
 
-        if (!ignore) {
-          const indexById = new Map(productIds.map((id, i) => [String(id), i]));
-          const inFlightById = new Map(fetched.map(p => [String(p?.id), p]));
-          const ssrById = new Map(criticalProducts.map(p => [String(p?.id), p]));
+        const indexById = new Map(productIds.map((id, i) => [String(id), i]));
+        const inFlightById = new Map(fetched.map(p => [String(p?.id), p]));
+        const ssrById = new Map(criticalProducts.map(p => [String(p?.id), p]));
 
-          const merged = productIds
-            .map(id => inFlightById.get(String(id)) || ssrById.get(String(id)))
-            .filter(Boolean);
+        const merged = productIds
+          .map(id => inFlightById.get(String(id)) || ssrById.get(String(id)))
+          .filter(Boolean);
 
-          if (merged.length < productIds.length) {
-            const seen = new Set(merged.map(p => String(p.id)));
-            fetched.forEach(p => {
-              const k = String(p?.id);
-              if (!seen.has(k)) merged.push(p);
-            });
-            merged.sort(
-              (a, b) => (indexById.get(String(a.id)) ?? 0) - (indexById.get(String(b.id)) ?? 0)
-            );
-          }
-
-          setProducts(merged);
+        if (merged.length < productIds.length) {
+          const seen = new Set(merged.map(p => String(p.id)));
+          fetched.forEach(p => {
+            const k = String(p?.id);
+            if (!seen.has(k)) merged.push(p);
+          });
+          merged.sort((a, b) => (indexById.get(String(a.id)) ?? 0) - (indexById.get(String(b.id)) ?? 0));
         }
+
+        setProducts(merged);
       } catch (e) {
         if (!ignore) {
           console.error('ProductsShell fetch error:', e);
@@ -151,9 +145,15 @@ export function ProductsShell({
       }
     } catch (e) {}
 
-    const uniqueAll = Array.from(new Set(urls));
-    // remove anything server-preloaded
-    const unique = uniqueAll.filter(u => (u && !preloadedSet.has(u))).slice(0, MAX_PRELOAD);
+  const uniqueAll = Array.from(new Set(urls));
+  // remove anything server-preloaded
+  const candidate = uniqueAll.filter(u => u && !preloadedSet.has(u));
+
+  // If the deploy enables full preloads, preload all candidate URLs for the
+  // current catalog page (covers hover variants and all load-more pages).
+  // This is bandwidth-heavy, enable only when you want maximum instant UX.
+  const PRELOAD_ALL = process.env.NEXT_PUBLIC_PRELOAD_ALL_IMAGES === '1';
+  const unique = PRELOAD_ALL ? candidate : candidate.slice(0, MAX_PRELOAD);
 
     if (unique.length === 0) return;
 
