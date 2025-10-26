@@ -8,7 +8,7 @@ import ProductQuickViewModal from '@/components/page/ProductQuickViewModal';
 import { useEffect, useMemo, useState } from 'react';
 
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
-import { generateProductImageUrl } from '@/utils/cloudinaryMockup';
+import { generateProductImageUrl, generateProductImageUrlWithOverlay } from '@/utils/cloudinaryMockup';
 import Image from 'next/image';
 
 // [PATCH] Added shimmer helpers for blur placeholder
@@ -75,6 +75,12 @@ function ShimmerImage({ src, alt, priority = false, onClick, hoverPreviewActive 
         blurDataURL={`data:image/svg+xml;base64,${toBase64(shimmer(464, 310))}`}
         loading={priority ? 'eager' : 'lazy'}
         priority={priority}
+        // When unoptimized is true Next won't proxy the image through the internal
+        // image optimizer (/ _next/image). This ensures the browser requests the
+        // original Cloudinary URL directly — matching our client-side preloads —
+        // which eliminates the extra optimizer-roundtrip that was causing hover
+        // preview delays.
+        unoptimized={true}
         onLoadingComplete={() => setLoaded(true)}
         draggable={false}
       />
@@ -118,16 +124,53 @@ export default function ProductSectionWithAction({
   const [cartModalProduct, setCartModalProduct] = useState(null);
   const [hoveredColorIndexMap, setHoveredColorIndexMap] = useState({});
 
-  const handleBoxHover = (productId, colorIndex) => {
-    setHoveredColorIndexMap(prev => {
-      const copy = { ...(prev || {}) };
-      if (colorIndex === null || colorIndex === undefined) {
-        delete copy[String(productId)];
-      } else {
-        copy[String(productId)] = Number(colorIndex);
+  // product is the full product object so we can generate the exact overlay URL and warm it
+  const handleBoxHover = (product, colorIndex) => {
+    try {
+      // if hovering a color (not clearing)
+      if (colorIndex !== null && colorIndex !== undefined) {
+        const override = filters?.[String(product.id)] || null;
+        const productForThumb = override ? { ...product, placement_coordinates: override } : product;
+
+        // generate the exact overlay URL (includes company logos and colorIndex)
+        const preloadUrl = generateProductImageUrlWithOverlay(productForThumb, companyLogos, {
+          max: 1500,
+          colorIndex: Number(colorIndex),
+          ...(override ? {} : { pagePlacementMap }),
+          customBackAllowedSet,
+        });
+
+        // warm the browser/CDN cache for this specific overlay image
+        try {
+          const img = new window.Image();
+          img.src = preloadUrl;
+        } catch (err) {
+          // ignore warming failures
+        }
       }
-      return copy;
-    });
+
+      // update hover map state so UI will show shimmer and swap to the hovered variant
+      setHoveredColorIndexMap(prev => {
+        const copy = { ...(prev || {}) };
+        if (colorIndex === null || colorIndex === undefined) {
+          delete copy[String(product.id)];
+        } else {
+          copy[String(product.id)] = Number(colorIndex);
+        }
+        return copy;
+      });
+    } catch (e) {
+      // fail silently; don't block hover
+      setHoveredColorIndexMap(prev => {
+        const copy = { ...(prev || {}) };
+        if (colorIndex === null || colorIndex === undefined) {
+          delete copy[String(product.id)];
+        } else {
+          copy[String(product.id)] = Number(colorIndex);
+        }
+        return copy;
+      });
+    }
   };
 
   // 🔁 re-render when any product's override changes
@@ -151,11 +194,10 @@ export default function ProductSectionWithAction({
       const override = filters?.[String(p.id)] || null;
       const productForThumb = override ? { ...p, placement_coordinates: override } : p;
 
-      const hoverIdx = hoveredColorIndexMap?.[String(p.id)];
       // request a higher-resolution thumbnail for product sections so images appear crisp
-      const url = generateProductImageUrl(productForThumb, companyLogos, {
+      // Preload the default thumbnail (no hover color). Hover-specific variants are warmed on hover.
+      const url = generateProductImageUrlWithOverlay(productForThumb, companyLogos, {
         max: 1500,
-        colorIndex: typeof hoverIdx === 'number' ? hoverIdx : undefined,
         ...(override ? {} : { pagePlacementMap }),
         customBackAllowedSet,
       });
@@ -200,7 +242,8 @@ export default function ProductSectionWithAction({
             // If override exists, DO NOT pass pagePlacementMap (so it doesn't override the override)
             const hoverIdxForRender = hoveredColorIndexMap?.[String(p.id)];
             // Use high-res images in product sections to avoid blurry thumbnails on larger screens
-            const url = generateProductImageUrl(productForThumb, companyLogos, {
+            // Use overlay generator so the hover-preview URL matches preloaded overlay images
+            const url = generateProductImageUrlWithOverlay(productForThumb, companyLogos, {
               max: 1500,
               colorIndex: typeof hoverIdxForRender === 'number' ? hoverIdxForRender : undefined,
               ...(override ? {} : { pagePlacementMap }),
@@ -253,7 +296,7 @@ export default function ProductSectionWithAction({
                         onBoxHover={(clr, index) => {
                           if (!enableHoverPreview) return;
                           // when index is null -> clear
-                          handleBoxHover(p.id, index);
+                          handleBoxHover(productForThumb, index);
                         }}
                       />
                     </div>
