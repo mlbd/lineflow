@@ -10,64 +10,72 @@ export default function ProductColorBoxes({ acf, onBoxClick = () => {}, onBoxHov
   });
 
   useEffect(() => {
-    if (!wrapperRef.current) return;
+    const el = wrapperRef.current;
+    if (!el) return;
+
+    let frameId = 0;
+    let resizeObserver;
 
     const calculateLayout = () => {
-      const boxes = wrapperRef.current.querySelectorAll('.singleColorBox');
-      if (boxes.length === 0) return;
+      // Guard every time this runs (handlers can fire when ref is null)
+      if (!wrapperRef.current) return;
+
+      const nodeList = wrapperRef.current.querySelectorAll('.singleColorBox');
+      if (!nodeList || nodeList.length === 0) return;
+
+      const boxes = Array.from(nodeList);
 
       let currentTop = boxes[0].offsetTop;
       let perLine = 0;
       let lineCount = 1;
 
-      // Calculate boxes per line by checking when offsetTop changes
       for (let i = 0; i < boxes.length; i++) {
         if (boxes[i].offsetTop === currentTop) {
-          if (lineCount === 1) perLine++; // Count only first line
+          if (lineCount === 1) perLine++; // only count first line
         } else {
           currentTop = boxes[i].offsetTop;
           lineCount++;
         }
       }
 
-      setLayoutData({
-        perLine,
-        totalLines: lineCount,
-      });
+      setLayoutData({ perLine, totalLines: lineCount });
     };
 
-    // Calculate on mount
-    calculateLayout();
+    // Run after next paint to ensure DOM is laid out
+    const schedule = () => {
+      cancelAnimationFrame(frameId);
+      frameId = requestAnimationFrame(calculateLayout);
+    };
 
-    // Add multiple event listeners to catch all viewport changes
-    window.addEventListener('resize', calculateLayout);
-    window.addEventListener('orientationchange', calculateLayout);
+    // Initial
+    schedule();
 
-    // Listen for fullscreen changes
-    document.addEventListener('fullscreenchange', calculateLayout);
-    document.addEventListener('webkitfullscreenchange', calculateLayout);
-    document.addEventListener('mozfullscreenchange', calculateLayout);
-    document.addEventListener('MSFullscreenChange', calculateLayout);
+    // Viewport & fullscreen listeners
+    window.addEventListener('resize', schedule);
+    window.addEventListener('orientationchange', schedule);
+    document.addEventListener('fullscreenchange', schedule);
+    document.addEventListener('webkitfullscreenchange', schedule);
+    document.addEventListener('mozfullscreenchange', schedule);
+    document.addEventListener('MSFullscreenChange', schedule);
 
-    // Use ResizeObserver as a fallback for more reliable detection
-    let resizeObserver;
-    if (typeof ResizeObserver !== 'undefined' && wrapperRef.current) {
-      resizeObserver = new ResizeObserver(calculateLayout);
-      resizeObserver.observe(wrapperRef.current);
+    // Observe wrapper size changes
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(schedule);
+      resizeObserver.observe(el);
     }
 
     return () => {
-      window.removeEventListener('resize', calculateLayout);
-      window.removeEventListener('orientationchange', calculateLayout);
-      document.removeEventListener('fullscreenchange', calculateLayout);
-      document.removeEventListener('webkitfullscreenchange', calculateLayout);
-      document.removeEventListener('mozfullscreenchange', calculateLayout);
-      document.removeEventListener('MSFullscreenChange', calculateLayout);
-      if (resizeObserver) {
-        resizeObserver.disconnect();
-      }
+      cancelAnimationFrame(frameId);
+      window.removeEventListener('resize', schedule);
+      window.removeEventListener('orientationchange', schedule);
+      document.removeEventListener('fullscreenchange', schedule);
+      document.removeEventListener('webkitfullscreenchange', schedule);
+      document.removeEventListener('mozfullscreenchange', schedule);
+      document.removeEventListener('MSFullscreenChange', schedule);
+      if (resizeObserver) resizeObserver.disconnect();
     };
   }, [acf?.color]);
+
 
   // [PATCH] Helper to dispatch clicks (mouse/keyboard)
   const triggerBoxClick = (clr, index, event) => {
