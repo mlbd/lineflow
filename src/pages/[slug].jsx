@@ -14,7 +14,7 @@ import CompletionDialog from '@/components/catalog/CompletionDialog';
 import { getProductCardsBatch } from '@/lib/productCache'; // server-side helper
 import { getOrFetchShipping } from '@/lib/shippingCache';
 import { wpApiFetch } from '@/lib/wpApi';
-import { generateProductImageUrl } from '@/utils/cloudinaryMockup';
+import { generateProductImageUrl, generateProductImageUrlWithOverlay } from '@/utils/cloudinaryMockup';
 
 /* -----------------------------------------------------------
  * SSG: paths & props (keep ISR to avoid cold user waits)
@@ -147,16 +147,42 @@ export async function getStaticProps({ params }) {
     // warm Cloudinary edges before client JS runs. Use a high-res `max` so the
     // preloaded assets match the final rendered thumbnails.
     try {
-      const criticalImagePreloads = (criticalProducts || [])
-        .map(p => {
+      const COLORS_PER_PRODUCT = Number(process.env.NEXT_PUBLIC_PRELOAD_COLORS_PER_PRODUCT || 3);
+      const urls = [];
+      for (const p of criticalProducts || []) {
+        try {
+          const u = generateProductImageUrl(p, companyLogos || {}, { max: 1400 });
+          if (u) urls.push(u);
+        } catch (e) {}
+
+        const colors = Array.isArray(p?.acf?.color) ? p.acf.color : [];
+        for (let i = 0; i < Math.min(colors.length, COLORS_PER_PRODUCT); i++) {
           try {
-            return generateProductImageUrl(p, props.companyLogos || {}, { max: 1400 });
-          } catch (e) {
-            return null;
-          }
-        })
-        .filter(Boolean);
-      props.criticalImagePreloads = criticalImagePreloads;
+            const uc = generateProductImageUrl(p, companyLogos || {}, { max: 1400, colorIndex: i });
+            if (uc) urls.push(uc);
+          } catch (e) {}
+          try {
+            const uo = generateProductImageUrlWithOverlay(p, companyLogos || {}, {
+              max: 1400,
+              colorIndex: i,
+              pagePlacementMap,
+              customBackAllowedSet,
+            });
+            if (uo) urls.push(uo);
+          } catch (e) {}
+        }
+
+        try {
+          const baseOverlay = generateProductImageUrlWithOverlay(p, companyLogos || {}, {
+            max: 1400,
+            pagePlacementMap,
+            customBackAllowedSet,
+          });
+          if (baseOverlay) urls.push(baseOverlay);
+        } catch (e) {}
+      }
+
+      props.criticalImagePreloads = Array.from(new Set(urls)).filter(Boolean);
     } catch (e) {
       // swallow - warming preloads is best-effort
       props.criticalImagePreloads = [];

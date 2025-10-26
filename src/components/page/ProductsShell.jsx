@@ -1,8 +1,8 @@
 // components/page/ProductsShell.jsx
-import { useEffect, useState } from 'react';
-import ProductListSection from '@/components/page/ProductListSection';
-import ProductSectionWithAction from '@/components/homepage/ProductSectionWithAction';
 import CartPage from '@/components/cart/CartPage';
+import ProductSectionWithAction from '@/components/homepage/ProductSectionWithAction';
+import { generateProductImageUrl, generateProductImageUrlWithOverlay } from '@/utils/cloudinaryMockup';
+import { useEffect, useState } from 'react';
 
 export function ProductsShell({
   slug,
@@ -84,6 +84,110 @@ export function ProductsShell({
       controller.abort();
     };
   }, [productIds, slug, criticalProducts, cacheBust]);
+
+  // Background warm: preload all product images (and a few color variants) in the background.
+  // This helps "Load more" and hover-preview to feel instant by warming browser & CDN caches.
+  useEffect(() => {
+    if (!Array.isArray(products) || products.length === 0) return;
+
+    let cancelled = false;
+    const MAX_PRELOAD = Number(process.env.NEXT_PUBLIC_MAX_PRELOAD_IMAGES || 200);
+    const COLORS_PER_PRODUCT = Number(process.env.NEXT_PUBLIC_PRELOAD_COLORS_PER_PRODUCT || 3);
+    const CONCURRENCY = Number(process.env.NEXT_PUBLIC_PRELOAD_CONCURRENCY || 6);
+
+    // Build list of candidate URLs (high-res)
+    const urls = [];
+    for (const p of products) {
+      try {
+        // base thumbnail (no overlay)
+        const u = generateProductImageUrl(p, companyLogos, { max: 1400 });
+        if (u) urls.push(u);
+      } catch (_) {}
+
+      const colors = Array.isArray(p?.acf?.color) ? p.acf.color : [];
+      for (let i = 0; i < Math.min(colors.length, COLORS_PER_PRODUCT); i++) {
+        try {
+          // color-specific thumbnail (no overlay)
+          const uc = generateProductImageUrl(p, companyLogos, { max: 1400, colorIndex: i });
+          if (uc) urls.push(uc);
+        } catch (_) {}
+        try {
+          // color-specific thumbnail WITH overlay/logo — this is what hover previews use
+          const uo = generateProductImageUrlWithOverlay(p, companyLogos, {
+            max: 1400,
+            colorIndex: i,
+            pagePlacementMap,
+            customBackAllowedSet,
+          });
+          if (uo) urls.push(uo);
+        } catch (_) {}
+      }
+
+      // also add a base overlayed image if placements exist (covers default logo on product)
+      try {
+        const baseOverlay = generateProductImageUrlWithOverlay(p, companyLogos, {
+          max: 1400,
+          pagePlacementMap,
+          customBackAllowedSet,
+        });
+        if (baseOverlay) urls.push(baseOverlay);
+      } catch (_) {}
+
+      if (urls.length >= MAX_PRELOAD) break;
+    }
+
+    // Build a set of URLs the server already asked the browser to preload
+    // (rendered as <link rel="preload" as="image" href="..."> in the page Head).
+    // If the server already preloaded an image we should skip re-downloading it
+    // from the client-side preloader to avoid redundant bandwidth usage.
+    const preloadedSet = new Set();
+    try {
+      if (typeof document !== 'undefined') {
+        Array.from(document.querySelectorAll('link[rel="preload"][as="image"]')).forEach(l => {
+          try {
+            if (l && l.href) preloadedSet.add(l.href);
+          } catch (e) {}
+        });
+      }
+    } catch (e) {}
+
+    const uniqueAll = Array.from(new Set(urls));
+    // remove anything server-preloaded
+    const unique = uniqueAll.filter(u => (u && !preloadedSet.has(u))).slice(0, MAX_PRELOAD);
+
+    if (unique.length === 0) return;
+
+    const preloadImage = url =>
+      new Promise(resolve => {
+        const img = new window.Image();
+        let done = false;
+        const cleanup = () => {
+          if (done) return;
+          done = true;
+          img.onload = img.onerror = null;
+          resolve();
+        };
+        img.onload = cleanup;
+        img.onerror = cleanup;
+        img.src = url;
+        // safety timeout
+        setTimeout(cleanup, 10000);
+      });
+
+    (async () => {
+      for (let i = 0; i < unique.length && !cancelled; i += CONCURRENCY) {
+        const batch = unique.slice(i, i + CONCURRENCY).map(u => preloadImage(u));
+        await Promise.allSettled(batch);
+        if (cancelled) break;
+        // small pause to avoid saturating network
+        await new Promise(r => setTimeout(r, 150));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [products, companyLogos]);
 
   if (!products.length && loading) {
     return (
