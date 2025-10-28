@@ -5,10 +5,10 @@ import AddToCartModal from '@/components/page/AddToCartModal';
 import ProductColorBoxes from '@/components/page/ProductColorBoxes';
 import ProductPriceLabel from '@/components/page/ProductPriceLabel';
 import ProductQuickViewModal from '@/components/page/ProductQuickViewModal';
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
-import { generateProductImageUrl, generateProductImageUrlWithOverlay } from '@/utils/cloudinaryMockup';
+import { generateProductImageUrlWithOverlay } from '@/utils/cloudinaryMockup';
 import Image from 'next/image';
 
 // [PATCH] Added shimmer helpers for blur placeholder
@@ -31,8 +31,8 @@ const toBase64 = str =>
 
 // [PATCH] Added ShimmerImage component that uses next/image with Twitch-like shimmer overlay.
 // Fixed dimensions prevent layout shift; overlay fades out on complete.
-function ShimmerImage({ src, alt, priority = false, onClick, hoverPreviewActive = false }) {
-  const [loaded, setLoaded] = useState(true);
+function ShimmerImage({ src, alt, priority = false, onClick }) {
+  const [loaded, setLoaded] = useState(false);
   const isClickable = typeof onClick === 'function';
 
   const handleKeyDown = e => {
@@ -43,18 +43,10 @@ function ShimmerImage({ src, alt, priority = false, onClick, hoverPreviewActive 
     }
   };
 
-  // Reset shimmer when src changes only if this is a hover-preview change
+  // Reset shimmer when src changes
   useEffect(() => {
-    try {
-      if (hoverPreviewActive) {
-        // show shimmer until image reports loaded
-        setLoaded(false);
-      } else {
-        // suppress shimmer for non-hover renders (keep image visible)
-        setLoaded(true);
-      }
-    } catch (_) {}
-  }, [src, hoverPreviewActive]);
+    setLoaded(false);
+  }, [src]);
 
   return (
     <div
@@ -75,12 +67,6 @@ function ShimmerImage({ src, alt, priority = false, onClick, hoverPreviewActive 
         blurDataURL={`data:image/svg+xml;base64,${toBase64(shimmer(464, 310))}`}
         loading={priority ? 'eager' : 'lazy'}
         priority={priority}
-        // When unoptimized is true Next won't proxy the image through the internal
-        // image optimizer (/ _next/image). This ensures the browser requests the
-        // original Cloudinary URL directly — matching our client-side preloads —
-        // which eliminates the extra optimizer-roundtrip that was causing hover
-        // preview delays.
-        unoptimized={true}
         onLoadingComplete={() => setLoaded(true)}
         draggable={false}
       />
@@ -115,7 +101,6 @@ export default function ProductSectionWithAction({
   companyLogos = {},
   pagePlacementMap = {},
   customBackAllowedSet = {},
-  // enable hover-to-preview in catalogs only (opt-in)
   enableHoverPreview = false,
 }) {
   const [page, setPage] = useState(1);
@@ -124,102 +109,18 @@ export default function ProductSectionWithAction({
   const [cartModalProduct, setCartModalProduct] = useState(null);
   const [hoveredColorIndexMap, setHoveredColorIndexMap] = useState({});
 
-  // Keep per-product pending preload controllers so we can cancel or dedupe
-  const preloadControllersRef = useRef({});
 
-  // product is the full product object so we can generate the exact overlay URL and warm it
-  // We wait briefly (race) for the prefetch to complete before setting hovered state so the
-  // displayed <Image> can reuse the browser cache and avoid an extra network roundtrip.
+  // Simple hover handler — do not prefetch or warm images here.
   const handleBoxHover = (product, colorIndex) => {
-    try {
-      const pid = String(product.id);
-
-      // cancel any previous pending preload for this product
-      const previous = preloadControllersRef.current[pid];
-      if (previous) {
-        try {
-          previous.img.onload = null;
-          previous.img.onerror = null;
-        } catch (__) {}
-        clearTimeout(previous.timeout);
-        delete preloadControllersRef.current[pid];
-      }
-
-      // if hovering a color (not clearing)
-      if (colorIndex !== null && colorIndex !== undefined) {
-        const override = filters?.[String(product.id)] || null;
-        const productForThumb = override ? { ...product, placement_coordinates: override } : product;
-
-        // generate the exact overlay URL (includes company logos and colorIndex)
-        const preloadUrl = generateProductImageUrlWithOverlay(productForThumb, companyLogos, {
-          max: 1500,
-          colorIndex: Number(colorIndex),
-          ...(override ? {} : { pagePlacementMap }),
-          customBackAllowedSet,
-        });
-
-        try {
-          const img = new window.Image();
-          let settled = false;
-
-          const finish = () => {
-            if (settled) return;
-            settled = true;
-            // set hovered index so UI swaps to preloaded url
-            setHoveredColorIndexMap(prev => {
-              const copy = { ...(prev || {}) };
-              copy[pid] = Number(colorIndex);
-              return copy;
-            });
-            // cleanup controller
-            try {
-              img.onload = null;
-              img.onerror = null;
-            } catch (__) {}
-            const c = preloadControllersRef.current[pid];
-            if (c) {
-              clearTimeout(c.timeout);
-              delete preloadControllersRef.current[pid];
-            }
-          };
-
-          img.onload = finish;
-          img.onerror = finish;
-          img.src = preloadUrl;
-
-          // fallback: don't wait more than 180ms to avoid blocking UI
-          const timeout = setTimeout(finish, 180);
-
-          // store controller so we can cancel if another hover happens
-          preloadControllersRef.current[pid] = { img, timeout };
-        } catch (err) {
-          // warming failed; immediately set hovered state to avoid blocking UI
-          setHoveredColorIndexMap(prev => {
-            const copy = { ...(prev || {}) };
-            copy[pid] = Number(colorIndex);
-            return copy;
-          });
-        }
+    setHoveredColorIndexMap(prev => {
+      const copy = { ...(prev || {}) };
+      if (colorIndex === null || colorIndex === undefined) {
+        delete copy[String(product.id)];
       } else {
-        // clear hover
-        setHoveredColorIndexMap(prev => {
-          const copy = { ...(prev || {}) };
-          delete copy[String(product.id)];
-          return copy;
-        });
+        copy[String(product.id)] = Number(colorIndex);
       }
-    } catch (e) {
-      // fail silently; fallback to immediate set
-      setHoveredColorIndexMap(prev => {
-        const copy = { ...(prev || {}) };
-        if (colorIndex === null || colorIndex === undefined) {
-          delete copy[String(product.id)];
-        } else {
-          copy[String(product.id)] = Number(colorIndex);
-        }
-        return copy;
-      });
-    }
+      return copy;
+    });
   };
 
   // 🔁 re-render when any product's override changes
@@ -237,25 +138,6 @@ export default function ProductSectionWithAction({
     return filtered.slice(0, page * PRODUCT_PER_PAGE);
   }, [products, page, selectedCategory]);
 
-  useEffect(() => {
-    // Preload only first PRODUCT_PER_PAGE thumbnails
-      visibleProducts.forEach(p => {
-      const override = filters?.[String(p.id)] || null;
-      const productForThumb = override ? { ...p, placement_coordinates: override } : p;
-
-      // request a higher-resolution thumbnail for product sections so images appear crisp
-      // Preload the default thumbnail (no hover color). Hover-specific variants are warmed on hover.
-      const url = generateProductImageUrlWithOverlay(productForThumb, companyLogos, {
-        max: 1500,
-        ...(override ? {} : { pagePlacementMap }),
-        customBackAllowedSet,
-      });
-
-      // 👇 Use native browser Image, not `next/image`
-      const img = new window.Image();
-      img.src = url;
-    });
-  }, [visibleProducts, filters, companyLogos, pagePlacementMap, customBackAllowedSet]);
 
   const hasMore = useMemo(() => {
     const filtered =
@@ -312,10 +194,7 @@ export default function ProductSectionWithAction({
                       priority={idx < PRODUCT_PER_PAGE} // eager-preload only first page items
                       onClick={() => setModalProduct(p)}
                       className="cursor-pointer"
-                      hoverPreviewActive={
-                        enableHoverPreview &&
-                        typeof hoveredColorIndexMap?.[String(p.id)] === 'number'
-                      }
+                      
                     />
                   </div>
                   <div className="self-stretch flex flex-col justify-start items-start gap-[30px]">
