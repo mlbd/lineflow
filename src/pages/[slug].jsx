@@ -14,7 +14,6 @@ import CompletionDialog from '@/components/catalog/CompletionDialog';
 import { getProductCardsBatch } from '@/lib/productCache'; // server-side helper
 import { getOrFetchShipping } from '@/lib/shippingCache';
 import { wpApiFetch } from '@/lib/wpApi';
-import { generateProductImageUrl, generateProductImageUrlWithOverlay } from '@/utils/cloudinaryMockup';
 
 /* -----------------------------------------------------------
  * SSG: paths & props (keep ISR to avoid cold user waits)
@@ -143,50 +142,7 @@ export async function getStaticProps({ params }) {
       console.warn('[PageData] size check failed:', e);
     }
 
-    // Build critical image preload URLs (server-side) so browsers can preload and
-    // warm Cloudinary edges before client JS runs. Use a high-res `max` so the
-    // preloaded assets match the final rendered thumbnails.
-    try {
-      const COLORS_PER_PRODUCT = Number(process.env.NEXT_PUBLIC_PRELOAD_COLORS_PER_PRODUCT || 3);
-      const urls = [];
-      for (const p of criticalProducts || []) {
-        try {
-          const u = generateProductImageUrl(p, companyLogos || {}, { max: 1400 });
-          if (u) urls.push(u);
-        } catch (e) {}
-
-        const colors = Array.isArray(p?.acf?.color) ? p.acf.color : [];
-        for (let i = 0; i < Math.min(colors.length, COLORS_PER_PRODUCT); i++) {
-          try {
-            const uc = generateProductImageUrl(p, companyLogos || {}, { max: 1400, colorIndex: i });
-            if (uc) urls.push(uc);
-          } catch (e) {}
-          try {
-            const uo = generateProductImageUrlWithOverlay(p, companyLogos || {}, {
-              max: 1400,
-              colorIndex: i,
-              pagePlacementMap,
-              customBackAllowedSet,
-            });
-            if (uo) urls.push(uo);
-          } catch (e) {}
-        }
-
-        try {
-          const baseOverlay = generateProductImageUrlWithOverlay(p, companyLogos || {}, {
-            max: 1400,
-            pagePlacementMap,
-            customBackAllowedSet,
-          });
-          if (baseOverlay) urls.push(baseOverlay);
-        } catch (e) {}
-      }
-
-      props.criticalImagePreloads = Array.from(new Set(urls)).filter(Boolean);
-    } catch (e) {
-      // swallow - warming preloads is best-effort
-      props.criticalImagePreloads = [];
-    }
+    // No server-side image preloads — rely on Next.js Image and browser caching.
 
     return { props, revalidate: 60 };
   } catch (error) {
@@ -350,25 +306,14 @@ export default function LandingPage({
     );
   }
 
-  const preloadHref =
-    Array.isArray(productIds) && productIds.length > 0
-      ? `/api/minisites/product-cards?ids=${encodeURIComponent(productIds.join(','))}&slug=${encodeURIComponent(
-          slug
-        )}&v=${encodeURIComponent(String(cacheBust))}`
-      : null;
+  
 
   return (
     <>
       <Head>
         <title>{seo.title}</title>
         <meta name="description" content={seo.description} />
-        {/* Preconnect to Cloudinary CDN for faster image fetching */}
-        <link rel="preconnect" href="https://res.cloudinary.com" crossOrigin="anonymous" />
-        {/* Preload critical product images to help LCP and warm CDN edges */}
-        {Array.isArray(criticalImagePreloads) &&
-          criticalImagePreloads.map((u, i) => (
-            <link key={`preload-img-${i}`} rel="preload" as="image" href={u} crossOrigin="anonymous" />
-          ))}
+  
         <meta property="og:title" content={seo.title} />
         <meta property="og:description" content={seo.description} />
         {seo.image && <meta property="og:image" content={seo.image} />}
@@ -379,10 +324,6 @@ export default function LandingPage({
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="canonical" href={`${process.env.NEXT_PUBLIC_SITE_URL || ''}/${slug}`} />
 
-        {/* Hint the browser to start the product JSON fetch ASAP */}
-        {preloadHref && (
-          <link rel="preload" as="fetch" href={preloadHref} crossOrigin="anonymous" />
-        )}
       </Head>
 
       <GoogleTagManager gtmId={process.env.NEXT_PUBLIC_GTM_ID} />
