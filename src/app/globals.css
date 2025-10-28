@@ -7,8 +7,8 @@
   --breakpoint-sm: 600px;
   --breakpoint-md: 728px;
   --breakpoint-lg: 984px;
-  --breakpoint-xl: 1240px;
-  --breakpoint-2xl: 1440px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1280px;
 }
 
 @theme inline {
