@@ -54,6 +54,18 @@ function extractNoticeMessage(html, type) {
 function inferSuccess(html, responseUrl) {
   if (!html && !responseUrl) return false;
 
+  // Check for explicit error indicators first
+  const hasError =
+    /affwp-(?:errors|error|notice)[^<]*(?:error|warning)/i.test(html ?? '') ||
+    /class=("|')[^"']*(?:error|warning|alert)[^"']*("|')/i.test(html ?? '') ||
+    /Please correct the (?:errors|following)/i.test(html ?? '') ||
+    /(?:required|invalid|incorrect|failed|problem|issue)/i.test(html ?? '');
+
+  // If there are clear error indicators, it's not a success
+  if (hasError) {
+    return false;
+  }
+
   const targetUrl = responseUrl
     ? (() => {
         try {
@@ -109,13 +121,23 @@ function inferSuccess(html, responseUrl) {
     return true;
   }
 
-  return (
+  const hasExplicitSuccess =
     /affwp-(?:notice)[^<]*success/i.test(html ?? '') ||
     /affiliate (?:application|registration) (?:has been submitted|is pending|received)/i.test(
       html ?? ''
     ) ||
-    /application (?:received|submitted) successfully/i.test(html ?? '')
-  );
+    /application (?:received|submitted) successfully/i.test(html ?? '');
+
+  if (hasExplicitSuccess) {
+    return true;
+  }
+
+  // If we have HTML with a form and no errors, assume success
+  // (WordPress returns a clean empty form after successful registration)
+  const hasForm = /<form[^>]*id=("|')affwp-register-form("|')/i.test(html ?? '');
+  const hasEmptyFields = /value=("|")("|')/g.test(html ?? '');
+
+  return hasForm && hasEmptyFields && !hasError;
 }
 
 export async function POST(request) {
