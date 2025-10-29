@@ -15,6 +15,27 @@ import { getProductCardsBatch } from '@/lib/productCache'; // server-side helper
 import { getOrFetchShipping } from '@/lib/shippingCache';
 import { wpApiFetch } from '@/lib/wpApi';
 
+// near top of the file
+function hasLocalFlag(key) {
+  try { return localStorage.getItem(key) !== null; } catch { return false; }
+}
+function setLocalFlag(key, ttlMs = 7 * 24 * 60 * 60 * 1000) { // 7 days
+  try {
+    const payload = { t: Date.now(), exp: Date.now() + ttlMs };
+    localStorage.setItem(key, JSON.stringify(payload));
+  } catch {}
+}
+function isLocalFlagValid(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return false;
+    const obj = JSON.parse(raw);
+    if (!obj || typeof obj.exp !== 'number') return false;
+    if (Date.now() > obj.exp) { localStorage.removeItem(key); return false; }
+    return true;
+  } catch { return false; }
+}
+
 /* -----------------------------------------------------------
  * SSG: paths & props (keep ISR to avoid cold user waits)
  * --------------------------------------------------------- */
@@ -183,6 +204,7 @@ export default function LandingPage({
   companyLogos = [],
   pagePlacementMap = {},
   customBackAllowedSet = {},
+  restWarmVersion = 'v1'
 }) {
   const [animationDone, setAnimationDone] = useState(false);
   const cartSectionRef = useRef(null);
@@ -288,6 +310,27 @@ export default function LandingPage({
       setCompletionDialogOpen(false);
     }
   }, [status, completed]);
+
+  useEffect(() => {
+    const key = `rest-prefetch:${slug}:${restWarmVersion}`;
+
+    // Only warm once per (slug, version). If expired/missing, warm and set.
+    if (!isLocalFlagValid(key)) {
+      const go = async () => {
+        try {
+          await fetch(`/api/prefetchProducts/${encodeURIComponent(slug)}?scope=rest&primeIsr=0`, {
+            method: 'POST',
+            // same-origin, no auth header needed
+          });
+          setLocalFlag(key, 7 * 24 * 60 * 60 * 1000); // 7d TTL (tune as you like)
+        } catch {
+          // ignore; we’ll try again next visit if no flag set
+        }
+      };
+      const id = setTimeout(go, 150); // let above-the-fold settle
+      return () => clearTimeout(id);
+    }
+  }, [slug, restWarmVersion]);
 
   // if (!animationDone) return <CircleReveal onFinish={() => setAnimationDone(true)} />;
 

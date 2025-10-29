@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/router';
 import Header from '@/components/common/Header';
 
 // [PATCH] Added: tiny animated ellipsis component (cycles 1..3 dots)
@@ -23,6 +24,8 @@ function Hero() {
   const [phase, setPhase] = useState('idle'); // 'idle' | 'uploading' | 'generating'
   const [progress, setProgress] = useState(0);
   const [busy, setBusy] = useState(false);
+
+  const router = typeof window !== 'undefined' ? require('next/router').useRouter() : null;
 
   // [PATCH] Added: drag-over highlight state
   const [dragOver, setDragOver] = useState(false);
@@ -118,14 +121,35 @@ function Hero() {
         const slugOrUrl = data?.url || data?.slug || '';
         const path = slugOrUrl?.startsWith('/') ? slugOrUrl : `/${slugOrUrl}`;
         if (path && typeof window !== 'undefined') {
-          window.location.href = path;
+          // [PATCH] Prefetch CRITICAL images (incl. all color variants) + optionally prime ISR first
+          const prefetchCritical = async () => {
+            try {
+              const url = `/api/prefetchProducts/${encodeURIComponent(path.replace(/^\//,''))}?scope=critical&primeIsr=1`;
+              await Promise.race([
+                fetch(url, {
+                  method: 'POST',
+                  headers: {
+                    // If you secure with a secret, inject from env here for client-initiated calls,
+                    // or set PREFETCH_ALLOW_PUBLIC=1 on server and rate-limit per IP for 'critical' scope.
+                    // Authorization: `Bearer ${process.env.NEXT_PUBLIC_PREFETCH_PUBLIC_TOKEN || ''}`
+                  },
+                }),
+                new Promise(resolve => setTimeout(resolve, 1200)), // hard cap
+              ]);
+            } catch {}
+          };
+
+          await prefetchCritical();
+          // Prefer SPA nav; falls back to hard nav if router is not available
+          if (router?.push) router.push(path);
+          else window.location.href = path;
         }
       } finally {
         clearInterval(t);
         setBusy(false);
       }
     },
-    []
+    [router]
   );
 
   const onFiles = useCallback(
