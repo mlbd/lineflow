@@ -15,6 +15,8 @@ import { getProductCardsBatch } from '@/lib/productCache'; // server-side helper
 import { getOrFetchShipping } from '@/lib/shippingCache';
 import { wpApiFetch } from '@/lib/wpApi';
 
+import { generateProductImageUrlWithOverlay } from '@/utils/cloudinaryMockup';
+
 // near top of the file
 function hasLocalFlag(key) {
   try { return localStorage.getItem(key) !== null; } catch { return false; }
@@ -120,6 +122,58 @@ export async function getStaticProps({ params }) {
     const pagePlacementMap = data?.meta?.placement_coordinates || {};
     const customBackAllowedSet = (data?.acf?.custom_logo_products || []).map(String);
 
+    // [PATCH] Build a deduped list of DIRECT Cloudinary URLs we’ll pre-cache via Service Worker
+    const buildManifest = (products) => {
+      const set = new Set();
+      for (const p of products || []) {
+        // base (no color index)
+        try {
+          const base = generateProductImageUrlWithOverlay(p, companyLogos, {
+            max: 1500,
+            pagePlacementMap,
+            customBackAllowedSet,
+          });
+          if (base) set.add(base);
+        } catch {}
+        // all color variants from ACF
+        const colors = Array.isArray(p?.acf?.color) ? p.acf.color : [];
+        for (let i = 0; i < colors.length; i++) {
+          try {
+            const u = generateProductImageUrlWithOverlay(p, companyLogos, {
+              max: 1500,
+              colorIndex: i,
+              pagePlacementMap,
+              customBackAllowedSet,
+            });
+            if (u) set.add(u);
+          } catch {}
+        }
+      }
+      return Array.from(set);
+    };
+
+    const criticalManifest = buildManifest(criticalProducts);
+
+    // We don’t fetch “rest” products fully on the server for paint speed, but we *do* want their URLs.
+    // Fetch minimal cards for the rest just to build URLs.
+    let restManifest = [];
+    const restIds = productIds.slice(CRITICAL_COUNT);
+    if (restIds.length) {
+      try {
+        const restProducts = await getProductCardsBatch(restIds, {
+          ttlSeconds: 60 * 60 * 6,
+          staleSeconds: 60 * 60 * 24,
+        });
+        restManifest = buildManifest(restProducts);
+      } catch (e) {
+        console.warn('[slug].jsx rest getProductCardsBatch error:', e);
+      }
+    }
+
+    // Version string so we only warm “rest” once per catalog change
+    const updatedAt = data?.modified || data?.date || '';
+    const restWarmVersion = `${productIds.join('_')}|${updatedAt}`;
+
     // ---- Build props so we can measure page-data size before returning ----
     const props = {
       slug: params.slug,
@@ -145,6 +199,10 @@ export async function getStaticProps({ params }) {
       shippingOptions,
       pagePlacementMap,
       customBackAllowedSet,
+      // [PATCH] SW prefetch manifests
+      criticalManifest,
+      restManifest,
+      restWarmVersion
     };
 
     // ---- SERVER SIZE LOG (uncompressed JSON that Next will serialize) ----
@@ -192,7 +250,9 @@ export default function LandingPage({
   status,
   productIds = [],
   criticalProducts = [],
-  criticalImagePreloads = [],
+  // [PATCH] Manifests for SW Cache API
+  criticalManifest = [],
+  restManifest = [],
   cacheBust = 0,
   bumpPrice = null,
   companyData = {},
@@ -312,25 +372,28 @@ export default function LandingPage({
   }, [status, completed]);
 
   useEffect(() => {
+    // [PATCH] Use SW Cache API to store REST URLs once per catalog version
     const key = `rest-prefetch:${slug}:${restWarmVersion}`;
+    if (isLocalFlagValid(key)) return;
 
-    // Only warm once per (slug, version). If expired/missing, warm and set.
-    if (!isLocalFlagValid(key)) {
-      const go = async () => {
-        try {
-          await fetch(`/api/prefetchProducts/${encodeURIComponent(slug)}?scope=rest&primeIsr=0`, {
-            method: 'POST',
-            // same-origin, no auth header needed
-          });
-          setLocalFlag(key, 7 * 24 * 60 * 60 * 1000); // 7d TTL (tune as you like)
-        } catch {
-          // ignore; we’ll try again next visit if no flag set
-        }
-      };
-      const id = setTimeout(go, 150); // let above-the-fold settle
-      return () => clearTimeout(id);
-    }
-  }, [slug, restWarmVersion]);
+    const run = () => {
+      if (!navigator.serviceWorker?.controller || !restManifest?.length) return;
+      const label = 'rest:' + String(slug || '') + ':' + String(restWarmVersion || '');
+      const ch = new MessageChannel();
+      const ack = new Promise(resolve => {
+        const t = setTimeout(() => resolve({ timeout: true }), 3000);
+        ch.port1.onmessage = (e) => { clearTimeout(t); resolve(e.data || {}); };
+      });
+      navigator.serviceWorker.controller.postMessage({ type:'CATALOG_PREFETCH', urls: restManifest, label }, [ch.port2]);
+      ack.then((msg) => {
+        console.log('[SW] rest prefetch ack', label, msg);
+        setLocalFlag(key, 7 * 24 * 60 * 60 * 1000);
+      });
+    };
+
+    const id = setTimeout(run, 200); // small delay so main content paints first
+    return () => clearTimeout(id);
+  }, [slug, restWarmVersion, restManifest]);
 
   // if (!animationDone) return <CircleReveal onFinish={() => setAnimationDone(true)} />;
 
@@ -365,7 +428,35 @@ export default function LandingPage({
         <meta name="twitter:description" content={seo.description} />
         {seo.image && <meta name="twitter:image" content={seo.image} />}
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="canonical" href={`${process.env.NEXT_PUBLIC_SITE_URL || ''}/${slug}`} />
+
+        {/* [PATCH] Early: ensure SW is registered and cache CRITICAL URLs before user interaction */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function(){
+                try {
+                  if (!('serviceWorker' in navigator)) return;
+                  var urls = ${JSON.stringify(criticalManifest)};
+                  if (!urls || !urls.length) return;
+
+                  function sendToSW() {
+                    if (!navigator.serviceWorker.controller) { setTimeout(sendToSW, 50); return; }
+                    var label = 'critical:${slug}';
+                    var ch = new MessageChannel();
+                    var timer = setTimeout(function(){}, 800);
+                    ch.port1.onmessage = function(e){ clearTimeout(timer); console.log('[SW] critical prefetch ack', e.data); };
+                    navigator.serviceWorker.controller.postMessage({type:'CATALOG_PREFETCH', urls: urls, label: label}, [ch.port2]);
+                  }
+
+                  if (!navigator.serviceWorker.controller) {
+                    navigator.serviceWorker.register('/sw-catalog-prefetch.js').then(sendToSW).catch(sendToSW);
+                  } else {
+                    sendToSW();
+                  }
+                } catch (e) { /* silent */ }
+              })();`,
+          }}
+        />
 
       </Head>
 

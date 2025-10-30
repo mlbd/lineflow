@@ -26,7 +26,7 @@ export function calculateProductPriceRange(product, bumpPrice = null, priceMode 
   // console.log(`[Product ${productId}] Initial regular_price:`, regular_price);
   // console.log(`[Product ${productId}] Bump price:`, bump_price);
 
-  console.log(`[Product ${productId}] Price mode:`, priceMode);
+  // console.log(`[Product ${productId}] Price mode:`, priceMode);
 
   // Apply bump price if needed
   if (bump_price) {

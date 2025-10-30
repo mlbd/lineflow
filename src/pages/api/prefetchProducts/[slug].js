@@ -83,6 +83,11 @@ export default async function handler(req, res) {
     const scope = String(req.query.scope || 'all');      // 'critical' | 'rest' | 'all'
     const primeIsr = String(req.query.primeIsr || '1') === '1';
     const wantVerify = String(req.query.verify || '0') === '1';
+    // [PATCH] Added: manifest + optimizer flags for returning URL lists
+    const wantManifest  = String(req.query.manifest  || '0') === '1';
+    const wantOptimizer = String(req.query.optimizer || '0') === '1';
+    const optW = Number(req.query.w || 464);
+    const optQ = Number(req.query.q || 75);
 
     // 1) Load company page JSON (same contract as the [slug] page)
     const pageRes = await wpApiFetch(`company-page?slug=${encodeURIComponent(slug)}`);
@@ -251,6 +256,19 @@ export default async function handler(req, res) {
       });
     }
 
+    // [PATCH] Added: optionally include a manifest of warmed URLs
+    let optimizerUrls;
+    if (wantManifest && wantOptimizer) {
+      const origin = `${getEffectiveProto(req)}://${getEffectiveHost(req)}`;
+      optimizerUrls = list.map((u) => {
+        const nu = new URL(`${origin}/_next/image`);
+        nu.searchParams.set('url', u);
+        nu.searchParams.set('w', String(optW));
+        nu.searchParams.set('q', String(optQ));
+        return nu.toString();
+      });
+    }
+
     clearTimeout(kill);
     return res.status(200).json({
       ok: true,
@@ -262,6 +280,9 @@ export default async function handler(req, res) {
       verified,
       hits,
       ms,
+      // [PATCH] include manifests if requested
+      ...(wantManifest ? { urls: list } : {}),
+      ...(wantManifest && wantOptimizer ? { optimizerUrls } : {}),
       ...(wantVerify ? { sample: verifySample } : {}),
     });
   } catch (err) {

@@ -11,41 +11,30 @@ import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
 import { generateProductImageUrlWithOverlay } from '@/utils/cloudinaryMockup';
 import Image from 'next/image';
 
-// [PATCH] Helpers for hover variant prefetch
-const NEXT_IMG_W = 464;  // must match your <Image width>
-const NEXT_IMG_Q = 75;   // default Next quality
-function buildNextImageUrl(src, w = NEXT_IMG_W, q = NEXT_IMG_Q) {
-  // Exactly how Next builds optimizer requests
-  const u = new URL('/_next/image', window.location.origin);
-  u.searchParams.set('url', src);
-  u.searchParams.set('w', String(w));
-  u.searchParams.set('q', String(q));
-  return u.toString();
-}
-
-// Simple prefetch via Image objects (browser memory/disk cache) + warms Next optimizer route
-async function prefetchUrls(urls) {
+// [PATCH] Prefetch utility: download into browser cache (direct Cloudinary URLs)
+// Small concurrency so it doesn't hog bandwidth; returns when either done or timeout.
+async function prefetchDirect(urls, { concurrency = 6, timeoutMs = 1200 } = {}) {
   const seen = new Set();
-  const tasks = [];
-  for (const u of urls) {
-    if (!u || seen.has(u)) continue;
-    seen.add(u);
-    tasks.push(new Promise((resolve) => {
+  const queue = urls.filter(Boolean).filter(u => !seen.has(u) && seen.add(u));
+  let idx = 0;
+  const workers = new Array(Math.min(concurrency, queue.length)).fill(0).map(() => new Promise((resolve) => {
+    const run = () => {
+      const u = queue[idx++];
+      if (!u) return resolve();
       try {
         const img = new Image();
         img.decoding = 'async';
         img.loading = 'eager';
         img.src = u;
-        img.onload = img.onerror = () => resolve();
+        img.onload = img.onerror = () => run();
       } catch {
-        resolve();
+        run();
       }
-    }));
-  }
-  // Don't block UI forever
-  await Promise.race([Promise.allSettled(tasks), new Promise(r => setTimeout(r, 1200))]);
+    };
+    run();
+  }));
+  await Promise.race([Promise.allSettled(workers), new Promise(r => setTimeout(r, timeoutMs))]);
 }
-
 
 // [PATCH] Added shimmer helpers for blur placeholder
 // Place near the imports at the top of the file.
@@ -207,28 +196,33 @@ export default function ProductSectionWithAction({
 
   console.log('visibleProducts', visibleProducts);
 
-  // [PATCH] One-time per-render prefetch for all hover color variants of *visible* products
+  // [PATCH] Prefetch hover thumbnails: eager for "likely" hovers, idle for the rest
   useEffect(() => {
-    // Respect Data Saver / very slow networks
+    if (typeof window === 'undefined') return; // SSR guard
     const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-    if (conn?.saveData) return;
-    if (conn?.effectiveType && ['slow-2g', '2g'].includes(conn.effectiveType)) return;
+    if (conn?.saveData) return; // respect Data Saver
 
-    // Build all overlay URLs for each colorIndex per visible product
-    const directUrls = new Set();
+    const priority = []; // [PATCH] Eager: base + first 1-2 colors
+    const tail = [];      // [PATCH] Idle: remaining colors
+
     for (const p of visibleProducts) {
-      const override = useAreaFilterStore.getState()?.filters?.[String(p.id)] || null;
+      const override = useAreaFilterStore.getState()?.filters?.String?.(p.id)
+        ? useAreaFilterStore.getState()?.filters?.[String(p.id)]
+        : null;
       const productForThumb = override ? { ...p, placement_coordinates: override } : p;
       const colors = Array.isArray(p?.acf?.color) ? p.acf.color : [];
-      // include the default (no color index) too, in case hover returns to base
+
+      // base (no color index)
       try {
         const base = generateProductImageUrlWithOverlay(productForThumb, companyLogos, {
           max: 1500,
           ...(override ? {} : { pagePlacementMap }),
           customBackAllowedSet,
         });
-        if (base) directUrls.add(base);
+        if (base) priority.push(base);
       } catch {}
+
+      // first 2 colors eagerly, rest go to idle
       for (let i = 0; i < colors.length; i++) {
         try {
           const u = generateProductImageUrlWithOverlay(productForThumb, companyLogos, {
@@ -237,24 +231,25 @@ export default function ProductSectionWithAction({
             ...(override ? {} : { pagePlacementMap }),
             customBackAllowedSet,
           });
-          if (u) directUrls.add(u);
+          if (!u) continue;
+          if (i < 2) priority.push(u);
+          else tail.push(u);
         } catch {}
       }
     }
 
-    // Convert to Next optimizer URLs so the *exact* request used by <Image> is cached
-    const nextImgUrls = Array.from(directUrls).map(src => buildNextImageUrl(src, NEXT_IMG_W, NEXT_IMG_Q));
+    // Kick priority immediately so first hover is instant
+    prefetchDirect(priority, { concurrency: 6, timeoutMs: 1500 });
 
-    // Schedule politely (idle if possible), then prefetch
-    const runner = () => { prefetchUrls(nextImgUrls); };
+    // Defer the rest to idle so we don't compete with main content
+    const runner = () => prefetchDirect(tail, { concurrency: 4, timeoutMs: 3000 });
     if ('requestIdleCallback' in window) {
-      const id = window.requestIdleCallback(runner, { timeout: 800 });
+      const id = window.requestIdleCallback(runner, { timeout: 1200 });
       return () => window.cancelIdleCallback && window.cancelIdleCallback(id);
     } else {
-      const t = setTimeout(runner, 50);
+      const t = setTimeout(runner, 350);
       return () => clearTimeout(t);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleProducts, companyLogos, pagePlacementMap, customBackAllowedSet]);
 
 

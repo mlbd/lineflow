@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Header from '@/components/common/Header';
 
+
+
 // [PATCH] Added: tiny animated ellipsis component (cycles 1..3 dots)
 function Ellipsis({ active = true, interval = 350 }) {
   const [n, setN] = useState(1); // 1..3
@@ -121,25 +123,48 @@ function Hero() {
         const slugOrUrl = data?.url || data?.slug || '';
         const path = slugOrUrl?.startsWith('/') ? slugOrUrl : `/${slugOrUrl}`;
         if (path && typeof window !== 'undefined') {
-          // [PATCH] Prefetch CRITICAL images (incl. all color variants) + optionally prime ISR first
-          const prefetchCritical = async () => {
+          // [PATCH] Prefetch CRITICAL on server *and* pull back a manifest to push into browser cache
+          const prefetchToBrowserCache = async () => {
+            const slugOnly = path.replace(/^\//, '');
             try {
-              const url = `/api/prefetchProducts/${encodeURIComponent(path.replace(/^\//,''))}?scope=critical&primeIsr=1`;
-              await Promise.race([
-                fetch(url, {
-                  method: 'POST',
-                  headers: {
-                    // If you secure with a secret, inject from env here for client-initiated calls,
-                    // or set PREFETCH_ALLOW_PUBLIC=1 on server and rate-limit per IP for 'critical' scope.
-                    // Authorization: `Bearer ${process.env.NEXT_PUBLIC_PREFETCH_PUBLIC_TOKEN || ''}`
-                  },
-                }),
-                new Promise(resolve => setTimeout(resolve, 1200)), // hard cap
+              const url =
+                `/api/prefetchProducts/${encodeURIComponent(slugOnly)}` +
+                `?scope=critical&primeIsr=1&manifest=1` +
+                // If your product cards use Next optimizer, add &optimizer=1&w=464&q=75
+                (process.env.NEXT_PUBLIC_USE_NEXT_OPTIMIZER === '1' ? `&optimizer=1&w=464&q=75` : ``);
+
+              const resp = await Promise.race([
+                fetch(url, { method: 'POST' }),
+                new Promise(resolve => setTimeout(() => resolve(null), 2500)), // hard cap 2.5s
               ]);
-            } catch {}
+
+              // If the API responded with a manifest, pre-download into browser cache
+              if (resp && resp.ok) {
+                const json = await resp.json().catch(() => null);
+                const urls = (process.env.NEXT_PUBLIC_USE_NEXT_OPTIMIZER === '1'
+                  ? (json?.optimizerUrls || [])
+                  : (json?.urls || [])
+                ).filter(Boolean);
+
+                // Prefer SW Cache API (works on localhost http)
+                if (urls.length && navigator.serviceWorker?.controller) {
+                  const label = `critical:${slugOnly}`;
+                  const mc = new MessageChannel();
+                  const ack = new Promise(resolve => {
+                    const timer = setTimeout(() => resolve({ timeout: true }), 1200);
+                    mc.port1.onmessage = (e) => { clearTimeout(timer); resolve(e.data || {}); };
+                  });
+                  navigator.serviceWorker.controller.postMessage({ type: 'CATALOG_PREFETCH', urls, label }, [mc.port2]);
+                  const result = await ack;
+                  console.log('[SW] critical prefetch', label, result);
+                }
+              }
+            } catch {
+              /* ignore – navigation proceeds */
+            }
           };
 
-          await prefetchCritical();
+          await prefetchToBrowserCache();
           // Prefer SPA nav; falls back to hard nav if router is not available
           if (router?.push) router.push(path);
           else window.location.href = path;
@@ -197,6 +222,13 @@ function Hero() {
   const onDragLeave = useCallback(e => {
     e.preventDefault();
     setDragOver(false);
+  }, []);
+
+  // [PATCH] Added: register service worker once
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw-catalog-prefetch.js').catch(() => {});
+    }
   }, []);
 
   return (
