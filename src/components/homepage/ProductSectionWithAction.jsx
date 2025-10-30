@@ -5,7 +5,7 @@ import AddToCartModal from '@/components/page/AddToCartModal';
 import ProductColorBoxes from '@/components/page/ProductColorBoxes';
 import ProductPriceLabel from '@/components/page/ProductPriceLabel';
 import ProductQuickViewModal from '@/components/page/ProductQuickViewModal';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
 import { generateProductImageUrlWithOverlay } from '@/utils/cloudinaryMockup';
@@ -31,8 +31,10 @@ const toBase64 = str =>
 
 // [PATCH] Added ShimmerImage component that uses next/image with Twitch-like shimmer overlay.
 // Fixed dimensions prevent layout shift; overlay fades out on complete.
+// [PATCH] Updated ShimmerImage to use a ref + decode() + cached-complete check
 function ShimmerImage({ src, alt, priority = false, onClick }) {
   const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef(null); // [PATCH] Added
   const isClickable = typeof onClick === 'function';
 
   const handleKeyDown = e => {
@@ -43,9 +45,17 @@ function ShimmerImage({ src, alt, priority = false, onClick }) {
     }
   };
 
-  // Reset shimmer when src changes
+  // [PATCH] Reset + handle cached images that are already complete
   useEffect(() => {
     setLoaded(false);
+    const img = imgRef.current;
+    if (!img) return;
+
+    // If the browser has already loaded & decoded it (e.g., bfcache/CDN/cache),
+    // the onLoad handler may not fire, so short-circuit to loaded.
+    if (img.complete && img.naturalWidth > 0) {
+      setLoaded(true);
+    }
   }, [src]);
 
   return (
@@ -58,6 +68,7 @@ function ShimmerImage({ src, alt, priority = false, onClick }) {
       aria-label={isClickable ? alt || 'Open image' : undefined}
     >
       <Image
+        ref={imgRef} // [PATCH] Forward ref to the underlying <img>
         src={src}
         alt={alt || ''}
         width={464}
@@ -67,25 +78,32 @@ function ShimmerImage({ src, alt, priority = false, onClick }) {
         blurDataURL={`data:image/svg+xml;base64,${toBase64(shimmer(464, 310))}`}
         loading={priority ? 'eager' : 'lazy'}
         priority={priority}
-        onLoadingComplete={() => setLoaded(true)}
+        // [PATCH] Reliable onLoad:
+        // - If decode() is supported, wait for it so we fade only after decoding.
+        // - Fallback: mark loaded immediately.
+        onLoad={e => {
+          const img = e.currentTarget;
+          if (typeof img.decode === 'function') {
+            img
+              .decode()
+              .catch(() => {}) // ignore decode errors, still show the image
+              .finally(() => setLoaded(true));
+          } else {
+            setLoaded(true);
+          }
+        }}
         draggable={false}
       />
-      {/* shimmer sweep overlay (like twitch) */}
+      {/* shimmer sweep overlay (unchanged) */}
       <div
-        className={`pointer-events-none absolute inset-0 transition-opacity duration-300 ${
-          loaded ? 'opacity-0' : 'opacity-100'
-        }`}
+        className={`pointer-events-none absolute inset-0 transition-opacity duration-300 ${loaded ? 'opacity-0' : 'opacity-100'}`}
       >
         <div className="absolute -inset-x-1 inset-y-0 animate-[shimmer_1.5s_infinite_linear] bg-[linear-gradient(110deg,rgba(0,0,0,0)_0%,rgba(0,0,0,0)_40%,rgba(255,255,255,0.55)_50%,rgba(0,0,0,0)_60%,rgba(0,0,0,0)_100%)]" />
       </div>
       <style jsx>{`
         @keyframes shimmer {
-          0% {
-            transform: translateX(-100%);
-          }
-          100% {
-            transform: translateX(100%);
-          }
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
         }
       `}</style>
     </div>
