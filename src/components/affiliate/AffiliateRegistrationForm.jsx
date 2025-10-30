@@ -12,10 +12,11 @@ function enhanceAffiliateWpForm(root) {
 
   const form = root.querySelector('form');
 
-  if (!form || form.dataset.lfEnhanced === 'true') {
+  if (!form) {
     return;
   }
 
+  // Always reapply classes even if already enhanced (in case form was reset)
   form.dataset.lfEnhanced = 'true';
   form.classList.add('lf-affwp-card');
 
@@ -206,6 +207,11 @@ export default function AffiliateRegistrationForm() {
             setSubmissionFeedback(successState);
             form.reset();
             setButtonDisabled(false);
+            
+            // Re-apply form enhancements after reset to restore styling
+            setTimeout(() => {
+              enhanceAffiliateWpForm(root);
+            }, 100);
             return;
           }
 
