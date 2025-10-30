@@ -111,7 +111,7 @@ export function ProductsShell({
           companyLogos={companyLogos}
           pagePlacementMap={pagePlacementMap}
           customBackAllowedSet={customBackAllowedSet}
-          enableHoverPreview={false}
+          enableHoverPreview={true}
         />
       </div>
 

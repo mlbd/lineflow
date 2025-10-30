@@ -11,6 +11,42 @@ import { useAreaFilterStore } from '@/components/cart/areaFilterStore';
 import { generateProductImageUrlWithOverlay } from '@/utils/cloudinaryMockup';
 import Image from 'next/image';
 
+// [PATCH] Helpers for hover variant prefetch
+const NEXT_IMG_W = 464;  // must match your <Image width>
+const NEXT_IMG_Q = 75;   // default Next quality
+function buildNextImageUrl(src, w = NEXT_IMG_W, q = NEXT_IMG_Q) {
+  // Exactly how Next builds optimizer requests
+  const u = new URL('/_next/image', window.location.origin);
+  u.searchParams.set('url', src);
+  u.searchParams.set('w', String(w));
+  u.searchParams.set('q', String(q));
+  return u.toString();
+}
+
+// Simple prefetch via Image objects (browser memory/disk cache) + warms Next optimizer route
+async function prefetchUrls(urls) {
+  const seen = new Set();
+  const tasks = [];
+  for (const u of urls) {
+    if (!u || seen.has(u)) continue;
+    seen.add(u);
+    tasks.push(new Promise((resolve) => {
+      try {
+        const img = new Image();
+        img.decoding = 'async';
+        img.loading = 'eager';
+        img.src = u;
+        img.onload = img.onerror = () => resolve();
+      } catch {
+        resolve();
+      }
+    }));
+  }
+  // Don't block UI forever
+  await Promise.race([Promise.allSettled(tasks), new Promise(r => setTimeout(r, 1200))]);
+}
+
+
 // [PATCH] Added shimmer helpers for blur placeholder
 // Place near the imports at the top of the file.
 const shimmer = (w, h) => `
@@ -68,6 +104,7 @@ function ShimmerImage({ src, alt, priority = false, onClick }) {
       aria-label={isClickable ? alt || 'Open image' : undefined}
     >
       <Image
+        unoptimized
         ref={imgRef} // [PATCH] Forward ref to the underlying <img>
         src={src}
         alt={alt || ''}
@@ -169,6 +206,57 @@ export default function ProductSectionWithAction({
   const categoryName = slug => slug;
 
   console.log('visibleProducts', visibleProducts);
+
+  // [PATCH] One-time per-render prefetch for all hover color variants of *visible* products
+  useEffect(() => {
+    // Respect Data Saver / very slow networks
+    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if (conn?.saveData) return;
+    if (conn?.effectiveType && ['slow-2g', '2g'].includes(conn.effectiveType)) return;
+
+    // Build all overlay URLs for each colorIndex per visible product
+    const directUrls = new Set();
+    for (const p of visibleProducts) {
+      const override = useAreaFilterStore.getState()?.filters?.[String(p.id)] || null;
+      const productForThumb = override ? { ...p, placement_coordinates: override } : p;
+      const colors = Array.isArray(p?.acf?.color) ? p.acf.color : [];
+      // include the default (no color index) too, in case hover returns to base
+      try {
+        const base = generateProductImageUrlWithOverlay(productForThumb, companyLogos, {
+          max: 1500,
+          ...(override ? {} : { pagePlacementMap }),
+          customBackAllowedSet,
+        });
+        if (base) directUrls.add(base);
+      } catch {}
+      for (let i = 0; i < colors.length; i++) {
+        try {
+          const u = generateProductImageUrlWithOverlay(productForThumb, companyLogos, {
+            max: 1500,
+            colorIndex: i,
+            ...(override ? {} : { pagePlacementMap }),
+            customBackAllowedSet,
+          });
+          if (u) directUrls.add(u);
+        } catch {}
+      }
+    }
+
+    // Convert to Next optimizer URLs so the *exact* request used by <Image> is cached
+    const nextImgUrls = Array.from(directUrls).map(src => buildNextImageUrl(src, NEXT_IMG_W, NEXT_IMG_Q));
+
+    // Schedule politely (idle if possible), then prefetch
+    const runner = () => { prefetchUrls(nextImgUrls); };
+    if ('requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(runner, { timeout: 800 });
+      return () => window.cancelIdleCallback && window.cancelIdleCallback(id);
+    } else {
+      const t = setTimeout(runner, 50);
+      return () => clearTimeout(t);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleProducts, companyLogos, pagePlacementMap, customBackAllowedSet]);
+
 
   return (
     <section className="w-full flex justify-center bg-white py-10 rounded-3xl px-10 mt-10">
