@@ -1,7 +1,6 @@
 // components/page/ProductsShell.jsx
 import CartPage from '@/components/cart/CartPage';
 import ProductSectionWithAction from '@/components/homepage/ProductSectionWithAction';
-import { generateProductImageUrl, generateProductImageUrlWithOverlay } from '@/utils/cloudinaryMockup';
 import { useEffect, useState } from 'react';
 
 export function ProductsShell({
@@ -111,7 +110,7 @@ export function ProductsShell({
           companyLogos={companyLogos}
           pagePlacementMap={pagePlacementMap}
           customBackAllowedSet={customBackAllowedSet}
-          enableHoverPreview={false}
+          enableHoverPreview={true}
         />
       </div>
 

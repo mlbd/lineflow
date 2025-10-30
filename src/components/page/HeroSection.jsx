@@ -25,7 +25,7 @@ export default function HeroSection({
       />
 
       <div className="relative z-10 max-w-[var(--site-max-width)] w-full flex flex-col md:flex-row items-center justify-center gap-8 px-4 py-20 md:py-20">
-        <div className="flex-1 flex justify-center mb-6 md:mb-0">
+        <div className="flex-1 flex flex-col items-center justify-center mb-6 md:mb-0">
           {resolvedLogo && isCompanyMode ? (
             <Image
               src={resolvedLogo}
@@ -37,16 +37,16 @@ export default function HeroSection({
               unoptimized
             />
           ) : (
-            <h1 className="text-[40px] md:text-4xl text-primary font-bold mb-4 flex items-center gap-6">
+            <h1 className="text-[40px] md:text-4xl text-primary font-bold mb-5 flex items-center gap-6">
               {resolvedTitle}
             </h1>
           )}
 
-          {/* {resolvedSubtitle && (
-            <p className="text-lg text-white/90 md:text-left max-w-xl leading-relaxed">
+          {resolvedSubtitle && (
+            <p className="text-lg text-gray-600 text-center md:text-center max-w-xl leading-relaxed">
               {resolvedSubtitle}
             </p>
-          )} */}
+          )}
         </div>
       </div>
     </section>

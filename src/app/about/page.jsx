@@ -18,7 +18,7 @@ export default function AboutPage() {
       <main>
         <TopBar />
 
-        {/* Banner / Hero (you said this is prebuilt) */}
+        {/* Banner / Hero */}
         <HeroSection
           title={
             <>
