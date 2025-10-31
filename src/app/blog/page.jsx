@@ -1,9 +1,9 @@
+import PrefetchLink from '@/components/blog/PrefetchLink';
 import Footer from '@/components/common/Footer';
 import HeroSection from '@/components/page/HeroSection';
 import TopBar from '@/components/page/TopBar';
 import Head from 'next/head';
 import Image from 'next/image';
-import Link from 'next/link';
 
 const WP_BASE = process.env.WP_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || '';
 
@@ -38,6 +38,17 @@ function decodeHtmlEntities(str) {
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#039;/g, "'");
+}
+
+function formatDateISO(dateStr) {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr);
+    // Format as: Oct 28, 2025 (stable, server-side)
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  } catch (e) {
+    return dateStr;
+  }
 }
 
 export default async function BlogPage() {
@@ -81,7 +92,7 @@ export default async function BlogPage() {
                 const slug = p.slug;
                 const title = p.title?.rendered ?? '';
                 const excerpt = p.excerpt?.rendered ?? '';
-                const date = new Date(p.date).toLocaleDateString();
+                const date = formatDateISO(p.date);
                 const author = p._embedded?.author?.[0]?.name ?? '';
                 const image = getFeaturedImage(p);
                 const categoryRaw =
@@ -102,11 +113,9 @@ export default async function BlogPage() {
                         ) : null}
 
                         <h2 className="text-2xl md:text-3xl font-bold text-primary-500 mb-3">
-                          <Link
-                            href={`/blog/${slug}`}
-                            className="hover:text-primary-500"
-                            dangerouslySetInnerHTML={{ __html: title }}
-                          />
+                          <PrefetchLink href={`/blog/${slug}`} className="hover:text-primary-500">
+                            <span dangerouslySetInnerHTML={{ __html: title }} />
+                          </PrefetchLink>
                         </h2>
 
                         <p
@@ -119,17 +128,17 @@ export default async function BlogPage() {
                         </div>
 
                         <div>
-                          <Link
+                          <PrefetchLink
                             href={`/blog/${slug}`}
                             className="inline-flex items-center rounded-full px-5 py-3 text-sm font-semibold  text-primary-500 border-primary-500 border-2 hover:bg-primary-500 hover:text-white transition"
                           >
                             Read More
-                          </Link>
+                          </PrefetchLink>
                         </div>
                       </div>
 
                       {/* Right: image */}
-                      <Link href={`/blog/${slug}`} className="relative h-64 sm:h-80 lg:h-full">
+                      <PrefetchLink href={`/blog/${slug}`} className="relative h-64 sm:h-80 lg:h-full">
                         <Image
                           src={image}
                           alt={typeof title === 'string' ? title : 'Featured image'}
@@ -137,7 +146,7 @@ export default async function BlogPage() {
                           className="object-cover"
                           priority
                         />
-                      </Link>
+                      </PrefetchLink>
                     </div>
                   </article>
                 );
@@ -149,7 +158,7 @@ export default async function BlogPage() {
                   const slug = post.slug;
                   const title = post.title?.rendered ?? '';
                   const excerpt = post.excerpt?.rendered ?? '';
-                  const date = new Date(post.date).toLocaleDateString();
+                  const date = formatDateISO(post.date);
                   const author = post._embedded?.author?.[0]?.name ?? '';
                   const image = getFeaturedImage(post);
                   const categoryRaw =
@@ -160,7 +169,7 @@ export default async function BlogPage() {
 
                   return (
                     <article key={slug} className="bg-white overflow-hidden">
-                      <Link href={`/blog/${slug}`} className="block group">
+                      <PrefetchLink href={`/blog/${slug}`} className="block group">
                         <div className="relative h-75 w-full rounded-2xl overflow-hidden">
                           <Image
                             src={image}
@@ -179,7 +188,7 @@ export default async function BlogPage() {
                             </span>
                           </div>
                         </div>
-                      </Link>
+                      </PrefetchLink>
 
                       <div className="py-4">
                         {category ? (
@@ -189,11 +198,9 @@ export default async function BlogPage() {
                         ) : null}
 
                         <h3 className="text-xl font-semibold text-black mb-2">
-                          <Link
-                            href={`/blog/${slug}`}
-                            className="hover:text-primary-500"
-                            dangerouslySetInnerHTML={{ __html: title }}
-                          />
+                          <PrefetchLink href={`/blog/${slug}`} className="hover:text-primary-500">
+                            <span dangerouslySetInnerHTML={{ __html: title }} />
+                          </PrefetchLink>
                         </h3>
 
                         <div
@@ -205,12 +212,12 @@ export default async function BlogPage() {
                           {date} {author ? <>&bull; {author}</> : null}
                         </div>
 
-                        <Link
+                        <PrefetchLink
                           href={`/blog/${slug}`}
                           className="hidden items-center text-primary-500 font-medium "
                         >
                           Read More
-                        </Link>
+                        </PrefetchLink>
                       </div>
                     </article>
                   );
@@ -220,7 +227,7 @@ export default async function BlogPage() {
           )}
         </section>
 
-        <Footer />
+        <Footer year={new Date().getFullYear()} />
       </main>
     </>
   );
