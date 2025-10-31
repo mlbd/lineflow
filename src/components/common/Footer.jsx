@@ -3,8 +3,11 @@
 import Image from 'next/image';
 import Link from 'next/link';
 
-export default function Footer() {
-  const year = new Date().getFullYear();
+export default function Footer({ year }) {
+  // Accept `year` from server to ensure the server-rendered HTML matches the
+  // client (avoids hydration mismatch). Fallback to client-side calculation
+  // if not provided (defensive).
+  const currentYear = year ?? new Date().getFullYear();
 
   return (
     <footer className="bg-primary-600 text-gray-300 w-full py-10 flex justify-center">
@@ -169,8 +172,8 @@ export default function Footer() {
         </div>
 
         {/* Bottom row */}
-        <div className="mt-10 flex flex-col items-center justify-center gap-6 border-t border-white/10 pt-6 md:flex-row">
-          <p className="text-xs text-grey/300">© All Right Reserved by LineFlow – {year}</p>
+          <div className="mt-10 flex flex-col items-center justify-center gap-6 border-t border-white/10 pt-6 md:flex-row">
+          <p className="text-xs text-grey/300">© All Right Reserved by LineFlow – {currentYear}</p>
         </div>
       </div>
     </footer>

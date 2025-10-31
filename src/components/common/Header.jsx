@@ -1,20 +1,76 @@
 // ./src/components/common/Header.jsx
 'use client';
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import Image from 'next/image';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
 
-export default function Header() {
-  const [menus, setMenus] = useState([]);
+export default function Header({ initialMenus = null }) {
+  const [menus, setMenus] = useState(Array.isArray(initialMenus) ? initialMenus : []);
+
+  const CACHE_KEY = 'lf_menus_v1';
+  const CACHE_TTL = 1000 * 60 * 5;
+  const REFRESH_THRESHOLD = 1000 * 60;
+
+  function loadCachedMenus() {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !parsed.ts || !Array.isArray(parsed.items)) return null;
+      if (Date.now() - parsed.ts > CACHE_TTL) {
+        localStorage.removeItem(CACHE_KEY);
+        return null;
+      }
+      return parsed;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveCachedMenus(items) {
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), items }));
+    } catch (e) {
+      // ignore
+    }
+  }
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
+    if (Array.isArray(initialMenus) && initialMenus.length > 0) {
+      setMenus(initialMenus);
+      try {
+        saveCachedMenus(initialMenus);
+      } catch (e) {}
+      return;
+    }
+
+    const cached = loadCachedMenus();
+    if (cached && Array.isArray(cached.items) && cached.items.length > 0) {
+      setMenus(cached.items);
+      const age = Date.now() - cached.ts;
+      if (age > REFRESH_THRESHOLD) {
+        (async function refresh() {
+          try {
+            const res = await fetch('/api/ms/menu');
+            const data = await res.json();
+            const items = Array.isArray(data.items) ? data.items : [];
+            setMenus(items);
+            saveCachedMenus(items);
+          } catch (e) {}
+        })();
+      }
+      return;
+    }
+
     async function fetchMenus() {
       try {
         const res = await fetch('/api/ms/menu');
         const data = await res.json();
-        setMenus(Array.isArray(data.items) ? data.items : []);
+        const items = Array.isArray(data.items) ? data.items : [];
+        setMenus(items);
+        saveCachedMenus(items);
       } catch (e) {
         console.error('Failed to fetch menus:', e);
         setMenus([]);
@@ -41,7 +97,7 @@ export default function Header() {
         </div>
 
         {/* Middle: Nav */}
-        <nav className="hidden lg:flex flex-1 justify-center gap-8">
+        <nav className="lg:flex flex-1 justify-center gap-8">
           {menus.map(menu => {
             const isInternal = menu.url?.startsWith('/');
             const menuProps = {
